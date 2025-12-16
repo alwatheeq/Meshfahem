@@ -1,0 +1,187 @@
+import React, { useState } from 'react';
+import { Bell, X, Check, AlertCircle, Info, CheckCircle, XCircle } from 'lucide-react';
+import { useNotifications } from '../../hooks/useNotifications';
+import { useNavigate } from 'react-router-dom';
+
+export const NotificationCenter: React.FC = () => {
+  const navigate = useNavigate();
+  const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
+  const [isOpen, setIsOpen] = useState(false);
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'payment_failed':
+        return <XCircle className="h-5 w-5 text-red-500" />;
+      case 'subscription_renewed':
+        return <CheckCircle className="h-5 w-5 text-green-500" />;
+      case 'trial_expiring':
+        return <AlertCircle className="h-5 w-5 text-orange-500" />;
+      case 'subscription_canceled':
+        return <Info className="h-5 w-5 text-blue-500" />;
+      case 'admin_notification':
+        return <Info className="h-5 w-5 text-purple-500" />;
+      default:
+        return <Bell className="h-5 w-5 text-gray-500" />;
+    }
+  };
+
+  const getNotificationColor = (type: string) => {
+    switch (type) {
+      case 'payment_failed':
+        return 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800';
+      case 'subscription_renewed':
+        return 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800';
+      case 'trial_expiring':
+        return 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800';
+      case 'subscription_canceled':
+        return 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800';
+      case 'admin_notification':
+        return 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800';
+      default:
+        return 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700';
+    }
+  };
+
+  const handleNotificationClick = (notification: { id: string; action_url?: string }) => {
+    markAsRead(notification.id);
+    if (notification.action_url) {
+      navigate(notification.action_url);
+      setIsOpen(false);
+    }
+  };
+
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+    return date.toLocaleDateString();
+  };
+
+  return (
+    <div className="relative">
+      {/* Bell Icon Button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="relative p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition duration-200"
+      >
+        <Bell className="h-6 w-6 text-gray-600 dark:text-gray-300" />
+        {unreadCount > 0 && (
+          <span className="absolute top-0 right-0 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {/* Notification Dropdown */}
+      {isOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setIsOpen(false)}
+          />
+
+          {/* Dropdown Panel */}
+          <div className="absolute right-0 mt-2 w-96 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 z-50 max-h-[600px] flex flex-col">
+            {/* Header */}
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Notifications</h3>
+                {unreadCount > 0 && (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {unreadCount} unread
+                  </p>
+                )}
+              </div>
+              {unreadCount > 0 && (
+                <button
+                  onClick={markAllAsRead}
+                  className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium flex items-center space-x-1"
+                >
+                  <Check className="h-4 w-4" />
+                  <span>Mark all read</span>
+                </button>
+              )}
+            </div>
+
+            {/* Notifications List */}
+            <div className="flex-1 overflow-y-auto">
+              {notifications.length === 0 ? (
+                <div className="p-8 text-center">
+                  <Bell className="h-12 w-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+                  <p className="text-gray-500 dark:text-gray-400">No notifications</p>
+                  <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
+                    You're all caught up!
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {notifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition cursor-pointer ${
+                        !notification.is_read ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''
+                      }`}
+                      onClick={() => handleNotificationClick(notification)}
+                    >
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0 mt-1">
+                          {getNotificationIcon(notification.notification_type)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm ${
+                            !notification.is_read
+                              ? 'font-semibold text-gray-900 dark:text-white'
+                              : 'text-gray-700 dark:text-gray-300'
+                          }`}>
+                            {notification.message}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                            {formatTimeAgo(notification.created_at)}
+                          </p>
+                        </div>
+                        <div className="flex-shrink-0">
+                          {!notification.is_read && (
+                            <div className="h-2 w-2 bg-blue-500 rounded-full" />
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteNotification(notification.id);
+                            }}
+                            className="ml-2 p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition"
+                          >
+                            <X className="h-4 w-4 text-gray-400" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            {notifications.length > 0 && (
+              <div className="p-3 border-t border-gray-200 dark:border-gray-700 text-center">
+                <button
+                  onClick={() => {
+                    setIsOpen(false);
+                  }}
+                  className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};

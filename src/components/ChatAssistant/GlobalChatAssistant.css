@@ -1,0 +1,38 @@
+/* Global ChatAssistant Styles */
+
+@keyframes shake {
+  0%, 100% { 
+    transform: translate(-50%, -50%) translateX(0) translateY(0);
+  }
+  10%, 30%, 50%, 70%, 90% { 
+    transform: translate(-50%, -50%) translateX(-5px) translateY(-2px);
+  }
+  20%, 40%, 60%, 80% { 
+    transform: translate(-50%, -50%) translateX(5px) translateY(2px);
+  }
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+.chat-header {
+  user-select: none;
+}
+
+.drag-handle {
+  cursor: grab;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.resize-handle {
+  z-index: 10;
+  transition: background-color 0.2s;
+}
+
+.resize-handle:hover {
+  background-color: rgba(59, 130, 246, 0.3) !important;
+}
