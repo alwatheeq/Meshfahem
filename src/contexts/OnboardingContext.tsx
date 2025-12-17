@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import { handleSupabaseError, isOffline } from '../utils/errorHandler';
@@ -34,7 +34,14 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
     feedback: false,
     profile: false,
   });
+  // Use ref to store latest cache value for stable callback
+  const pageTutorialCacheRef = useRef(pageTutorialCache);
   const [loading, setLoading] = useState(true);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    pageTutorialCacheRef.current = pageTutorialCache;
+  }, [pageTutorialCache]);
 
   // Load dashboard tutorial status
   useEffect(() => {
@@ -216,11 +223,11 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   };
 
-  const isPageTutorialCompleted = async (pageName: PageName): Promise<boolean> => {
+  const isPageTutorialCompleted = useCallback(async (pageName: PageName): Promise<boolean> => {
     if (!user) return false;
 
-    // Check cache first
-    if (pageTutorialCache[pageName]) {
+    // Check cache first - read from ref for stable callback
+    if (pageTutorialCacheRef.current[pageName]) {
       return true;
     }
 
@@ -278,10 +285,17 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
       });
       return false;
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const completePageTutorial = async (pageName: PageName) => {
     if (!user) return;
+
+    // Update cache synchronously BEFORE async database call to prevent race conditions
+    setPageTutorialCache((prev) => ({
+      ...prev,
+      [pageName]: true,
+    }));
 
     if (isOffline()) {
       ErrorLogger.warn('Offline detected', {
@@ -290,10 +304,6 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
         userId: user.id,
         pageName,
       });
-      setPageTutorialCache((prev) => ({
-        ...prev,
-        [pageName]: true,
-      }));
       return;
     }
 
@@ -324,14 +334,9 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
           userId: user.id,
           pageName,
         });
+        // Don't revert cache on error - tutorial should stay marked as completed
         throw error;
       }
-
-      // Update cache
-      setPageTutorialCache((prev) => ({
-        ...prev,
-        [pageName]: true,
-      }));
 
       ErrorLogger.info('Page tutorial completed', {
         component: 'OnboardingContext',
@@ -347,6 +352,7 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
         userId: user.id,
         pageName,
       });
+      // Don't revert cache on error - tutorial should stay marked as completed
       throw err;
     }
   };
