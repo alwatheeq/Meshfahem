@@ -2,7 +2,7 @@ import { handleCorsPreflight } from '../_shared/cors.ts';
 import { jsonResponse, errorResponse } from '../_shared/response.ts';
 import { validateMethod, parseJsonBody, validateRequiredFields, validateNonEmptyString } from '../_shared/validation.ts';
 
-async function translateWithOpenAI(text: string, targetLanguage: string, openaiApiKey: string) {
+async function detectLanguageWithOpenAI(text: string, openaiApiKey: string) {
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -11,19 +11,19 @@ async function translateWithOpenAI(text: string, targetLanguage: string, openaiA
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini', // Using the more cost-effective model
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
-            content: `Translate to ${targetLanguage}. Preserve formatting, structure, and meaning. Return only the translation, no explanations.`
+            content: 'Detect the primary language of this text. Respond with only the ISO 639-1 code (en, ar, fr, tr) or "unknown".'
           },
           {
             role: 'user',
             content: text
           }
         ],
-        max_tokens: 2000,
-        temperature: 0.1 // Lower temperature for more consistent translations
+        max_tokens: 10, // Very short response needed
+        temperature: 0.1
       })
     });
 
@@ -35,16 +35,16 @@ async function translateWithOpenAI(text: string, targetLanguage: string, openaiA
     }
 
     const data = await response.json();
-    const translatedText = data?.choices?.[0]?.message?.content?.trim();
+    const detectedLanguage = data?.choices?.[0]?.message?.content?.trim().toLowerCase();
     
-    if (!translatedText) {
-      return { error: 'No translation received from OpenAI API' };
+    if (!detectedLanguage) {
+      return { error: 'No language detected from OpenAI API' };
     }
 
-    return { translatedText };
+    return { language: detectedLanguage };
   } catch (error) {
     return { 
-      error: `Translation request failed: ${error.message}` 
+      error: `Language detection failed: ${error.message}` 
     };
   }
 }
@@ -61,12 +61,12 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const bodyResult = await parseJsonBody<{ text: string; targetLanguage: string }>(req);
+    const bodyResult = await parseJsonBody<{ text: string }>(req);
     if (bodyResult.error) {
       return bodyResult.error;
     }
 
-    const { text, targetLanguage } = bodyResult.data;
+    const { text } = bodyResult.data;
 
     // Validate input
     const textError = validateNonEmptyString(text, 'text');
@@ -74,9 +74,13 @@ Deno.serve(async (req) => {
       return errorResponse(textError, 400);
     }
 
-    const languageError = validateNonEmptyString(targetLanguage, 'targetLanguage');
-    if (languageError) {
-      return errorResponse(languageError, 400);
+    // Minimum length check for reliable detection
+    if (text.trim().length < 50) {
+      return jsonResponse({ 
+        language: 'original',
+        confidence: 'low',
+        reason: 'Text too short for reliable detection'
+      });
     }
 
     // Get OpenAI API key from environment variables
@@ -85,24 +89,45 @@ Deno.serve(async (req) => {
       return errorResponse('OpenAI API key not configured', 500);
     }
 
-    // Translate the text
-    const result = await translateWithOpenAI(text, targetLanguage, openaiApiKey);
+    // Use first 1000 characters for efficiency
+    const textSample = text.substring(0, 1000);
+
+    // Detect the language
+    const result = await detectLanguageWithOpenAI(textSample, openaiApiKey);
     
     if ('error' in result) {
       return errorResponse(result.error, 500);
     }
 
+    // Map detected language to our codes
+    const languageMap: Record<string, string> = {
+      'en': 'en',
+      'english': 'en',
+      'ar': 'ar',
+      'arabic': 'ar',
+      'fr': 'fr',
+      'french': 'fr',
+      'français': 'fr',
+      'tr': 'tr',
+      'turkish': 'tr',
+      'türkçe': 'tr'
+    };
+
+    const detectedCode = result.language?.toLowerCase() || 'unknown';
+    const mappedLanguage = languageMap[detectedCode] || 'original';
+
     return jsonResponse({ 
-      translatedText: result.translatedText,
-      originalText: text,
-      targetLanguage: targetLanguage
+      language: mappedLanguage,
+      detectedCode: detectedCode,
+      confidence: mappedLanguage !== 'original' ? 'high' : 'low'
     });
 
   } catch (error) {
-    console.error('Translation function error:', error);
+    console.error('Language detection function error:', error);
     return errorResponse(
       error instanceof Error ? error.message : 'Server error',
       500
     );
   }
 });
+
