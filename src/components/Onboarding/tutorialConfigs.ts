@@ -14,7 +14,8 @@ export type PageName =
   | 'history' 
   | 'informational' 
   | 'feedback' 
-  | 'profile';
+  | 'profile'
+  | 'academics';
 
 export interface TutorialStep {
   title: string;
@@ -300,6 +301,36 @@ export const tutorialConfigs: Record<PageName, TutorialConfig> = {
       {
         title: 'You\'re Ready!',
         content: 'Your profile is your control center. Customize settings to match your preferences and manage your account easily.',
+      },
+    ],
+  },
+  academics: {
+    pageName: 'academics',
+    title: 'Academics',
+    steps: [
+      {
+        title: 'Your study hub',
+        content:
+          'Academics is where you organize courses, turn documents into study tools, and see simple progress by topic.',
+      },
+      {
+        title: 'Create courses',
+        content:
+          'Use Create course to add a name, optional course code, and a topic. You can pick an existing shared topic or type a new one.',
+      },
+      {
+        title: 'Generate from uploads',
+        content:
+          'Inside a course, upload a PDF, DOCX, or PPTX. The app can generate summary, flashcards, and a linked quiz from the same text.',
+      },
+      {
+        title: 'Analytics',
+        content:
+          'Topic scores combine quiz performance with flashcard study signals. Course score focuses on quizzes linked to that course.',
+      },
+      {
+        title: 'You\'re set',
+        content: 'Start by creating a course, then upload material when you are ready to build structured study tools.',
       },
     ],
   },

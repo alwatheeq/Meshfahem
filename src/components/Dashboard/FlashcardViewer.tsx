@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, RotateCcw, Eye, EyeOff, Download, Shuffle, BookOpen, CheckCircle, XCircle, BarChart, CreditCard as Edit3, List, FileText, HelpCircle, Stethoscope, GraduationCap, Heart } from 'lucide-react';
-import { useI18n } from '../../contexts/I18nContext';
+import React, { useState, useEffect, useContext } from 'react';
+import { ChevronLeft, ChevronRight, RotateCcw, Eye, EyeOff, Download, Shuffle, BookOpen, CheckCircle, BarChart, CreditCard as Edit3, List, FileText, HelpCircle, Stethoscope, GraduationCap, Heart } from 'lucide-react';
+import { useI18n, I18nContext } from '../../contexts/I18nContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../contexts/ThemeContext';
-import { recordFlashcardStudy } from '../../utils/studyTracking';
+import { recordFlashcardStudy, recordFlashcardRating } from '../../utils/studyTracking';
 
 interface Flashcard {
   front: string;
@@ -13,15 +13,17 @@ interface Flashcard {
 interface FlashcardViewerProps {
   flashcards: Flashcard[];
   medicalMode?: boolean;
+  itemId?: string;
 }
 
 type StudyMode = 'flip' | 'type_answer' | 'multiple_choice' | 'fill_in_blanks' | 'true_false';
 type MedicalStudyMode = 'clinical_cases' | 'pathophysiology' | 'pharmacology' | 'differential_diagnosis';
 
-export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, medicalMode = false }) => {
+// Internal component that uses hooks
+const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, medicalMode = false, itemId }) => {
   const { t } = useI18n();
   const { user } = useAuth();
-  const { getThemeGradient } = useTheme();
+  const { getThemeGradient, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [sessionStartTime, setSessionStartTime] = useState<Date>(new Date());
   const [cardsStudiedInSession, setCardsStudiedInSession] = useState(0);
@@ -65,10 +67,10 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
     return () => {
       // Component unmounting - record the study session
       if (user && cardsStudiedInSession > 0) {
-        recordFlashcardStudy(user.id, cardsStudiedInSession, undefined, sessionStartTime);
+        recordFlashcardStudy(user.id, cardsStudiedInSession, itemId, sessionStartTime, currentStudyMode);
       }
     };
-  }, [user, cardsStudiedInSession, sessionStartTime]);
+  }, [user, cardsStudiedInSession, sessionStartTime, itemId, currentStudyMode]);
 
   const initializeStudySession = () => {
     const shuffledCards = [...flashcards].sort(() => Math.random() - 0.5);
@@ -347,11 +349,24 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
     if (!currentStudyCard) return;
     
     const cardId = flashcards.findIndex(card => card.front === currentStudyCard.front && card.back === currentStudyCard.back);
+    const rating = difficulty === 'learned' ? 'easy' : difficulty;
     
     // Track reviewed cards and update progress
     const newStudiedCards = new Set([...studiedCards, cardId]);
     setStudiedCards(newStudiedCards);
     setStudyProgress(prev => ({ ...prev, [difficulty]: prev[difficulty] + 1 }));
+    setCardsStudiedInSession(prev => prev + 1);
+
+    if (user && cardId >= 0 && (rating === 'easy' || rating === 'good' || rating === 'hard')) {
+      recordFlashcardRating(user.id, {
+        itemId,
+        flashcardIndex: cardId,
+        flashcardFront: currentStudyCard.front,
+        userRating: rating,
+        studyMode: currentStudyMode,
+        timeSpentSeconds: 0
+      });
+    }
 
     // Check if all cards have been reviewed for the first time
     if (newStudiedCards.size === flashcards.length && !showNotification) {
@@ -443,13 +458,13 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
 
   if (showAll) {
     return (
-      <div className="bg-white rounded-2xl shadow-xl">
-        <div className="p-6 border-b border-gray-200">
+      <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm`}>
+        <div className={`p-6 border-b ${getThemeCardBorder()}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <div className={`p-2 rounded-lg ${
                 medicalMode
-                  ? 'bg-gradient-to-r from-red-500 to-pink-600 dark:from-red-600 dark:to-pink-700'
+                  ? 'bg-red-50 dark:bg-red-900/20 dark:from-red-600 dark:to-pink-700'
                   : getThemeGradient('ui')
               }`}>
                 {medicalMode ? (
@@ -459,10 +474,10 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
                 )}
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">
+                <h3 className={`text-lg font-semibold ${getThemeTextPrimary()}`}>
                   {medicalMode ? '🏥 All Medical Flashcards' : t('flashcards.all_flashcards')}
                 </h3>
-                <p className="text-sm text-gray-500">
+                <p className={`text-sm ${getThemeTextMuted()}`}>
                   {flashcards.length} {medicalMode ? 'clinical cards total' : t('flashcards.cards_total')}
                 </p>
               </div>
@@ -481,18 +496,18 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
         <div className="p-6 max-h-96 overflow-y-auto">
           <div className="space-y-4">
             {flashcards.map((card, index) => (
-              <div key={index} className="border border-gray-200 rounded-lg p-4">
+              <div key={index} className={`border ${getThemeCardBorder()} rounded-lg p-4`}>
                 <div className="flex justify-between items-start mb-2">
-                  <span className="text-sm font-medium text-gray-500">{t('common.card')} {index + 1}</span>
+                  <span className={`text-sm font-medium ${getThemeTextMuted()}`}>{t('common.card')} {index + 1}</span>
                 </div>
                 <div className="space-y-2">
                   <div>
-                    <span className="text-sm font-medium text-gray-700">Q: </span>
-                    <span className="text-gray-900">{card.front}</span>
+                    <span className={`text-sm font-medium ${getThemeTextSecondary()}`}>Q: </span>
+                    <span className={getThemeTextPrimary()}>{card.front}</span>
                   </div>
                   <div>
-                    <span className="text-sm font-medium text-gray-700">A: </span>
-                    <span className="text-gray-900">{card.back}</span>
+                    <span className={`text-sm font-medium ${getThemeTextSecondary()}`}>A: </span>
+                    <span className={getThemeTextPrimary()}>{card.back}</span>
                   </div>
                 </div>
               </div>
@@ -504,13 +519,13 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl dark:bg-gray-800 dark:shadow-none">
-      <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+    <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm dark:shadow-none`}>
+      <div className={`p-6 border-b ${getThemeCardBorder()}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className={`p-2 rounded-lg ${
               medicalMode
-                ? 'bg-gradient-to-r from-red-500 to-pink-600 dark:from-red-600 dark:to-pink-700'
+                ? 'bg-red-50 dark:bg-red-900/20 dark:from-red-600 dark:to-pink-700'
                 : getThemeGradient('ui')
             }`}>
               {medicalMode ? (
@@ -520,10 +535,10 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
               )}
             </div>
             <div> {/* Apply dark mode classes to header text */}
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              <h3 className={`text-lg font-semibold ${getThemeTextPrimary()}`}>
                 {medicalMode ? `🩺 Medical ${getStudyModeLabel(currentStudyMode)}` : getStudyModeLabel(currentStudyMode)}
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className={`text-sm ${getThemeTextMuted()}`}>
                 {currentStudyMode === 'flip' 
                   ? medicalMode
                     ? `${totalCards} clinical cards remaining • ${studiedCards.size} reviewed`
@@ -536,7 +551,7 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
               {/* Medical Mode Study Mode Selection */}
               {medicalMode && currentStudyMode === 'flip' && (
                 <div className="flex items-center space-x-2 mt-2">
-                  <span className="text-xs font-medium text-gray-500">Focus:</span>
+                  <span className={`text-xs font-medium ${getThemeTextMuted()}`}>Focus:</span>
                   <select
                     value={medicalStudyMode}
                     onChange={(e) => setMedicalStudyMode(e.target.value as MedicalStudyMode)}
@@ -554,7 +569,7 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
           
           <div className="flex items-center space-x-2">
             {/* Study Mode Selector */}
-            <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1 dark:bg-gray-700">
+            <div className={`flex items-center space-x-1 ${getThemeSubtle('ui')} rounded-lg p-1`}>
               {(['flip', 'type_answer', 'multiple_choice', 'fill_in_blanks', 'true_false'] as StudyMode[]).map((mode) => {
                 const Icon = getStudyModeIcon(mode);
                 return (
@@ -563,8 +578,8 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
                     onClick={() => handleStudyModeChange(mode)}
                     className={`p-2 rounded-md transition duration-150 ${
                       currentStudyMode === mode
-                        ? 'bg-white text-blue-600 shadow-sm dark:bg-gray-900 dark:text-blue-400 dark:shadow-none'
-                        : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+                        ? `${getThemeCardBg()} text-blue-600 shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm dark:text-blue-400 dark:shadow-none`
+                        : `${getThemeTextMuted()} hover:opacity-80`
                     }`}
                     title={getStudyModeLabel(mode)}
                   >
@@ -585,16 +600,16 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
                 <span>{medicalMode ? '📋 Export Medical Cards' : t('common.export')}</span>
               </button>
               
-              <div className="absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10 dark:bg-gray-700 dark:border-gray-600 dark:shadow-none">
+              <div className={`absolute right-0 mt-1 w-40 ${getThemeCardBg()} ${getThemeCardBorder()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-colors duration-150 z-10 dark:shadow-none`}>
                 <button
                   onClick={exportAsCSV}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-t-lg dark:text-gray-200 dark:hover:bg-gray-600"
+                  className={`w-full text-left px-4 py-2 text-sm ${getThemeTextSecondary()} hover:opacity-60 rounded-t-lg`}
                 >
                   {medicalMode ? 'Export for Anki' : t('flashcards.export_csv')}
                 </button>
                 <button
                   onClick={exportAsTxt}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-b-lg dark:text-gray-200 dark:hover:bg-gray-600"
+                  className={`w-full text-left px-4 py-2 text-sm ${getThemeTextSecondary()} hover:opacity-60 rounded-b-lg`}
                 >
                   {medicalMode ? 'Export Study Guide' : t('flashcards.export_txt')}
                 </button>
@@ -628,8 +643,8 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
         {studySessionComplete ? (
           <div className="text-center py-12">
             <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4 dark:text-green-400" />
-            <h3 className="text-xl font-semibold text-gray-900 mb-2 dark:text-gray-100">{t('flashcards.session_complete')}</h3>
-            <p className="text-gray-600 mb-4 dark:text-gray-300">
+            <h3 className={`text-xl font-semibold ${getThemeTextPrimary()} mb-2`}>{t('flashcards.session_complete')}</h3>
+            <p className={`${getThemeTextSecondary()} mb-4`}>
               {studiedCards.size === 1 ? t('flashcards.reviewed_cards', { count: studiedCards.size }) : t('flashcards.reviewed_cards_plural', { count: studiedCards.size })}
             </p>
             
@@ -669,7 +684,7 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
                 }`}
                 onClick={() => setFlipped(!flipped)}
               >
-                <div className={`absolute inset-0 w-full h-full backface-hidden rounded-xl p-6 flex items-center justify-center text-white ${
+                <div className={`absolute inset-0 w-full h-full backface-hidden rounded-md p-6 flex items-center justify-center text-white ${
                   medicalMode
                     ? 'bg-gradient-to-br from-red-500 to-pink-600 dark:from-red-600 dark:to-pink-700'
                     : getThemeGradient('ui')
@@ -690,7 +705,7 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
                     </div>
                   </div>
                 </div>
-                <div className={`absolute inset-0 w-full h-full backface-hidden rotate-y-180 rounded-xl p-6 flex items-center justify-center text-white ${
+                <div className={`absolute inset-0 w-full h-full backface-hidden rotate-y-180 rounded-md p-6 flex items-center justify-center text-white ${
                   medicalMode
                     ? 'bg-gradient-to-br from-emerald-600 to-teal-700 dark:from-emerald-700 dark:to-teal-800'
                     : 'bg-gradient-to-br from-emerald-500 to-teal-600 dark:from-emerald-600 dark:to-teal-700'
@@ -776,7 +791,7 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
             {/* Type Answer Mode */}
             {currentStudyMode === 'type_answer' && (
               <div className="space-y-6">
-                <div className={`rounded-xl p-6 text-white ${
+                <div className={`rounded-md p-6 text-white ${
                   medicalMode
                     ? 'bg-gradient-to-br from-red-600 to-pink-700 dark:from-red-700 dark:to-pink-800'
                     : 'bg-gradient-to-br from-purple-500 to-indigo-600 dark:from-purple-700 dark:to-indigo-800'
@@ -794,7 +809,7 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
                     value={typedAnswer}
                     onChange={(e) => setTypedAnswer(e.target.value)}
                     placeholder={medicalMode ? 'Type your clinical answer...' : t('flashcards.type_answer_here')}
-                    className="w-full h-24 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-400"
+                    className={`w-full h-24 px-4 py-3 ${getThemeCardBorder()} rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none ${getThemeCardBg()} ${getThemeTextPrimary()}`}
                     disabled={showAnswer}
                   />
                   
@@ -832,7 +847,7 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
             {/* Multiple Choice Mode */}
             {currentStudyMode === 'multiple_choice' && (
               <div className="space-y-6">
-                <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl p-6 text-white dark:from-green-700 dark:to-emerald-800">
+                <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-md p-6 text-white dark:from-green-700 dark:to-emerald-800">
                   <h4 className="text-lg font-medium mb-2">{t('flashcards.question')}</h4>
                   <p className="text-green-100">{currentCard?.front}</p>
                 </div>
@@ -847,7 +862,7 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
                         className={`p-4 text-left border rounded-lg transition duration-150 ${
                           selectedOption === option
                             ? 'border-green-500 bg-green-50 text-green-800 dark:border-green-700 dark:bg-green-900 dark:text-green-300'
-                            : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:border-gray-600 dark:hover:bg-gray-700'
+                            : `${getThemeCardBorder()} hover:opacity-60 ${getThemeCardBg()} ${getThemeTextPrimary()}`
                         } ${
                           showAnswer && option === currentCard?.back
                             ? 'border-green-500 bg-green-100 text-green-800 dark:border-green-700 dark:bg-green-900 dark:text-green-300'
@@ -892,15 +907,15 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
             {/* Fill in Blanks Mode */}
             {currentStudyMode === 'fill_in_blanks' && (
               <div className="space-y-6">
-                <div className="bg-gradient-to-br from-orange-500 to-red-600 rounded-xl p-6 text-white dark:from-orange-700 dark:to-red-800">
+                <div className="bg-gradient-to-br from-orange-500 to-red-600 rounded-md p-6 text-white dark:from-orange-700 dark:to-red-800">
                   <h4 className="text-lg font-medium mb-2">{t('flashcards.question')}</h4>
                   <p className="text-orange-100">{currentCard?.front}</p>
                 </div>
                 
                 <div className="space-y-4">
-                  <div className="bg-gray-50 rounded-lg p-4 dark:bg-gray-900">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2 dark:text-gray-200">{t('flashcards.fill_blank')}</h4>
-                    <p className="text-lg text-gray-800 dark:text-gray-100">{blankedText}</p>
+                  <div className={`${getThemeSubtle('bg')} rounded-lg p-4`}>
+                    <h4 className={`text-sm font-medium ${getThemeTextSecondary()} mb-2`}>{t('flashcards.fill_blank')}</h4>
+                    <p className={`text-lg ${getThemeTextPrimary()}`}>{blankedText}</p>
                   </div>
                   
                   <input
@@ -908,7 +923,7 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
                     value={typedAnswer}
                     onChange={(e) => setTypedAnswer(e.target.value)}
                     placeholder={t('flashcards.enter_missing_word')}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-400"
+                    className={`w-full px-4 py-3 ${getThemeCardBorder()} rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent ${getThemeCardBg()} ${getThemeTextPrimary()}`}
                     disabled={showAnswer}
                   />
                   
@@ -942,7 +957,7 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
             {/* True/False Mode */}
             {currentStudyMode === 'true_false' && (
               <div className="space-y-6">
-                <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl p-6 text-white dark:from-indigo-700 dark:to-purple-800">
+                <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-md p-6 text-white dark:from-indigo-700 dark:to-purple-800">
                   <h4 className="text-lg font-medium mb-4">{t('flashcards.statement')}:</h4>
                   <p className="text-indigo-100 text-lg">{trueFalseStatement}</p>
                 </div>
@@ -988,7 +1003,7 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
                 <button
                   onClick={prevCard}
                   disabled={flashcards.length <= 1}
-                  className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 dark:text-gray-300 dark:hover:text-gray-100"
+                  className={`flex items-center space-x-2 px-4 py-2 ${getThemeTextSecondary()} hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed transition duration-150`}
                 >
                   <ChevronLeft className="h-5 w-5" />
                   <span>{t('flashcards.previous')}</span>
@@ -1003,7 +1018,7 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
                         resetCardState();
                       }}
                       className={`w-2 h-2 rounded-full transition duration-150 ${ // Apply dark mode classes to pagination dots
-                        index === currentIndex ? 'bg-cyan-500 dark:bg-cyan-400' : 'bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500'
+                        index === currentIndex ? 'bg-cyan-500 dark:bg-cyan-400' : `${getThemeTextMuted()} hover:opacity-60`
                       }`}
                     />
                   ))}
@@ -1012,7 +1027,7 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
                 <button
                   onClick={nextCard}
                   disabled={flashcards.length <= 1}
-                  className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 dark:text-gray-300 dark:hover:text-gray-100"
+                  className={`flex items-center space-x-2 px-4 py-2 ${getThemeTextSecondary()} hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed transition duration-150`}
                 >
                   <span>{t('flashcards.next')}</span>
                   <ChevronRight className="h-5 w-5" />
@@ -1026,7 +1041,7 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
       {/* Notification */}
       {showNotification && (
         <div className="fixed bottom-4 right-4 z-50">
-          <div className="bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center space-x-3 animate-pulse dark:bg-green-600">
+          <div className="bg-green-500 text-white px-6 py-3 rounded-lg shadow flex items-center space-x-3 animate-pulse dark:bg-green-600">
             <CheckCircle className="h-5 w-5" />
             <span className="font-medium">{notificationMessage}</span>
           </div>
@@ -1034,4 +1049,19 @@ export const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ flashcards, me
       )}
     </div>
   );
+};
+
+// Wrapper component that checks context availability
+export const FlashcardViewer: React.FC<FlashcardViewerProps> = (props) => {
+  // Check if context is available before rendering
+  const i18nContext = useContext(I18nContext);
+  
+  // If context is not available, don't render (this should never happen in normal flow)
+  if (!i18nContext) {
+    console.warn('FlashcardViewer: I18nContext not available, skipping render');
+    return null;
+  }
+  
+  // Context is available, render the component
+  return <FlashcardViewerContent {...props} />;
 };

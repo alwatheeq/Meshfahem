@@ -1,3 +1,4 @@
+/// <reference path="../_shared/deno.d.ts" />
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Stripe from "npm:stripe@14.21.0";
 import { handleCorsPreflight } from '../_shared/cors.ts';
@@ -26,13 +27,15 @@ Deno.serve(async (req: Request) => {
       promoCode?: string;
       successUrl?: string;
       cancelUrl?: string;
+      zegoHours?: number;
+      chatBlocks?: number;
     }>(req);
     
     if (bodyResult.error) {
       return bodyResult.error;
     }
 
-    const { plan, userId, userEmail, promoCode, successUrl, cancelUrl } = bodyResult.data;
+    const { plan, userId, userEmail, promoCode, successUrl, cancelUrl, zegoHours = 0, chatBlocks = 0 } = bodyResult.data;
 
     const missingFields = validateRequiredFields(
       { plan, userId, userEmail },
@@ -43,18 +46,40 @@ Deno.serve(async (req: Request) => {
       return errorResponse(missingFields, 400);
     }
 
-    // Define pricing based on plan
-    const pricing: Record<string, { amount: number; interval: string; trialDays: number }> = {
-      monthly: { amount: 2999, interval: "month", trialDays: 7 },
-      quarterly: { amount: 7999, interval: "month", trialDays: 7 },
-      biannual: { amount: 14999, interval: "month", trialDays: 7 },
-    };
+    // Define pricing based on plan (amounts in cents)
+    // Standard: $3.20 base + $0.10/hr Zego + $0.10 per 100k chat tokens
+    const STANDARD_BASE_CENTS = 320;
+    const ZEGO_CENTS_PER_HOUR = 10;
+    const CHAT_CENTS_PER_BLOCK = 10;
 
-    if (!pricing[plan]) {
-      return errorResponse("Invalid plan selected", 400);
+    let planDetails: { amount: number; interval: string; trialDays: number; name: string; description: string };
+
+    if (plan === "standard") {
+      const z = Math.max(0, Math.min(100, Math.floor(zegoHours)));
+      let c = Math.max(0, Math.min(100, Math.floor(chatBlocks)));
+      if (c > 0 && c < 5) c = 5;
+      const totalCents = STANDARD_BASE_CENTS + z * ZEGO_CENTS_PER_HOUR + c * CHAT_CENTS_PER_BLOCK;
+      const parts: string[] = ["Standard subscription"];
+      if (z > 0) parts.push(`${z} hr Study room`);
+      if (c > 0) parts.push(`${c}×100k AI chat tokens`);
+      planDetails = {
+        amount: totalCents,
+        interval: "month",
+        trialDays: 0,
+        name: "Standard Plan",
+        description: parts.join(" · "),
+      };
+    } else {
+      const pricing: Record<string, { amount: number; interval: string; trialDays: number; name: string; description: string }> = {
+        monthly: { amount: 2999, interval: "month", trialDays: 7, name: "Monthly", description: "Unlimited access to all features - billed monthly" },
+        quarterly: { amount: 7999, interval: "month", trialDays: 7, name: "Quarterly", description: "Unlimited access - billed every 3 months (Save 10%)" },
+        biannual: { amount: 14999, interval: "month", trialDays: 7, name: "Biannual", description: "Unlimited access - billed every 6 months (Save 16%)" },
+      };
+      if (!pricing[plan]) {
+        return errorResponse("Invalid plan selected", 400);
+      }
+      planDetails = pricing[plan];
     }
-
-    const planDetails = pricing[plan];
 
     // Create or retrieve Stripe customer
     let customer: Stripe.Customer;
@@ -84,12 +109,8 @@ Deno.serve(async (req: Request) => {
           price_data: {
             currency: "usd",
             product_data: {
-              name: `${plan.charAt(0).toUpperCase() + plan.slice(1)} Subscription`,
-              description: plan === "monthly"
-                ? "Unlimited access to all features - billed monthly"
-                : plan === "quarterly"
-                ? "Unlimited access to all features - billed every 3 months (Save 10%)"
-                : "Unlimited access to all features - billed every 6 months (Save 16%)",
+              name: `${planDetails.name} Subscription`,
+              description: planDetails.description,
             },
             unit_amount: planDetails.amount,
             recurring: {
@@ -105,6 +126,7 @@ Deno.serve(async (req: Request) => {
         metadata: {
           supabase_user_id: userId,
           plan_type: plan,
+          ...(plan === "standard" && { zego_hours: String(zegoHours), chat_blocks: String(chatBlocks) }),
         },
       },
       success_url: successUrl || `${req.headers.get("origin")}/payment/success?session_id={CHECKOUT_SESSION_ID}`,

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { FileText, AlertCircle, ExternalLink } from 'lucide-react';
 import { useI18n } from '../contexts/I18nContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { SummaryDisplay } from './Dashboard/SummaryDisplay';
 import { FlashcardViewer } from './Dashboard/FlashcardViewer';
@@ -20,6 +21,7 @@ interface SharedItem {
 export const ShareView: React.FC = () => {
   const { shareableLinkId } = useParams<{ shareableLinkId: string }>();
   const { t } = useI18n();
+  const { getThemeGradient } = useTheme();
   const [item, setItem] = useState<SharedItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +76,7 @@ export const ShareView: React.FC = () => {
   if (loading) {
     return (
       <div className={`min-h-screen ${getThemeGradient('bg')} flex items-center justify-center`}>
-        <div className="bg-white rounded-2xl shadow-xl p-8 dark:bg-gray-800 dark:shadow-none">
+        <div className="bg-white rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8 dark:bg-gray-800 dark:shadow-none">
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-3"></div>
             <span className="text-gray-600">{t('common.loading')}</span>
@@ -87,7 +89,7 @@ export const ShareView: React.FC = () => {
   if (error || !item) {
     return (
       <div className={`min-h-screen ${getThemeGradient('bg')} flex items-center justify-center`}>
-        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md mx-auto dark:bg-gray-800 dark:shadow-none">
+        <div className="bg-white rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8 max-w-md mx-auto dark:bg-gray-800 dark:shadow-none">
           <div className="text-center py-12">
             <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">{t('share.content_not_available')}</h3>
@@ -110,10 +112,11 @@ export const ShareView: React.FC = () => {
   return (
     <div className={`min-h-screen ${getThemeGradient('bg')}`}>
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 dark:shadow-none">
+      <header className="bg-white shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700 dark:shadow-none">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-3">
+          <div className="flex items-center h-16">
+            {/* Left: Logo + Meshfahem */}
+            <div className="flex items-center space-x-3 flex-shrink-0">
               <div className={`${getThemeGradient('ui')} p-2 rounded-lg`}>
                 <FileText className="h-6 w-6 text-white" />
               </div>
@@ -123,13 +126,23 @@ export const ShareView: React.FC = () => {
               </div>
             </div>
 
-            <a
-              href="/"
-              className="flex items-center space-x-2 px-4 py-2 text-blue-600 hover:text-blue-800 border border-blue-300 rounded-lg hover:bg-blue-50 transition duration-150 text-sm"
-            >
-              <ExternalLink className="h-4 w-4" />
-              <span>{t('share.get_meshfahem')}</span>
-            </a>
+            {/* Middle: Tagline */}
+            <div className="flex-1 flex justify-center px-2 sm:px-4 min-w-0">
+              <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 italic text-center whitespace-nowrap truncate">
+                this is just beginning, there is better to come
+              </p>
+            </div>
+
+            {/* Right: Get Meshfahem button */}
+            <div className="flex-shrink-0">
+              <a
+                href="/"
+                className="flex items-center space-x-2 px-4 py-2 text-blue-600 hover:text-blue-800 border border-blue-300 rounded-lg hover:bg-blue-50 transition duration-150 text-sm"
+              >
+                <ExternalLink className="h-4 w-4" />
+                <span>{t('share.get_meshfahem')}</span>
+              </a>
+            </div>
           </div>
         </div>
       </header>
@@ -137,7 +150,7 @@ export const ShareView: React.FC = () => {
       {/* Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
-          <div className="bg-white rounded-2xl shadow-xl p-6 dark:bg-gray-800 dark:shadow-none">
+          <div className="bg-white rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-6 dark:bg-gray-800 dark:shadow-none">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">{item.title}</h2>
@@ -182,6 +195,7 @@ export const ShareView: React.FC = () => {
           {item.flashcards_json.length > 0 && (
             <FlashcardViewer 
               flashcards={item.flashcards_json}
+              itemId={item.id}
             />
           )}
         </div>

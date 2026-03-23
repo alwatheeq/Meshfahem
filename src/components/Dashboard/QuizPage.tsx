@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { FileQuestion, Plus, Clock, Trophy, Play, Eye, Trash2, Upload, BookOpen, ChevronRight, Languages, Folder, Search, Filter } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { FileQuestion, Plus, Clock, Trophy, Play, Trash2, Upload, BookOpen, Folder, Search, Globe, ChevronDown, Check } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { useDebounce } from '../../hooks/useDebounce';
@@ -17,6 +17,7 @@ import { useConfirm } from '../../hooks/useConfirm';
 import { LoadingSkeleton } from '../Common/LoadingSkeleton';
 import { usePageTutorial } from '../../hooks/usePageTutorial';
 import { PageTutorial } from '../Onboarding/PageTutorial';
+import { GlobalExamDetailModal } from './GlobalExamDetailModal';
 
 interface QuizSession {
   id: string;
@@ -60,19 +61,51 @@ interface QuizFolder {
   created_at?: string;
 }
 
+interface GlobalExam {
+  id: string;
+  exam_name: string;
+  exam_code: string;
+  description: string;
+  country: string;
+  region?: string;
+  exam_type: string;
+  difficulty_level: 'beginner' | 'intermediate' | 'advanced';
+  total_questions: number;
+  time_limit_minutes: number;
+  subject?: string;
+  passing_score?: number;
+  is_active: boolean;
+}
+
+interface GlobalExamAttempt {
+  id: string;
+  exam_id: string;
+  user_id: string;
+  score_percentage: number;
+  correct_count: number;
+  incorrect_count: number;
+  unanswered_count: number;
+  time_taken_seconds: number;
+  started_at: string;
+  completed_at: string;
+  global_exams: GlobalExam;
+}
+
 export const QuizPage: React.FC = React.memo(() => {
   const { user } = useAuth();
   const { t } = useI18n();
-  const { getThemeGradient, getThemeBorder, getThemeText, getThemeFocusRing } = useTheme();
+  const { getThemeGradient, getThemeBorder, getThemeFocusRing, getBackgroundGradient, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
   const { hasActiveSubscription } = useSubscription();
   const { showModal, dismissModal, isModalOpen, currentFeature, isDismissed } = usePersistentModal();
   const { error: showErrorToast, success: showSuccessToast, warning: showWarningToast } = useToast();
   const { confirm, ConfirmModal } = useConfirm();
   const { shouldShowTutorial, showTutorial, isTutorialOpen, completeTutorial, skipTutorial, config: tutorialConfig } = usePageTutorial('quiz');
-  const [activeTab, setActiveTab] = useState<'create' | 'quizzes' | 'explore' | 'history'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'quizzes' | 'explore' | 'history' | 'exams'>('create');
+  const [quizViewMode, setQuizViewMode] = useState<'quizzes' | 'exams'>('quizzes');
   const [quizSessions, setQuizSessions] = useState<QuizSession[]>([]);
   const [quizHistory, setQuizHistory] = useState<QuizAttempt[]>([]);
   const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
+  const [libraryItemsLoading, setLibraryItemsLoading] = useState(false);
   const [quizFolders, setQuizFolders] = useState<QuizFolder[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -85,6 +118,9 @@ export const QuizPage: React.FC = React.memo(() => {
 
   const [selectedSource, setSelectedSource] = useState<'library' | 'upload'>('library');
   const [selectedLibraryItem, setSelectedLibraryItem] = useState<string>('');
+  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
+  const [librarySearchQuery, setLibrarySearchQuery] = useState('');
+  const libraryPickerRef = useRef<HTMLDivElement>(null);
   const [questionCount, setQuestionCount] = useState(10);
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [quizTitle, setQuizTitle] = useState('');
@@ -92,6 +128,12 @@ export const QuizPage: React.FC = React.memo(() => {
   const [generating, setGenerating] = useState(false);
   const [targetLanguage, setTargetLanguage] = useState<string>('en');
   const [hasCheckedModal, setHasCheckedModal] = useState(false);
+  const [globalExams, setGlobalExams] = useState<GlobalExam[]>([]);
+  const [selectedExam, setSelectedExam] = useState<GlobalExam | null>(null);
+  const [examCountry, setExamCountry] = useState<string>('all');
+  const [examType, setExamType] = useState<string>('all');
+  const [examAttempts, setExamAttempts] = useState<GlobalExamAttempt[]>([]);
+  const [incompleteExams, setIncompleteExams] = useState<GlobalExamAttempt[]>([]);
 
   // Check and show modal after page load
   useEffect(() => {
@@ -124,14 +166,54 @@ export const QuizPage: React.FC = React.memo(() => {
 
   useEffect(() => {
     if (user) {
-      fetchQuizSessions();
-      fetchQuizHistory();
-      fetchQuizFolders();
-      if (selectedSource === 'library') {
-        fetchLibraryItems();
+      // Fetch data based on active tab and view mode
+      if (quizViewMode === 'exams') {
+        // Global Exams mode
+        if (activeTab === 'explore') {
+          fetchGlobalExams();
+        } else if (activeTab === 'history') {
+          fetchExamAttempts();
+        } else if (activeTab === 'quizzes') {
+          fetchIncompleteExams();
+        }
+        // Create tab doesn't need data fetching in exams mode
+      } else {
+        // My Quizzes mode
+        fetchQuizSessions();
+        fetchQuizHistory();
+        fetchQuizFolders();
+        if (selectedSource === 'library') {
+          fetchLibraryItems();
+        }
       }
     }
-  }, [user, activeTab, selectedSource, selectedFolder]);
+  }, [user, activeTab, selectedSource, selectedFolder, quizViewMode, examCountry, examType, debouncedSearchQuery]);
+
+  // Dedicated effect: always load library items when "From Library" is selected
+  useEffect(() => {
+    if (user && selectedSource === 'library') {
+      fetchLibraryItems();
+    }
+  }, [user, selectedSource]);
+
+  // Close library picker on click outside or Escape
+  useEffect(() => {
+    if (!libraryPickerOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (libraryPickerRef.current && !libraryPickerRef.current.contains(e.target as Node)) {
+        setLibraryPickerOpen(false);
+      }
+    };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLibraryPickerOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [libraryPickerOpen]);
 
   const fetchLibraryItems = async () => {
     if (!user) return;
@@ -141,6 +223,7 @@ export const QuizPage: React.FC = React.memo(() => {
       return;
     }
 
+    setLibraryItemsLoading(true);
     try {
       const { data, error } = await supabase
         .from('user_library_items')
@@ -162,6 +245,8 @@ export const QuizPage: React.FC = React.memo(() => {
     } catch (error) {
       const message = handleApiError(error, { component: 'QuizPage', action: 'fetchLibraryItems' });
       showErrorToast(message);
+    } finally {
+      setLibraryItemsLoading(false);
     }
   };
 
@@ -269,6 +354,167 @@ export const QuizPage: React.FC = React.memo(() => {
       const message = handleApiError(error, { component: 'QuizPage', action: 'fetchQuizFolders' });
       showErrorToast(message);
     }
+  };
+
+  const fetchExamAttempts = async () => {
+    if (!user) return;
+
+    if (isOffline()) {
+      handleOfflineError(showErrorToast);
+      setLoading(false);
+      return;
+    }
+
+    return PerformanceMonitor.measureAsync('QuizPage.fetchExamAttempts', async () => {
+      try {
+        setLoading(true);
+        const { data, error } = await supabase
+          .from('global_exam_attempts')
+          .select(`
+            *,
+            global_exams (*)
+          `)
+          .eq('user_id', user.id)
+          .order('completed_at', { ascending: false })
+          .limit(50);
+
+        if (error) {
+          const message = handleSupabaseError(error, { component: 'QuizPage', action: 'fetchExamAttempts' });
+          ErrorLogger.error(error instanceof Error ? error : new Error(String(error)), { component: 'QuizPage', action: 'fetchExamAttempts' });
+          showErrorToast(message);
+          setLoading(false);
+          return;
+        }
+
+        if (data) {
+          setExamAttempts(data as GlobalExamAttempt[]);
+        }
+        setLoading(false);
+      } catch (error) {
+        const message = handleApiError(error, { component: 'QuizPage', action: 'fetchExamAttempts' });
+        ErrorLogger.error(error instanceof Error ? error : new Error(String(error)), { component: 'QuizPage', action: 'fetchExamAttempts' });
+        showErrorToast(message);
+        setLoading(false);
+      }
+    });
+  };
+
+  const fetchIncompleteExams = async () => {
+    if (!user) return;
+
+    if (isOffline()) {
+      handleOfflineError(showErrorToast);
+      setLoading(false);
+      return;
+    }
+
+    return PerformanceMonitor.measureAsync('QuizPage.fetchIncompleteExams', async () => {
+      try {
+        setLoading(true);
+        // Fetch all attempts for the user
+        const { data: allAttempts, error } = await supabase
+          .from('global_exam_attempts')
+          .select(`
+            *,
+            global_exams (*)
+          `)
+          .eq('user_id', user.id)
+          .order('started_at', { ascending: false })
+          .limit(100);
+
+        if (error) {
+          const message = handleSupabaseError(error, { component: 'QuizPage', action: 'fetchIncompleteExams' });
+          ErrorLogger.error(error instanceof Error ? error : new Error(String(error)), { component: 'QuizPage', action: 'fetchIncompleteExams' });
+          showErrorToast(message);
+          setLoading(false);
+          return;
+        }
+
+        if (allAttempts) {
+          // Filter for incomplete exams: high unanswered count or very short time taken
+          const incomplete = allAttempts.filter((attempt: GlobalExamAttempt) => {
+            const exam = attempt.global_exams;
+            if (!exam || exam.total_questions === 0) return false;
+            
+            const unansweredRatio = attempt.unanswered_count / exam.total_questions;
+            
+            // Check time ratio only if time limit is valid (> 0)
+            let timeRatio = 0;
+            if (exam.time_limit_minutes > 0) {
+              timeRatio = attempt.time_taken_seconds / (exam.time_limit_minutes * 60);
+            }
+            
+            // Consider incomplete if:
+            // 1. More than 50% unanswered, OR
+            // 2. Less than 10% of time limit used (likely abandoned) - only if time limit exists
+            return unansweredRatio > 0.5 || (exam.time_limit_minutes > 0 && timeRatio < 0.1);
+          }).filter((attempt: GlobalExamAttempt) => attempt.global_exams !== null) as GlobalExamAttempt[];
+
+          setIncompleteExams(incomplete);
+        }
+        setLoading(false);
+      } catch (error) {
+        const message = handleApiError(error, { component: 'QuizPage', action: 'fetchIncompleteExams' });
+        ErrorLogger.error(error instanceof Error ? error : new Error(String(error)), { component: 'QuizPage', action: 'fetchIncompleteExams' });
+        showErrorToast(message);
+        setLoading(false);
+      }
+    });
+  };
+
+  const fetchGlobalExams = async () => {
+    if (!user) return;
+
+    if (isOffline()) {
+      handleOfflineError(showErrorToast);
+      return;
+    }
+
+    return PerformanceMonitor.measureAsync('QuizPage.fetchGlobalExams', async () => {
+      try {
+        setLoading(true);
+
+        let query = supabase
+          .from('global_exams')
+          .select('*')
+          .eq('is_active', true);
+
+        // Apply country filter
+        if (examCountry !== 'all') {
+          query = query.eq('country', examCountry);
+        }
+
+        // Apply exam type filter
+        if (examType !== 'all') {
+          query = query.eq('exam_type', examType);
+        }
+
+        // Apply search filter (using debounced value)
+        if (debouncedSearchQuery) {
+          const escapedQuery = debouncedSearchQuery.replace(/[%_*]/g, '\\$&');
+          query = query.or(`exam_name.ilike.*${escapedQuery}*,exam_code.ilike.*${escapedQuery}*,description.ilike.*${escapedQuery}*`);
+        }
+
+        query = query.order('exam_name');
+
+        const { data, error } = await query;
+
+        if (error) {
+          const message = handleSupabaseError(error, { component: 'QuizPage', action: 'fetchGlobalExams' });
+          ErrorLogger.error(error instanceof Error ? error : new Error(String(error)), { component: 'QuizPage', action: 'fetchGlobalExams' });
+          showErrorToast(message);
+          return;
+        }
+
+        setGlobalExams(data || []);
+      } catch (err) {
+        const message = handleApiError(err, { component: 'QuizPage', action: 'fetchGlobalExams' });
+        ErrorLogger.error(err instanceof Error ? err : new Error(String(err)), { component: 'QuizPage', action: 'fetchGlobalExams' });
+        showErrorToast(message);
+      } finally {
+        setLoading(false);
+      }
+    });
   };
 
   const handleCreateFolder = async () => {
@@ -608,13 +854,49 @@ export const QuizPage: React.FC = React.memo(() => {
   };
 
   const handleQuizExit = async () => {
-    const confirmed = await confirm(t('quiz.confirm_exit'), {
-      title: t('quiz.confirm_exit_title') || 'Exit Quiz',
-      variant: 'default',
-      confirmText: t('quiz.exit') || 'Exit',
-    });
-    if (confirmed) {
+    try {
+      ErrorLogger.debug('Quiz exit requested', {
+        component: 'QuizPage',
+        action: 'handleQuizExit',
+        userId: user?.id,
+        metadata: { activeQuizId }
+      });
+
+      const confirmed = await confirm(t('quiz.confirm_exit'), {
+        title: t('quiz.confirm_exit_title') || 'Exit Quiz',
+        variant: 'default',
+        confirmText: t('quiz.exit') || 'Exit',
+      });
+
+      if (confirmed) {
+        ErrorLogger.debug('Quiz exit confirmed, resetting activeQuizId', {
+          component: 'QuizPage',
+          action: 'handleQuizExit',
+          userId: user?.id,
+          metadata: { activeQuizId }
+        });
+        setActiveQuizId(null);
+        // Ensure we're back to the quizzes tab
+        setActiveTab('quizzes');
+      } else {
+        ErrorLogger.debug('Quiz exit cancelled', {
+          component: 'QuizPage',
+          action: 'handleQuizExit',
+          userId: user?.id
+        });
+      }
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      ErrorLogger.error(err, {
+        component: 'QuizPage',
+        action: 'handleQuizExit',
+        userId: user?.id,
+        metadata: { activeQuizId, error: 'Exit confirmation failed' }
+      });
+      // Fallback: exit without confirmation if confirm dialog fails
+      showWarningToast('Exiting quiz...');
       setActiveQuizId(null);
+      setActiveTab('quizzes');
     }
   };
 
@@ -654,41 +936,87 @@ export const QuizPage: React.FC = React.memo(() => {
       featureTitle={featureConfig.title}
       benefits={featureConfig.benefits}
     />
-    <div className={`min-h-screen ${getThemeGradient('bg')} p-6`}>
+    <div className={`min-h-screen ${getBackgroundGradient()} p-6`}>
       <div className="w-full">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-6">
-          <div className="flex items-center space-x-3 mb-6">
-            <FileQuestion className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">{t('quiz.title')}</h1>
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center space-x-3">
+              <FileQuestion className={`h-8 w-8 ${getThemeTextPrimary()}`} />
+              <h1 className={`text-3xl font-bold ${getThemeTextPrimary()}`}>{t('quiz.page_title') || t('quiz.quizzes_and_exams') || 'Quizzes & Exams'}</h1>
+            </div>
+            
+            {/* Toggle between Quizzes and Exams - always visible */}
+            <div className={`flex items-center space-x-3 ${getThemeSubtle('ui')} rounded-lg p-1`}>
+              <button
+                onClick={() => {
+                  setQuizViewMode('quizzes');
+                  if (activeTab === 'exams') {
+                    setActiveTab('quizzes');
+                  }
+                }}
+                className={`px-4 py-2 rounded-md transition-colors duration-150 font-medium ${
+                  quizViewMode === 'quizzes'
+                    ? `${getThemeCardBg()} ${getThemeTextPrimary()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow`
+                    : `${getThemeTextSecondary()} hover:opacity-80`
+                }`}
+              >
+                <FileQuestion className="h-5 w-5 inline mr-2" />
+                {t('quiz.my_quizzes') || 'My Quizzes'}
+              </button>
+              <button
+                onClick={() => {
+                  setQuizViewMode('exams');
+                  if (activeTab === 'quizzes') {
+                    setActiveTab('explore');
+                  }
+                }}
+                className={`px-4 py-2 rounded-md transition-colors duration-150 font-medium ${
+                  quizViewMode === 'exams'
+                    ? `${getThemeCardBg()} ${getThemeTextPrimary()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow`
+                    : `${getThemeTextSecondary()} hover:opacity-80`
+                }`}
+              >
+                <Globe className="h-5 w-5 inline mr-2" />
+                {t('quiz.global_exams') || 'Global Exams'}
+              </button>
+            </div>
           </div>
 
-          <div className={`flex space-x-2 border-b ${getThemeBorder()}`}>
+          <div className={`inline-flex items-center space-x-3 rounded-lg p-1 ${getThemeSubtle('ui')}`}>
             <button
               onClick={() => setActiveTab('create')}
-              className={`px-6 py-3 font-medium transition-colors ${
+              className={`px-4 py-2 rounded-md transition-colors duration-150 font-medium ${
                 activeTab === 'create'
-                  ? `border-b-2 ${getThemeBorder()} ${getThemeText()}`
-                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+                  ? `${getThemeCardBg()} ${getThemeTextPrimary()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow`
+                  : `${getThemeTextSecondary()} hover:opacity-80`
               }`}
             >
               {t('quiz.create_quiz')}
             </button>
             <button
-              onClick={() => setActiveTab('quizzes')}
-              className={`px-6 py-3 font-medium transition-colors ${
+              onClick={() => {
+                setActiveTab('quizzes');
+                if (quizViewMode !== 'exams') {
+                  setQuizViewMode('quizzes');
+                }
+              }}
+              className={`px-4 py-2 rounded-md transition-colors duration-150 font-medium ${
                 activeTab === 'quizzes'
-                  ? `border-b-2 ${getThemeBorder()} ${getThemeText()}`
-                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+                  ? `${getThemeCardBg()} ${getThemeTextPrimary()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow`
+                  : `${getThemeTextSecondary()} hover:opacity-80`
               }`}
             >
-              {t('quiz.my_quizzes')} ({quizSessions.length})
+              {quizViewMode === 'exams' 
+                ? `${t('quiz.my_exams') || 'My Exams'} (${incompleteExams.length})`
+                : `${t('quiz.my_quizzes')} (${quizSessions.length})`
+              }
             </button>
             <button
               onClick={() => setActiveTab('explore')}
-              className={`px-6 py-3 font-medium transition-colors ${
+              className={`px-4 py-2 rounded-md transition-colors duration-150 font-medium ${
                 activeTab === 'explore'
-                  ? `border-b-2 ${getThemeBorder()} ${getThemeText()}`
-                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+                  ? `${getThemeCardBg()} ${getThemeTextPrimary()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow`
+                  : `${getThemeTextSecondary()} hover:opacity-80`
               }`}
             >
               <span className="flex items-center space-x-2">
@@ -698,24 +1026,46 @@ export const QuizPage: React.FC = React.memo(() => {
             </button>
             <button
               onClick={() => setActiveTab('history')}
-              className={`px-6 py-3 font-medium transition-colors ${
+              className={`px-4 py-2 rounded-md transition-colors duration-150 font-medium ${
                 activeTab === 'history'
-                  ? `border-b-2 ${getThemeBorder()} ${getThemeText()}`
-                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+                  ? `${getThemeCardBg()} ${getThemeTextPrimary()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow`
+                  : `${getThemeTextSecondary()} hover:opacity-80`
               }`}
             >
-              {t('quiz.history')} ({quizHistory.length})
+              {quizViewMode === 'exams'
+                ? `${t('quiz.exam_history') || 'Exam History'} (${examAttempts.length})`
+                : `${t('quiz.history')} (${quizHistory.length})`
+              }
             </button>
           </div>
         </div>
 
         {activeTab === 'create' && (
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-6">{t('quiz.create_new')}</h2>
+          <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow p-6`}>
+            {quizViewMode === 'exams' ? (
+              <div className="text-center py-12">
+                <Globe className={`h-16 w-16 ${getThemeTextMuted()} mx-auto mb-4`} />
+                <h2 className={`text-xl font-semibold ${getThemeTextPrimary()} mb-2`}>
+                  {t('quiz.exams_cannot_be_created') || 'Global exams cannot be created'}
+                </h2>
+                <p className={`${getThemeTextSecondary()} mb-4`}>
+                  {t('quiz.exams_cannot_be_created_message') || "Global exams cannot be created. Switch to 'My Quizzes' mode to create custom quizzes."}
+                </p>
+                <button
+                  onClick={() => setQuizViewMode('quizzes')}
+                  className={`px-6 py-3 ${getThemeGradient('ui')} text-white dark:text-gray-900 rounded-lg hover:opacity-90 transition-all font-medium`}
+                >
+                  {t('quiz.switch_to_quizzes') || 'Switch to My Quizzes'}
+                </button>
+              </div>
+            ) : (
+              <>
+                <h2 className={`text-xl font-semibold ${getThemeTextPrimary()} mb-5`}>{t('quiz.create_new')}</h2>
 
-            <div className="space-y-6">
+            <div className="space-y-4">
+              {/* Quiz Title */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-1.5`}>
                   {t('quiz.quiz_title')}
                 </label>
                 <input
@@ -724,77 +1074,151 @@ export const QuizPage: React.FC = React.memo(() => {
                   onChange={(e) => setQuizTitle(e.target.value)}
                   placeholder={t('quiz.quiz_title_placeholder')}
                   maxLength={200}
-                  className={`w-full px-4 py-2 border ${getThemeBorder()} rounded-lg focus:ring-2 focus:ring-offset-2 dark:bg-gray-700 dark:text-gray-100`}
+                  className="w-full px-3 py-2 input-clean text-sm"
                 />
               </div>
 
+              {/* Content Source */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-1.5`}>
                   {t('quiz.content_source')}
                 </label>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-2">
                   <button
+                    type="button"
                     onClick={() => setSelectedSource('library')}
-                    className={`p-4 border-2 rounded-lg transition-colors ${
+                    className={`p-2.5 border rounded-md transition-colors text-sm ${getThemeTextPrimary()} ${
                       selectedSource === 'library'
-                        ? `${getThemeBorder()} bg-opacity-10 dark:bg-opacity-20`
-                        : `${getThemeBorder()} opacity-50`
+                        ? `${getThemeCardBorder()} ${getThemeSubtle('ui')}`
+                        : `${getThemeCardBorder()} hover:opacity-60 bg-transparent`
                     }`}
                   >
-                    <BookOpen className="h-6 w-6 mx-auto mb-2" />
-                    <span className="font-medium">{t('quiz.from_library')}</span>
+                    <BookOpen className={`h-4 w-4 mx-auto mb-1 ${getThemeTextPrimary()}`} />
+                    <span className={`font-medium ${getThemeTextPrimary()}`}>{t('quiz.from_library')}</span>
                   </button>
                   <button
+                    type="button"
                     onClick={() => setSelectedSource('upload')}
-                    className={`p-4 border-2 rounded-lg transition-colors ${
+                    className={`p-2.5 border rounded-md transition-colors text-sm ${getThemeTextPrimary()} ${
                       selectedSource === 'upload'
-                        ? `${getThemeBorder()} bg-opacity-10 dark:bg-opacity-20`
-                        : `${getThemeBorder()} opacity-50`
+                        ? `${getThemeCardBorder()} ${getThemeSubtle('ui')}`
+                        : `${getThemeCardBorder()} hover:opacity-60 bg-transparent`
                     }`}
                   >
-                    <Upload className="h-6 w-6 mx-auto mb-2" />
-                    <span className="font-medium">{t('quiz.upload_file')}</span>
+                    <Upload className={`h-4 w-4 mx-auto mb-1 ${getThemeTextPrimary()}`} />
+                    <span className={`font-medium ${getThemeTextPrimary()}`}>{t('quiz.upload_file')}</span>
                   </button>
                 </div>
               </div>
 
+              {/* Library Item or Upload File — searchable picker */}
               {selectedSource === 'library' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <div ref={libraryPickerRef} className="relative">
+                  <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-1.5`}>
                     {t('quiz.select_item')}
                   </label>
-                  <select
-                    value={selectedLibraryItem}
-                    onChange={(e) => setSelectedLibraryItem(e.target.value)}
-                    className={`w-full px-4 py-2 border ${getThemeBorder()} rounded-lg ${getThemeFocusRing()} focus:ring-2 dark:bg-gray-700 dark:text-gray-100`}
+                  <button
+                    type="button"
+                    onClick={() => !libraryItemsLoading && setLibraryPickerOpen((o) => !o)}
+                    disabled={libraryItemsLoading}
+                    className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border text-left transition-all min-h-[42px] ${getThemeCardBg()} ${getThemeBorder()} hover:border-opacity-80 disabled:opacity-60 disabled:cursor-not-allowed`}
                   >
-                    <option value="">{t('quiz.choose_item')}</option>
-                    {libraryItems.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.title}
-                      </option>
-                    ))}
-                  </select>
+                    <span className={`truncate text-sm ${selectedLibraryItem ? getThemeTextPrimary() : getThemeTextSecondary()}`}>
+                      {libraryItemsLoading
+                        ? t('quiz.loading_library')
+                        : selectedLibraryItem
+                          ? (libraryItems.find((i) => i.id === selectedLibraryItem)?.title ?? selectedLibraryItem)
+                          : libraryItems.length === 0
+                            ? t('quiz.no_library_items_yet')
+                            : t('quiz.choose_item')}
+                    </span>
+                    <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${libraryPickerOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {libraryPickerOpen && (
+                    <div className={`absolute left-0 right-0 top-full mt-1 z-50 rounded-xl border shadow-lg overflow-hidden ${getThemeCardBg()} ${getThemeBorder()}`}>
+                      <div className={`p-2 border-b sticky top-0 z-10 ${getThemeBorder()}`}>
+                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-black/5 dark:bg-white/5">
+                          <Search className="h-4 w-4 shrink-0 opacity-60" />
+                          <input
+                            type="text"
+                            value={librarySearchQuery}
+                            onChange={(e) => setLibrarySearchQuery(e.target.value)}
+                            placeholder={t('quiz.search_library_placeholder')}
+                            className="flex-1 bg-transparent text-sm outline-none min-w-0"
+                          />
+                        </div>
+                      </div>
+                      <div className="max-h-56 overflow-y-auto p-1">
+                        {libraryItemsLoading ? (
+                          <div className={`py-4 text-center text-sm ${getThemeTextSecondary()}`}>{t('quiz.loading_library')}</div>
+                        ) : (() => {
+                          const q = librarySearchQuery.trim().toLowerCase();
+                          const filtered = q
+                            ? libraryItems.filter(
+                                (i) =>
+                                  i.title.toLowerCase().includes(q) ||
+                                  (i.summary_text && i.summary_text.toLowerCase().includes(q))
+                              )
+                            : libraryItems;
+                          if (filtered.length === 0) {
+                            return (
+                              <div className={`py-4 text-center text-sm ${getThemeTextSecondary()}`}>
+                                {libraryItems.length === 0 ? t('quiz.no_library_items_yet') : t('quiz.no_matches')}
+                              </div>
+                            );
+                          }
+                          return (
+                            <ul className="space-y-0.5">
+                              {filtered.map((item) => (
+                                <li key={item.id}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedLibraryItem(item.id);
+                                      setLibraryPickerOpen(false);
+                                      setLibrarySearchQuery('');
+                                    }}
+                                    className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors flex items-center gap-2 ${item.id === selectedLibraryItem ? 'bg-primary/15 text-primary' : `${getThemeTextPrimary()} hover:bg-black/5 dark:hover:bg-white/5`}`}
+                                  >
+                                    {item.id === selectedLibraryItem && <Check className="h-4 w-4 shrink-0" />}
+                                    <span className="flex-1 min-w-0">
+                                      <span className="font-medium block truncate">{item.title}</span>
+                                      {item.summary_text && (
+                                        <span className={`text-xs block truncate mt-0.5 ${getThemeTextSecondary()}`}>
+                                          {item.summary_text.slice(0, 80)}{item.summary_text.length > 80 ? '…' : ''}
+                                        </span>
+                                      )}
+                                    </span>
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
               {selectedSource === 'upload' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-1.5`}>
                     {t('quiz.upload_document_label')}
                   </label>
                   <input
                     type="file"
                     accept=".pdf,.docx,.pptx"
                     onChange={(e) => setUploadedFile(e.target.files?.[0] || null)}
-                    className={`w-full px-4 py-2 border ${getThemeBorder()} rounded-lg ${getThemeFocusRing()} focus:ring-2 dark:bg-gray-700 dark:text-gray-100`}
+                    className="w-full px-3 py-2 input-clean text-sm"
                   />
                 </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Quiz Settings Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-1.5`}>
                     {t('quiz.question_count')}
                   </label>
                   <input
@@ -806,20 +1230,20 @@ export const QuizPage: React.FC = React.memo(() => {
                     onChange={(e) => setQuestionCount(Number(e.target.value))}
                     className="w-full"
                   />
-                  <div className="text-center mt-2">
-                    <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">{questionCount}</span>
-                    <span className="text-sm text-gray-600 dark:text-gray-400 ml-2">{t('quiz.questions')}</span>
+                  <div className="text-center mt-1.5">
+                    <span className={`text-lg font-semibold ${getThemeTextPrimary()}`}>{questionCount}</span>
+                    <span className={`text-xs ${getThemeTextSecondary()} ml-1.5`}>{t('quiz.questions')}</span>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-1.5`}>
                     {t('quiz.difficulty_level')}
                   </label>
                   <select
                     value={difficulty}
                     onChange={(e) => setDifficulty(e.target.value as 'easy' | 'medium' | 'hard')}
-                    className={`w-full px-4 py-2 border ${getThemeBorder()} rounded-lg ${getThemeFocusRing()} focus:ring-2 dark:bg-gray-700 dark:text-gray-100`}
+                    className="w-full px-3 py-2 input-clean text-sm"
                   >
                     <option value="easy">{t('quiz.difficulty_easy')}</option>
                     <option value="medium">{t('quiz.difficulty_medium')}</option>
@@ -828,13 +1252,13 @@ export const QuizPage: React.FC = React.memo(() => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-1.5`}>
                     {t('quiz.quiz_language')}
                   </label>
                   <select
                     value={targetLanguage}
                     onChange={(e) => setTargetLanguage(e.target.value)}
-                    className={`w-full px-4 py-2 border ${getThemeBorder()} rounded-lg ${getThemeFocusRing()} focus:ring-2 dark:bg-gray-700 dark:text-gray-100`}
+                    className="w-full px-3 py-2 input-clean text-sm"
                   >
                     <option value="en">{t('quiz.language_en')}</option>
                     <option value="ar">{t('quiz.language_ar')}</option>
@@ -844,83 +1268,276 @@ export const QuizPage: React.FC = React.memo(() => {
                 </div>
               </div>
 
+              {/* Generate Button */}
               <button
                 onClick={handleGenerateQuiz}
                 disabled={generating || !quizTitle.trim()}
-                className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center space-x-2"
+                className={`w-full py-2 ${getThemeGradient('ui')} text-white rounded-md hover:opacity-90 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center space-x-2 text-sm`}
               >
                 {generating ? (
                   <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                     <span>{t('quiz.generating')}</span>
                   </>
                 ) : (
                   <>
-                    <Plus className="h-5 w-5" />
+                    <Plus className="h-4 w-4" />
                     <span>{t('quiz.generate')}</span>
                   </>
                 )}
               </button>
             </div>
+              </>
+            )}
           </div>
         )}
 
         {activeTab === 'quizzes' && (
           <div className="space-y-4">
-            {loading ? (
-              <LoadingSkeleton type="card" count={3} />
-            ) : quizSessions.length === 0 ? (
-              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-12 text-center">
-                <FileQuestion className="h-16 w-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-                <p className="text-gray-600 dark:text-gray-400 mb-2">{t('quiz.no_quizzes')}</p>
-                <p className="text-sm text-gray-500 dark:text-gray-500">{t('quiz.create_first')}</p>
-              </div>
-            ) : (
-              quizSessions.map((quiz) => (
-                <div key={quiz.id} className="bg-white dark:bg-gray-800 rounded-xl shadow p-6 hover:shadow-lg transition-shadow">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                        {quiz.quiz_title}
-                      </h3>
-                      <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
-                        <span className="flex items-center">
-                          <FileQuestion className="h-4 w-4 mr-1" />
-                          {quiz.question_count} {t('quiz.questions')}
-                        </span>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getDifficultyColor(quiz.difficulty_level)}`}>
-                          {quiz.difficulty_level.toUpperCase()}
-                        </span>
-                        <span>{new Date(quiz.created_at).toLocaleDateString()}</span>
+            {quizViewMode === 'quizzes' ? (
+              /* My Quizzes View */
+              <>
+                {loading ? (
+                  <LoadingSkeleton type="card" count={3} />
+                ) : quizSessions.length === 0 ? (
+                  <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow p-12 text-center`}>
+                    <FileQuestion className={`h-16 w-16 ${getThemeTextMuted()} mx-auto mb-4`} />
+                    <p className={`${getThemeTextSecondary()} mb-2`}>{t('quiz.no_quizzes')}</p>
+                    <p className={`text-sm ${getThemeTextMuted()}`}>{t('quiz.create_first')}</p>
+                  </div>
+                ) : (
+                  quizSessions.map((quiz) => (
+                    <div key={quiz.id} className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow p-6`}>
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h3 className={`text-lg font-semibold ${getThemeTextPrimary()} mb-2`}>
+                            {quiz.quiz_title}
+                          </h3>
+                          <div className={`flex items-center space-x-4 text-sm ${getThemeTextSecondary()}`}>
+                            <span className="flex items-center">
+                              <FileQuestion className="h-4 w-4 mr-1" />
+                              {quiz.question_count} {t('quiz.questions')}
+                            </span>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getDifficultyColor(quiz.difficulty_level)}`}>
+                              {quiz.difficulty_level.toUpperCase()}
+                            </span>
+                            <span>{new Date(quiz.created_at).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => handleStartQuiz(quiz.id)}
+                            className={`px-4 py-2 ${getThemeGradient('ui')} text-white dark:text-gray-900 rounded-lg hover:opacity-90 flex items-center space-x-2`}
+                          >
+                            <Play className="h-4 w-4" />
+                            <span>{t('quiz.start')}</span>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteQuiz(quiz.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg dark:hover:bg-red-900"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => handleStartQuiz(quiz.id)}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2"
-                      >
-                        <Play className="h-4 w-4" />
-                        <span>{t('quiz.start')}</span>
-                      </button>
-                      <button
-                        onClick={() => handleDeleteQuiz(quiz.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg dark:hover:bg-red-900"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                  ))
+                )}
+              </>
+            ) : (
+              /* My Exams View - Incomplete Exams */
+              <>
+                {loading ? (
+                  <LoadingSkeleton type="card" count={3} />
+                ) : incompleteExams.length === 0 ? (
+                  <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow p-12 text-center`}>
+                    <Clock className={`h-16 w-16 ${getThemeTextMuted()} mx-auto mb-4`} />
+                    <p className={`${getThemeTextSecondary()} mb-2`}>{t('quiz.no_incomplete_exams') || 'No incomplete exams'}</p>
+                    <p className={`text-sm ${getThemeTextMuted()}`}>{t('quiz.start_exam_to_continue') || 'Start an exam to continue it later'}</p>
                   </div>
-                </div>
-              ))
+                ) : (
+                  incompleteExams
+                    .filter((attempt) => attempt.global_exams !== null)
+                    .map((attempt) => {
+                      const exam = attempt.global_exams!;
+                      const progress = Math.max(0, Math.min(100, ((exam.total_questions - attempt.unanswered_count) / exam.total_questions) * 100));
+                      return (
+                      <div key={attempt.id} className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow p-6`}>
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h3 className={`text-lg font-semibold ${getThemeTextPrimary()} mb-2`}>
+                              {exam.exam_name}
+                            </h3>
+                            <div className={`flex items-center space-x-4 text-sm ${getThemeTextSecondary()} mb-3`}>
+                              <span className="flex items-center">
+                                <FileQuestion className="h-4 w-4 mr-1" />
+                                {exam.total_questions - attempt.unanswered_count} / {exam.total_questions} {t('quiz.questions')}
+                              </span>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                exam.difficulty_level === 'beginner' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' :
+                                exam.difficulty_level === 'intermediate' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300' :
+                                'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
+                              }`}>
+                                {exam.difficulty_level}
+                              </span>
+                              <span>{new Date(attempt.started_at).toLocaleDateString()}</span>
+                            </div>
+                            <div className={`w-full ${getThemeSubtle('ui')} rounded-full h-2 mb-2`}>
+                              <div 
+                                className={`h-2 rounded-full ${getThemeGradient('ui')}`}
+                                style={{ width: `${progress}%` }}
+                              ></div>
+                            </div>
+                            <p className={`text-xs ${getThemeTextMuted()}`}>{Math.round(progress)}% {t('quiz.completed') || 'completed'}</p>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <button
+                              onClick={() => setSelectedExam(exam)}
+                              className={`px-4 py-2 ${getThemeGradient('ui')} text-white dark:text-gray-900 rounded-lg hover:opacity-90 flex items-center space-x-2`}
+                            >
+                              <Play className="h-4 w-4" />
+                              <span>{t('quiz.continue_exam') || 'Continue Exam'}</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </>
             )}
           </div>
         )}
 
         {activeTab === 'explore' && (
+          <>
+            {quizViewMode === 'exams' ? (
+              /* Global Exams View - Explore */
+              <div className="space-y-4">
+                {/* Filters */}
+                <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow p-6 mb-6`}>
+                  <div className="flex items-center space-x-4">
+                    <div className="flex-1">
+                      <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-2`}>Country/Region</label>
+                      <select
+                        value={examCountry}
+                        onChange={(e) => setExamCountry(e.target.value)}
+                        className={`w-full px-4 py-2 ${getThemeCardBorder()} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${getThemeCardBg()} ${getThemeTextPrimary()}`}
+                      >
+                        <option value="all">All Countries</option>
+                        <option value="USA">USA</option>
+                        <option value="UK">United Kingdom</option>
+                        <option value="Canada">Canada</option>
+                        <option value="Germany">Germany</option>
+                        <option value="France">France</option>
+                        <option value="Turkey">Turkey</option>
+                        <option value="UAE">UAE</option>
+                        <option value="Saudi Arabia">Saudi Arabia</option>
+                      </select>
+                    </div>
+                    <div className="flex-1">
+                      <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-2`}>Exam Type</label>
+                      <select
+                        value={examType}
+                        onChange={(e) => setExamType(e.target.value)}
+                        className={`w-full px-4 py-2 ${getThemeCardBorder()} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${getThemeCardBg()} ${getThemeTextPrimary()}`}
+                      >
+                        <option value="all">All Types</option>
+                        <option value="standardized">Standardized Tests</option>
+                        <option value="entrance">Entrance Exams</option>
+                        <option value="proficiency">Language Proficiency</option>
+                        <option value="certification">Professional Certification</option>
+                      </select>
+                    </div>
+                    <div className="flex-1">
+                      <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-2`}>Search</label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="Search exams..."
+                          className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                        />
+                        {loading && (
+                          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                            <div className={`animate-spin h-4 w-4 border-2 ${getThemeTextMuted()} border-t-transparent rounded-full`}></div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Exams Grid */}
+                {loading ? (
+                  <LoadingSkeleton type="card" count={3} />
+                ) : globalExams.length === 0 ? (
+                  <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow p-12 text-center`}>
+                    <Globe className={`h-16 w-16 ${getThemeTextMuted()} mx-auto mb-4`} />
+                    <h3 className={`text-lg font-semibold ${getThemeTextPrimary()} mb-2`}>No exams found</h3>
+                    <p className={getThemeTextSecondary()}>Try adjusting your filters</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {globalExams.map((exam) => (
+                      <div key={exam.id} className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow p-6 cursor-pointer`}>
+                        <div className="flex items-start justify-between mb-4">
+                          <div>
+                            <h3 className={`text-xl font-bold ${getThemeTextPrimary()} mb-1`}>{exam.exam_name}</h3>
+                            <p className={`text-sm ${getThemeTextMuted()}`}>{exam.exam_code}</p>
+                          </div>
+                          <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                            exam.difficulty_level === 'beginner' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' :
+                            exam.difficulty_level === 'intermediate' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300' :
+                            'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
+                          }`}>
+                            {exam.difficulty_level}
+                          </span>
+                        </div>
+
+                        <p className={`${getThemeTextSecondary()} text-sm mb-4 line-clamp-2`}>{exam.description}</p>
+
+                        <div className="space-y-2 mb-4">
+                          <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
+                            <Globe className="h-4 w-4 mr-2" />
+                            <span>{exam.country}</span>
+                            {exam.region && <span className="ml-2">• {exam.region}</span>}
+                          </div>
+                          <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
+                            <FileQuestion className="h-4 w-4 mr-2" />
+                            <span>{exam.total_questions} questions</span>
+                          </div>
+                          <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
+                            <Clock className="h-4 w-4 mr-2" />
+                            <span>{exam.time_limit_minutes} minutes</span>
+                          </div>
+                          {exam.subject && (
+                            <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
+                              <BookOpen className="h-4 w-4 mr-2" />
+                              <span>{exam.subject}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => setSelectedExam(exam)}
+                          className={`w-full px-4 py-2 ${getThemeGradient('ui')} text-white dark:text-gray-900 rounded-lg hover:opacity-90 transition-all flex items-center justify-center space-x-2`}
+                        >
+                          <Play className="h-4 w-4" />
+                          <span>Start Practice</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Quizzes View - Explore */
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             {/* Sidebar with Folders */}
             <div className="lg:col-span-1">
-              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+              <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow p-6`}>
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center space-x-2">
                     <Folder className="h-5 w-5" />
@@ -928,14 +1545,14 @@ export const QuizPage: React.FC = React.memo(() => {
                   </h3>
                   <button
                     onClick={() => setShowCreateFolder(true)}
-                    className="p-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
+                    className="p-1 text-gray-900 hover:text-gray-700 dark:text-white dark:hover:text-gray-200"
                   >
                     <Plus className="h-4 w-4" />
                   </button>
                 </div>
 
                 {showCreateFolder && (
-                  <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900 rounded-lg space-y-2">
+                  <div className="mb-4 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg space-y-2">
                     <input
                       type="text"
                       value={newFolderName}
@@ -952,7 +1569,7 @@ export const QuizPage: React.FC = React.memo(() => {
                       />
                       <button
                         onClick={handleCreateFolder}
-                        className="flex-1 px-3 py-1 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
+                        className={`flex-1 px-3 py-1 ${getThemeGradient('ui')} text-white dark:text-gray-900 text-sm rounded-lg hover:opacity-90 transition`}
                       >
                         Create
                       </button>
@@ -971,7 +1588,7 @@ export const QuizPage: React.FC = React.memo(() => {
                     onClick={() => setSelectedFolder('all')}
                     className={`w-full text-left px-3 py-2 rounded-lg transition ${
                       selectedFolder === 'all'
-                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
+                        ? 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white'
                         : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
                     }`}
                   >
@@ -981,7 +1598,7 @@ export const QuizPage: React.FC = React.memo(() => {
                     onClick={() => setSelectedFolder('uncategorized')}
                     className={`w-full text-left px-3 py-2 rounded-lg transition ${
                       selectedFolder === 'uncategorized'
-                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
+                        ? 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white'
                         : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
                     }`}
                   >
@@ -994,7 +1611,7 @@ export const QuizPage: React.FC = React.memo(() => {
                         onClick={() => setSelectedFolder(folder.id)}
                         className={`flex-1 text-left px-3 py-2 rounded-lg transition ${
                           selectedFolder === folder.id
-                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
+                            ? 'bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white'
                             : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
                         }`}
                       >
@@ -1020,7 +1637,7 @@ export const QuizPage: React.FC = React.memo(() => {
 
             {/* Main Content - Quizzes */}
             <div className="lg:col-span-3">
-              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+              <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow p-6`}>
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
                     {selectedFolder === 'all' ? 'All Quizzes' :
@@ -1048,11 +1665,11 @@ export const QuizPage: React.FC = React.memo(() => {
                     })
                     .filter(quiz => quiz.quiz_title.toLowerCase().includes(debouncedSearchQuery.toLowerCase()))
                     .map((quiz) => (
-                      <div key={quiz.id} className={`border ${getThemeBorder()} opacity-60 dark:opacity-40 rounded-lg p-4 hover:shadow-md transition`}>
+                      <div key={quiz.id} className={`border ${getThemeBorder()} opacity-60 dark:opacity-40 rounded-lg p-4`}>
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
                             <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">{quiz.quiz_title}</h4>
-                            <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
+                            <div className={`flex items-center space-x-4 text-sm ${getThemeTextSecondary()}`}>
                               <span>{quiz.question_count} questions</span>
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${getDifficultyColor(quiz.difficulty_level)}`}>
                                 {quiz.difficulty_level}
@@ -1080,7 +1697,7 @@ export const QuizPage: React.FC = React.memo(() => {
                             </select>
                             <button
                               onClick={() => handleStartQuiz(quiz.id)}
-                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center space-x-2"
+                              className={`px-4 py-2 ${getThemeGradient('ui')} text-white dark:text-gray-900 rounded-lg hover:opacity-90 transition flex items-center space-x-2`}
                             >
                               <Play className="h-4 w-4" />
                               <span>Start</span>
@@ -1104,55 +1721,124 @@ export const QuizPage: React.FC = React.memo(() => {
               </div>
             </div>
           </div>
+            )}
+          </>
         )}
 
         {activeTab === 'history' && (
           <div className="space-y-4">
-            {loading ? (
-              <LoadingSkeleton type="card" count={3} />
-            ) : quizHistory.length === 0 ? (
-              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-12 text-center">
-                <Trophy className="h-16 w-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-                <p className="text-gray-600 dark:text-gray-400 mb-2">{t('quiz.no_attempts')}</p>
-                <p className="text-sm text-gray-500 dark:text-gray-500">{t('quiz.complete_first')}</p>
-              </div>
+            {quizViewMode === 'exams' ? (
+              /* Exam History View */
+              <>
+                {loading ? (
+                  <LoadingSkeleton type="card" count={3} />
+                ) : examAttempts.length === 0 ? (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow p-12 text-center">
+                    <Trophy className="h-16 w-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+                    <p className="text-gray-600 dark:text-gray-400 mb-2">{t('quiz.no_exam_attempts') || 'No exam attempts yet'}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-500">{t('quiz.complete_exam_first') || 'Complete an exam to see your history'}</p>
+                  </div>
+                ) : (
+                  examAttempts
+                    .filter((attempt) => attempt.global_exams !== null)
+                    .map((attempt) => {
+                      const exam = attempt.global_exams!;
+                      return (
+                      <div key={attempt.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow p-6">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                              {exam.exam_name}
+                            </h3>
+                            <div className={`flex items-center space-x-4 text-sm ${getThemeTextSecondary()}`}>
+                              <span className="flex items-center">
+                                <Trophy className="h-4 w-4 mr-1" />
+                                {attempt.score_percentage.toFixed(1)}% {t('quiz.exam_score') || 'Score'}
+                              </span>
+                              <span className="text-green-600 dark:text-green-400">
+                                {attempt.correct_count} {t('quiz.exam_correct') || 'Correct'}
+                              </span>
+                              <span className="text-red-600 dark:text-red-400">
+                                {attempt.incorrect_count} {t('quiz.exam_incorrect') || 'Incorrect'}
+                              </span>
+                              {attempt.unanswered_count > 0 && (
+                                <span className="text-gray-600 dark:text-gray-400">
+                                  {attempt.unanswered_count} {t('quiz.exam_unanswered') || 'Unanswered'}
+                                </span>
+                              )}
+                              <span className="flex items-center">
+                                <Clock className="h-4 w-4 mr-1" />
+                                {formatTime(attempt.time_taken_seconds)}
+                              </span>
+                              <span>{new Date(attempt.completed_at).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                          <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                            {attempt.score_percentage.toFixed(0)}%
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </>
             ) : (
-              quizHistory.map((attempt) => (
-                <div key={attempt.id} className="bg-white dark:bg-gray-800 rounded-xl shadow p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                        {attempt.quiz_sessions.quiz_title}
-                      </h3>
-                      <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
-                        <span className="flex items-center">
-                          <Trophy className="h-4 w-4 mr-1" />
-                          {attempt.score_percentage.toFixed(1)}% {t('quiz.score')}
-                        </span>
-                        <span className="text-green-600 dark:text-green-400">
-                          {attempt.correct_count} {t('quiz.correct')}
-                        </span>
-                        <span className="text-red-600 dark:text-red-400">
-                          {attempt.incorrect_count} {t('quiz.incorrect')}
-                        </span>
-                        <span className="flex items-center">
-                          <Clock className="h-4 w-4 mr-1" />
-                          {formatTime(attempt.time_taken_seconds)}
-                        </span>
-                        <span>{new Date(attempt.completed_at).toLocaleDateString()}</span>
+              /* Quiz History View */
+              <>
+                {loading ? (
+                  <LoadingSkeleton type="card" count={3} />
+                ) : quizHistory.length === 0 ? (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow p-12 text-center">
+                    <Trophy className="h-16 w-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+                    <p className="text-gray-600 dark:text-gray-400 mb-2">{t('quiz.no_attempts')}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-500">{t('quiz.complete_first')}</p>
+                  </div>
+                ) : (
+                  quizHistory.map((attempt) => (
+                    <div key={attempt.id} className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow p-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                            {attempt.quiz_sessions.quiz_title}
+                          </h3>
+                          <div className={`flex items-center space-x-4 text-sm ${getThemeTextSecondary()}`}>
+                            <span className="flex items-center">
+                              <Trophy className="h-4 w-4 mr-1" />
+                              {attempt.score_percentage.toFixed(1)}% {t('quiz.score')}
+                            </span>
+                            <span className="text-green-600 dark:text-green-400">
+                              {attempt.correct_count} {t('quiz.correct')}
+                            </span>
+                            <span className="text-red-600 dark:text-red-400">
+                              {attempt.incorrect_count} {t('quiz.incorrect')}
+                            </span>
+                            <span className="flex items-center">
+                              <Clock className="h-4 w-4 mr-1" />
+                              {formatTime(attempt.time_taken_seconds)}
+                            </span>
+                            <span>{new Date(attempt.completed_at).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                        <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                          {attempt.score_percentage.toFixed(0)}%
+                        </div>
                       </div>
                     </div>
-                    <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                      {attempt.score_percentage.toFixed(0)}%
-                    </div>
-                  </div>
-                </div>
-              ))
+                  ))
+                )}
+              </>
             )}
           </div>
         )}
       </div>
       {ConfirmModal}
+
+      {/* Global Exam Detail Modal */}
+      <GlobalExamDetailModal
+        exam={selectedExam}
+        isOpen={!!selectedExam}
+        onClose={() => setSelectedExam(null)}
+      />
 
       {/* Quiz Tutorial */}
       {tutorialConfig && (

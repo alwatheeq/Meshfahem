@@ -1,346 +1,287 @@
 import React, { useState } from 'react';
-import { Check, Zap, Crown, Star, ArrowRight, X, ArrowLeft } from 'lucide-react';
+import { Check, ArrowRight, X, ArrowLeft, Plus, Minus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import { useTheme } from '../../contexts/ThemeContext';
+import { useI18n } from '../../contexts/I18nContext';
 import { PRICING, formatCurrency, isStripeEnabled } from '../../utils/subscriptionHelpers';
+
+const STANDARD_FEATURES = [
+  'Summaries & flashcards',
+  'Quiz generation',
+  'Save to library',
+  'Goal tracking & achievements',
+  'Multi-language support',
+];
+
+const MAX_ZEGO_HOURS = 100;
+const MAX_CHAT_BLOCKS = 100;
+const MIN_AI_BLOCKS = 5; // 500k tokens = $0.50 minimum when adding AI
 
 export const PricingPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { getThemeGradient } = useTheme();
+  const { t } = useI18n();
+  const {
+    getThemeGradient,
+    getThemeCardBg,
+    getThemeCardBorder,
+    getThemeTextPrimary,
+    getThemeTextSecondary,
+    getThemeSubtle,
+  } = useTheme();
   const [promoCode, setPromoCode] = useState('');
   const [showPromoInput, setShowPromoInput] = useState(false);
+  const [zegoHours, setZegoHours] = useState(0);
+  const [chatBlocks, setChatBlocks] = useState(0);
 
-  const handleSelectPlan = (tier: string) => {
+  const basePrice = PRICING.standard;
+  const zegoTotal = zegoHours * PRICING.zegoPerHour;
+  const chatTotal = chatBlocks * PRICING.chatPer100kTokens;
+  const addonsTotal = zegoTotal + chatTotal;
+  const totalPrice = basePrice + addonsTotal;
+
+  const handleSubscribe = () => {
     if (!user) {
       navigate('/');
       return;
     }
-
-    navigate(`/checkout?plan=${tier}${promoCode ? `&promo=${promoCode}` : ''}`);
+    const params = new URLSearchParams({
+      plan: 'standard',
+      zego_hours: String(zegoHours),
+      chat_blocks: String(chatBlocks),
+    });
+    if (promoCode) params.set('promo', promoCode);
+    navigate(`/checkout?${params.toString()}`);
   };
-
-  const plans = [
-    {
-      id: 'trial',
-      name: '1-Day Free Trial',
-      price: 0,
-      period: 'one time',
-      description: 'Try before you commit',
-      icon: Zap,
-      gradient: 'from-gray-500 to-gray-600',
-      features: [
-        'One use of summary generation',
-        'One use of flashcard creation',
-        'One use of quiz generation',
-        'One use of video processing',
-        'Basic features access',
-        'No credit card required'
-      ],
-      limitations: [
-        'Limited to one use per feature',
-        'No library saving',
-        'No collaborative study rooms'
-      ],
-      cta: 'Start Free Trial',
-      popular: false
-    },
-    {
-      id: 'monthly',
-      name: 'Monthly Plan',
-      price: PRICING.monthly,
-      period: 'month',
-      description: 'Perfect for continuous learners',
-      icon: Crown,
-      gradient: 'from-green-500 to-emerald-600',
-      features: [
-        '7-Day Free Trial',
-        'Unlimited summaries & flashcards',
-        'Unlimited quiz generation',
-        'Unlimited video processing',
-        'Save to library',
-        'Study rooms access',
-        'Goal tracking',
-        'Achievements & gamification',
-        'Multi-language support',
-        'Medical content processing',
-        'Priority support'
-      ],
-      limitations: [],
-      cta: 'Start 7-Day Trial',
-      popular: true
-    },
-    {
-      id: 'quarterly',
-      name: 'Quarterly Plan',
-      price: PRICING.quarterly,
-      period: '3 months',
-      description: 'Save 10% with quarterly billing',
-      icon: Star,
-      gradient: 'from-cyan-500 to-blue-600',
-      savings: ((PRICING.monthly * 3 - PRICING.quarterly) / (PRICING.monthly * 3) * 100).toFixed(0),
-      features: [
-        '7-Day Free Trial',
-        'Everything in Monthly Plan',
-        'Save 10% on total cost',
-        'Quarterly billing',
-        'Priority feature requests',
-        'Extended support hours'
-      ],
-      limitations: [],
-      cta: 'Start 7-Day Trial',
-      popular: false
-    },
-    {
-      id: 'biannual',
-      name: 'Biannual Plan',
-      price: PRICING.biannual,
-      period: '6 months',
-      description: 'Best value - Save 16%',
-      icon: Crown,
-      gradient: 'from-yellow-500 to-orange-600',
-      savings: ((PRICING.monthly * 6 - PRICING.biannual) / (PRICING.monthly * 6) * 100).toFixed(0),
-      features: [
-        '7-Day Free Trial',
-        'Everything in Monthly Plan',
-        'Save 16% on total cost',
-        'Biannual billing',
-        'VIP priority support',
-        'Early access to new features',
-        'Custom feature requests'
-      ],
-      limitations: [],
-      cta: 'Start 7-Day Trial',
-      popular: false,
-      bestValue: true
-    }
-  ];
 
   return (
     <div className={`min-h-screen ${getThemeGradient('bg')} py-12 px-4 relative`}>
-      {/* Navigation Controls */}
-      <div className="absolute top-6 left-6 right-6 flex justify-between items-center max-w-7xl mx-auto">
+      {/* Navigation */}
+      <div className="absolute top-6 left-6 right-6 flex justify-between items-center max-w-3xl mx-auto">
         {user && (
           <button
             onClick={() => navigate('/')}
-            className="flex items-center space-x-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors bg-white dark:bg-gray-800 px-4 py-2 rounded-lg shadow-md hover:shadow-lg"
+            className={`flex items-center space-x-2 ${getThemeTextSecondary()} hover:opacity-90 transition-opacity ${getThemeCardBg()} ${getThemeCardBorder()} border rounded-lg px-4 py-2 shadow-sm`}
           >
             <ArrowLeft className="h-5 w-5" />
-            <span className="font-medium">Back to Dashboard</span>
+            <span className="font-medium">{t('pricing.back_to_dashboard')}</span>
           </button>
         )}
-        <div className="flex-1"></div>
+        <div className="flex-1" />
         <button
           onClick={() => navigate(user ? '/' : '/')}
-          className="flex items-center justify-center bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 w-10 h-10 rounded-full shadow-md hover:shadow-lg transition-all"
+          className={`flex items-center justify-center ${getThemeCardBg()} ${getThemeCardBorder()} border rounded-full w-10 h-10 shadow-sm hover:opacity-90 transition-opacity ${getThemeTextPrimary()}`}
           aria-label="Close"
         >
           <X className="h-5 w-5" />
         </button>
       </div>
 
-      <div className="max-w-7xl mx-auto mt-16">
-        {/* Header */}
-        <div className="text-center mb-16">
-          <h1 className="text-5xl font-bold text-gray-900 dark:text-white mb-4">
-            Choose Your Perfect Plan
+      <div className="max-w-2xl mx-auto mt-20">
+        {/* Hero */}
+        <div className="text-center mb-10">
+          <h1 className={`text-4xl font-bold ${getThemeTextPrimary()} mb-3`}>
+            {t('pricing.standard_title')}
           </h1>
-          <p className="text-xl text-gray-600 dark:text-gray-400 mb-6">
-            {!isStripeEnabled()
-              ? 'All plans are currently FREE - No payment required!'
-              : 'Start with a free trial, then choose the plan that works for you'
-            }
+          <p className={`text-lg ${getThemeTextSecondary()}`}>
+            {t('pricing.standard_description')}
+            {!isStripeEnabled() && (
+              <span className="block mt-1 text-base"> {t('pricing.no_payment_required')}</span>
+            )}
           </p>
-
-          {/* Promo Code Toggle */}
-          <button
-            onClick={() => setShowPromoInput(!showPromoInput)}
-            className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium text-sm"
-          >
-            Have a promo code?
-          </button>
-
           {showPromoInput && (
-            <div className="mt-4 max-w-md mx-auto">
-              <div className="flex space-x-2">
+            <div className="mt-4 max-w-sm mx-auto">
+              <div className="flex gap-2">
                 <input
                   type="text"
                   value={promoCode}
                   onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                  placeholder="Enter promo code"
-                  className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white"
+                  placeholder={t('pricing.promo_placeholder')}
+                  className={`flex-1 px-4 py-2 rounded-lg border ${getThemeCardBorder()} ${getThemeCardBg()} ${getThemeTextPrimary()}`}
                 />
                 <button
                   onClick={() => setShowPromoInput(false)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                  className={`px-4 py-2 rounded-lg ${getThemeGradient('ui')} text-white font-medium`}
                 >
-                  Apply
+                  {t('pricing.apply')}
                 </button>
               </div>
             </div>
           )}
+          {!showPromoInput && (
+            <button
+              onClick={() => setShowPromoInput(true)}
+              className={`mt-2 text-sm font-medium ${getThemeTextSecondary()} hover:underline`}
+            >
+              {t('pricing.have_promo')}
+            </button>
+          )}
         </div>
 
-        {/* Pricing Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-16">
-          {plans.map((plan) => {
-            const Icon = plan.icon;
-            return (
-              <div
-                key={plan.id}
-                className={`relative bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden transition-transform hover:scale-105 ${
-                  plan.popular ? 'ring-4 ring-blue-500 dark:ring-blue-400' : ''
-                }`}
-              >
-                {plan.popular && (
-                  <div className="absolute top-0 right-0 bg-blue-500 text-white px-4 py-1 text-sm font-bold rounded-bl-lg">
-                    POPULAR
-                  </div>
-                )}
-
-                {plan.bestValue && (
-                  <div className="absolute top-0 right-0 bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-4 py-1 text-sm font-bold rounded-bl-lg">
-                    BEST VALUE
-                  </div>
-                )}
-
-                <div className={`bg-gradient-to-r ${plan.gradient} p-6 text-white`}>
-                  <Icon className="h-12 w-12 mb-4" />
-                  <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
-                  <p className="text-sm opacity-90">{plan.description}</p>
-                </div>
-
-                <div className="p-6">
-                  <div className="mb-6">
-                    <div className="flex items-baseline">
-                      <span className="text-4xl font-bold text-gray-900 dark:text-white">
-                        {!isStripeEnabled() || plan.price === 0 ? 'Free' : formatCurrency(plan.price)}
-                      </span>
-                      {isStripeEnabled() && plan.price > 0 && (
-                        <span className="text-gray-500 dark:text-gray-400 ml-2">/ {plan.period}</span>
-                      )}
-                    </div>
-                    {isStripeEnabled() && plan.savings && (
-                      <div className="mt-2 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 px-3 py-1 rounded-full inline-block text-sm font-semibold">
-                        Save {plan.savings}%
-                      </div>
-                    )}
-                    {!isStripeEnabled() && (
-                      <div className="mt-2 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 px-3 py-1 rounded-full inline-block text-sm font-semibold">
-                        Free Access
-                      </div>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={() => handleSelectPlan(plan.id)}
-                    className={`w-full bg-gradient-to-r ${plan.gradient} hover:opacity-90 text-white font-bold py-3 px-6 rounded-lg transition duration-200 flex items-center justify-center space-x-2 mb-6`}
-                  >
-                    <span>{plan.cta}</span>
-                    <ArrowRight className="h-5 w-5" />
-                  </button>
-
-                  <div className="space-y-3 mb-4">
-                    <p className="font-semibold text-gray-900 dark:text-white">Includes:</p>
-                    {plan.features.map((feature, index) => (
-                      <div key={index} className="flex items-start space-x-2">
-                        <Check className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
-                        <span className="text-sm text-gray-600 dark:text-gray-400">{feature}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {plan.limitations.length > 0 && (
-                    <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                      <p className="font-semibold text-gray-700 dark:text-gray-300 text-sm mb-2">Limitations:</p>
-                      {plan.limitations.map((limitation, index) => (
-                        <div key={index} className="text-xs text-gray-500 dark:text-gray-500 mb-1">
-                          • {limitation}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        {/* Standard plan card */}
+        <div
+          className={`rounded-2xl ${getThemeCardBg()} ${getThemeCardBorder()} border shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm overflow-hidden mb-8`}
+        >
+          <div className={`p-6 ${getThemeSubtle('ui')} rounded-t-2xl`}>
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <span className={`text-3xl font-bold ${getThemeTextPrimary()}`}>
+                {formatCurrency(basePrice)}
+              </span>
+              <span className={getThemeTextSecondary()}> {t('pricing.per_month')}</span>
+            </div>
+            <p className={`mt-1 text-sm ${getThemeTextSecondary()}`}>
+              {t('pricing.core_features_hint')}
+            </p>
+          </div>
+          <div className="p-6 space-y-4">
+            <ul className="space-y-2">
+              {STANDARD_FEATURES.map((feature, i) => (
+                <li key={i} className="flex items-center gap-2">
+                  <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
+                  <span className={`text-sm ${getThemeTextPrimary()}`}>{feature}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
 
-        {/* FAQ Section */}
-        <div className="max-w-3xl mx-auto">
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-8 text-center">
-            Frequently Asked Questions
+        {/* Add-ons */}
+        <div className="space-y-4 mb-8">
+          <h2 className={`text-lg font-semibold ${getThemeTextPrimary()}`}>
+            {t('pricing.optional_addons')}
           </h2>
 
-          <div className="space-y-6">
-            {isStripeEnabled() && (
-              <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
-                <h3 className="font-bold text-gray-900 dark:text-white mb-2">How does the 7-day trial work?</h3>
-                <p className="text-gray-600 dark:text-gray-400">
-                  When you subscribe to Monthly, Quarterly, or Biannual plans, you get 7 days of full access completely free. If you cancel before the trial ends, you won't be charged.
+          {/* Zegocloud */}
+          <div
+            className={`rounded-xl ${getThemeCardBg()} ${getThemeCardBorder()} border p-5 shadow-sm`}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h3 className={`font-semibold ${getThemeTextPrimary()}`}>
+                  {t('pricing.zegocloud_addon_label')}
+                </h3>
+                <p className={`text-sm mt-0.5 ${getThemeTextSecondary()}`}>
+                  {t('pricing.zegocloud_addon_description')}
                 </p>
               </div>
-            )}
-
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
-              <h3 className="font-bold text-gray-900 dark:text-white mb-2">What's included in the 1-Day Trial?</h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                The 1-Day Trial gives you one use of each major feature (summary generation, flashcards, quizzes, and video processing). It's perfect to test the platform before committing to a paid plan.
-              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setZegoHours((h) => Math.max(0, h - 1))}
+                  className={`rounded-lg border ${getThemeCardBorder()} ${getThemeSubtle('ui')} p-2 ${getThemeTextPrimary()} hover:opacity-80 transition-opacity disabled:opacity-50`}
+                  disabled={zegoHours === 0}
+                  aria-label="Decrease hours"
+                >
+                  <Minus className="h-5 w-5" />
+                </button>
+                <span className={`min-w-[3rem] text-center font-semibold ${getThemeTextPrimary()}`}>
+                  {zegoHours} {t('pricing.hours_unit')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setZegoHours((h) => Math.min(MAX_ZEGO_HOURS, h + 1))}
+                  className={`rounded-lg border ${getThemeCardBorder()} ${getThemeSubtle('ui')} p-2 ${getThemeTextPrimary()} hover:opacity-80 transition-opacity disabled:opacity-50`}
+                  disabled={zegoHours >= MAX_ZEGO_HOURS}
+                  aria-label="Increase hours"
+                >
+                  <Plus className="h-5 w-5" />
+                </button>
+              </div>
             </div>
-
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
-              <h3 className="font-bold text-gray-900 dark:text-white mb-2">Can I cancel anytime?</h3>
-              <p className="text-gray-600 dark:text-gray-400">
-                Yes! You can cancel your subscription at any time. Your cancellation will take effect at the end of your current billing period, and you'll continue to have access until then.
+            {zegoHours > 0 && (
+              <p className={`mt-2 text-sm ${getThemeTextSecondary()}`}>
+                +{formatCurrency(zegoTotal)} {t('pricing.per_month')}
               </p>
+            )}
+          </div>
+
+          {/* AI Chat */}
+          <div
+            className={`rounded-xl ${getThemeCardBg()} ${getThemeCardBorder()} border p-5 shadow-sm`}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h3 className={`font-semibold ${getThemeTextPrimary()}`}>
+                  {t('pricing.ai_chat_addon_label')}
+                </h3>
+                <p className={`text-sm mt-0.5 ${getThemeTextSecondary()}`}>
+                  {t('pricing.ai_chat_addon_description')}
+                </p>
+                <p className={`text-xs mt-1 ${getThemeTextSecondary()}`}>
+                  {t('pricing.ai_min_hint')}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setChatBlocks((b) => (b === MIN_AI_BLOCKS ? 0 : Math.max(MIN_AI_BLOCKS, b - 1)))}
+                  className={`rounded-lg border ${getThemeCardBorder()} ${getThemeSubtle('ui')} p-2 ${getThemeTextPrimary()} hover:opacity-80 transition-opacity disabled:opacity-50`}
+                  disabled={chatBlocks === 0}
+                  aria-label="Decrease token blocks"
+                >
+                  <Minus className="h-5 w-5" />
+                </button>
+                <span className={`min-w-[3rem] text-center font-semibold ${getThemeTextPrimary()}`}>
+                  {chatBlocks} {t('pricing.tokens_unit')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setChatBlocks((b) => (b === 0 ? MIN_AI_BLOCKS : Math.min(MAX_CHAT_BLOCKS, b + 1)))}
+                  className={`rounded-lg border ${getThemeCardBorder()} ${getThemeSubtle('ui')} p-2 ${getThemeTextPrimary()} hover:opacity-80 transition-opacity disabled:opacity-50`}
+                  disabled={chatBlocks >= MAX_CHAT_BLOCKS}
+                  aria-label="Increase token blocks"
+                >
+                  <Plus className="h-5 w-5" />
+                </button>
+              </div>
             </div>
-
-            {isStripeEnabled() && (
-              <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
-                <h3 className="font-bold text-gray-900 dark:text-white mb-2">What payment methods do you accept?</h3>
-                <p className="text-gray-600 dark:text-gray-400">
-                  We accept all major credit cards through Stripe, our secure payment processor. Additional payment methods will be added soon.
-                </p>
-              </div>
-            )}
-
-            {isStripeEnabled() && (
-              <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
-                <h3 className="font-bold text-gray-900 dark:text-white mb-2">Is there a refund policy?</h3>
-                <p className="text-gray-600 dark:text-gray-400">
-                  We don't offer automatic refunds, but if you have a special circumstance, please contact our support team and we'll do our best to help.
-                </p>
-              </div>
-            )}
-
-            {!isStripeEnabled() && (
-              <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
-                <h3 className="font-bold text-gray-900 dark:text-white mb-2">Why is everything free?</h3>
-                <p className="text-gray-600 dark:text-gray-400">
-                  We're currently in beta and offering free access to all features. This allows us to gather feedback and improve the platform. Enjoy unlimited access to all features!
-                </p>
-              </div>
+            {chatBlocks > 0 && (
+              <p className={`mt-2 text-sm ${getThemeTextSecondary()}`}>
+                +{formatCurrency(chatTotal)} {t('pricing.per_month')}
+              </p>
             )}
           </div>
         </div>
 
-        {/* CTA Section */}
-        <div className="mt-16 text-center">
-          <div className={`${getThemeGradient('ui')} rounded-2xl p-12 text-white`}>
-            <h2 className="text-3xl font-bold mb-4">Ready to supercharge your learning?</h2>
-            <p className="text-xl mb-8 opacity-90">
-              Join thousands of students and professionals using our platform
-            </p>
-            <button
-              onClick={() => handleSelectPlan('monthly')}
-              className="bg-white text-blue-600 font-bold py-4 px-8 rounded-lg hover:bg-gray-100 transition duration-200 text-lg"
-            >
-              Start Your Free Trial Today
-            </button>
+        {/* Summary + CTA */}
+        <div
+          className={`rounded-2xl ${getThemeCardBg()} ${getThemeCardBorder()} border p-6 shadow-sm`}
+        >
+            <div className="space-y-2 mb-6">
+            <div className="flex justify-between text-sm">
+              <span className={getThemeTextSecondary()}>{t('pricing.base_price_label')}</span>
+              <span className={getThemeTextPrimary()}>
+                {formatCurrency(basePrice)}
+              </span>
+            </div>
+            {addonsTotal > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className={getThemeTextSecondary()}>{t('pricing.addons_label')}</span>
+                <span className={getThemeTextPrimary()}>{formatCurrency(addonsTotal)}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-semibold pt-2 border-t border-gray-200 dark:border-gray-700">
+              <span className={getThemeTextPrimary()}>{t('pricing.total_per_month')}</span>
+              <span className={getThemeTextPrimary()}>
+                {formatCurrency(totalPrice)}
+                {!isStripeEnabled() && (
+                  <span className="ml-1 text-sm font-normal"> ({t('pricing.no_payment_required')})</span>
+                )}
+              </span>
+            </div>
           </div>
+          <button
+            onClick={handleSubscribe}
+            className={`w-full ${getThemeGradient('ui')} hover:opacity-90 text-white font-bold py-3 px-6 rounded-xl transition duration-200 flex items-center justify-center gap-2`}
+          >
+            <span>{isStripeEnabled() ? t('pricing.subscribe') : t('pricing.continue')}</span>
+            <ArrowRight className="h-5 w-5" />
+          </button>
         </div>
       </div>
     </div>
   );
 };
+
+export default PricingPage;

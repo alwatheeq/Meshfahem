@@ -1,13 +1,13 @@
-import React from 'react';
-import { Home, History, BookOpen, Menu, ChevronLeft, Info, MessageSquare, User, FileQuestion, Target, Award, Users, Gamepad2, Pin, PinOff } from 'lucide-react';
+import React, { useLayoutEffect, useRef } from 'react';
+import { Home, History, BookOpen, Menu, ChevronLeft, Info, MessageSquare, FileQuestion, Target, Users, Gamepad2, Pin, PinOff } from 'lucide-react';
 import { useI18n } from '../../contexts/I18nContext';
 import { useMouseProximity } from '../../hooks/useMouseProximity';
 import { useUserPreferences } from '../../contexts/UserPreferencesContext';
 import { useTheme } from '../../contexts/ThemeContext';
 
 interface SidebarProps {
-  currentView: 'main' | 'history' | 'library' | 'informational' | 'feedback' | 'profile' | 'quiz' | 'eduplay' | 'goals-achievements' | 'study-rooms';
-  onNavigate: (view: 'main' | 'history' | 'library' | 'informational' | 'feedback' | 'profile' | 'quiz' | 'eduplay' | 'goals-achievements' | 'study-rooms') => void;
+  currentView: 'main' | 'history' | 'library' | 'informational' | 'feedback' | 'profile' | 'quiz' | 'eduplay' | 'academics' | 'study-rooms';
+  onNavigate: (view: 'main' | 'history' | 'library' | 'informational' | 'feedback' | 'profile' | 'quiz' | 'eduplay' | 'academics' | 'study-rooms') => void;
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
 }
@@ -19,8 +19,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   toggleSidebar,
 }) => {
   const { t } = useI18n();
-  const { preferences, loading: preferencesLoading } = useUserPreferences();
-  const { getThemeGradient } = useTheme();
+  const { preferences, loading: _preferencesLoading } = useUserPreferences();
+  const { getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
   const [isHovered, setIsHovered] = React.useState(false);
   const [isMobile, setIsMobile] = React.useState(false);
   const [isPinned, setIsPinned] = React.useState(() => {
@@ -57,6 +57,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
     : isPinnableMode
     ? isPinned
     : (isHovered || isNearEdge);
+
+  const navRef = useRef<HTMLElement>(null);
+  const prevShouldBeOpenRef = useRef(shouldBeOpen);
+  const prevCurrentViewRef = useRef(currentView);
+
+  useLayoutEffect(() => {
+    const becameOpen = shouldBeOpen && !prevShouldBeOpenRef.current;
+    const viewChangedWhileOpen =
+      shouldBeOpen && prevShouldBeOpenRef.current && prevCurrentViewRef.current !== currentView;
+    prevShouldBeOpenRef.current = shouldBeOpen;
+    prevCurrentViewRef.current = currentView;
+    if (!shouldBeOpen) return;
+    if (!becameOpen && !viewChangedWhileOpen) return;
+    const el = navRef.current?.querySelector<HTMLElement>(`[data-sidebar-item="${currentView}"]`);
+    el?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+  }, [shouldBeOpen, currentView]);
 
   const togglePin = () => {
     setIsPinned(!isPinned);
@@ -99,11 +115,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       disabled: false
     },
     {
-      id: 'goals-achievements' as const,
-      label: t('sidebar.goals_achievements'),
+      id: 'academics' as const,
+      label: t('sidebar.academics'),
       icon: Target,
-      description: t('sidebar.goals_achievements_desc'),
-      disabled: true
+      description: t('sidebar.academics_desc'),
+      disabled: false
     },
     {
       id: 'history' as const,
@@ -130,7 +146,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <div
-      className={`fixed top-0 left-0 bottom-0 bg-white border-r border-gray-200 shadow-lg transition-all duration-300 ease-in-out z-20 dark:bg-gray-900 dark:border-gray-800 dark:shadow-none ${
+      className={`fixed top-0 left-0 bottom-0 ${getThemeCardBg()} border-r ${getThemeCardBorder()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm transition-all duration-300 ease-in-out z-20 ${
         isMobile && !isSidebarOpen ? '-translate-x-full' : ''
       } ${shouldBeOpen ? 'w-64' : 'w-16'}`}
       onMouseEnter={() => !isMobile && setIsHovered(true)}
@@ -138,15 +154,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
     >
       <div className="flex flex-col h-full">
         {/* Sidebar Header */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+        <div className={`p-4 border-b ${getThemeCardBorder()}`}>
           <div className="flex items-center justify-between">
             {shouldBeOpen && (
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('sidebar.navigation')}</h2>
+              <h2 className={`text-lg font-semibold ${getThemeTextPrimary()} transition-opacity duration-300 ease-in-out`}>{t('sidebar.navigation')}</h2>
             )}
             {isMobile ? (
               <button
                 onClick={toggleSidebar}
-                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition duration-150 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800"
+                className={`p-2 ${getThemeTextMuted()} hover:opacity-80 hover:opacity-60 rounded-md transition-colors duration-150`}
                 title={isSidebarOpen ? t('sidebar.collapse_sidebar') : t('sidebar.expand_sidebar')}
               >
                 {isSidebarOpen ? (
@@ -158,10 +174,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             ) : isPinnableMode ? (
               <button
                 onClick={togglePin}
-                className={`p-2 rounded-lg transition duration-150 ${
+                className={`p-2 rounded-md transition-colors duration-150 ${
                   shouldBeOpen
-                    ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800 mx-auto block'
+                    ? `${getThemeTextMuted()} hover:opacity-80 hover:opacity-60`
+                    : `${getThemeTextMuted()} hover:opacity-80 hover:opacity-60 mx-auto block`
                 }`}
                 title={isPinned ? t('sidebar.unpin_sidebar') : t('sidebar.pin_sidebar')}
               >
@@ -176,7 +192,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Navigation Items */}
-        <nav className="flex-1 p-4 overflow-y-auto">
+        <nav ref={navRef} className="flex-1 p-4 overflow-y-auto">
           <ul className="space-y-2">
             {navigationItems.map((item) => {
               const IconComponent = item.icon;
@@ -186,13 +202,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
               return (
                 <li key={item.id} className={`${!isSidebarOpen ? 'flex justify-center' : ''}`}>
                   <button
+                    type="button"
+                    data-sidebar-item={item.id}
                     onClick={() => !isDisabled && onNavigate(item.id)}
                     disabled={isDisabled}
                     className={`
-                      flex items-center transition duration-150 text-left
+                      flex items-center transition-colors duration-150 text-left
                       ${shouldBeOpen
-                        ? 'w-full space-x-3 px-3 py-3 rounded-lg'
-                        : 'rounded-lg'
+                        ? 'w-full space-x-3 px-3 py-3 rounded-md'
+                        : 'rounded-md'
                       }
                       ${isDisabled
                         ? 'opacity-50 cursor-not-allowed'
@@ -200,11 +218,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       }
                       ${isActive && !isDisabled
                         ? shouldBeOpen
-                          ? `${getThemeGradient('ui')} text-white shadow-md`
-                          : 'w-8 h-8 bg-blue-100 text-blue-600 justify-center dark:bg-blue-900 dark:text-blue-300'
+                          ? `${getThemeSubtle('ui')} ${getThemeTextPrimary()} ${getThemeCardBorder()}`
+                          : `w-8 h-8 ${getThemeSubtle('ui')} ${getThemeTextPrimary()} justify-center`
                         : shouldBeOpen
-                          ? 'text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100'
-                          : 'w-8 h-8 text-gray-700 hover:bg-gray-100 hover:text-gray-900 justify-center dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100'
+                          ? `${getThemeTextSecondary()} hover:opacity-60 hover:opacity-80`
+                          : `w-8 h-8 ${getThemeTextSecondary()} hover:opacity-60 hover:opacity-80 justify-center`
                       }
                       ${isDisabled ? 'hover:bg-transparent dark:hover:bg-transparent' : ''}
                     `}
@@ -214,22 +232,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       className={`h-5 w-5 flex-shrink-0 ${
                         isActive && !isDisabled
                           ? shouldBeOpen
-                            ? 'text-white'
-                            : 'text-blue-600'
-                          : 'text-gray-500'
+                            ? getThemeTextPrimary()
+                            : getThemeTextPrimary()
+                          : getThemeTextMuted()
                       }`}
                     />
                     {shouldBeOpen && (
-                      <div className="flex-1 min-w-0">
-                        <div className={`font-medium flex items-center gap-2 ${isActive && !isDisabled ? 'text-white' : 'text-gray-900 dark:text-gray-100'}`}>
+                      <div className="flex-1 min-w-0 transition-opacity duration-300 ease-in-out">
+                        <div className={`font-medium flex items-center gap-2 ${isActive && !isDisabled ? getThemeTextPrimary() : getThemeTextPrimary()}`}>
                           {item.label}
                           {isDisabled && (
-                            <span className="text-xs px-2 py-0.5 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-full">
+                            <span className={`text-xs px-2 py-0.5 ${getThemeSubtle('ui')} ${getThemeTextSecondary()} rounded-full`}>
                               {t('sidebar.coming_soon')}
                             </span>
                           )}
                         </div>
-                        <div className={`text-sm ${isActive && !isDisabled ? 'text-blue-100 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}>
+                        <div className={`text-sm ${isActive && !isDisabled ? getThemeTextSecondary() : getThemeTextMuted()}`}>
                           {item.description}
                         </div>
                       </div>
@@ -243,8 +261,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Sidebar Footer */}
         {shouldBeOpen && (
-          <div className="p-4 border-t border-gray-200 dark:border-gray-800">
-            <div className="text-xs text-gray-500 text-center dark:text-gray-400">
+          <div className={`p-4 border-t ${getThemeCardBorder()}`}>
+            <div className={`text-xs ${getThemeTextMuted()} text-center`}>
               <p>© 2025 {t('app_name')}</p>
               <p>{t('app_tagline')}</p>
             </div>

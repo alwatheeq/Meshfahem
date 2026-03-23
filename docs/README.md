@@ -52,6 +52,7 @@ Setup and configuration guides:
 
 ## Quick Links
 
+- **Project & database reference**: [PROJECT_AND_DATABASE_REFERENCE.md](./PROJECT_AND_DATABASE_REFERENCE.md) — App structure, routes, DB schema, edge functions, auth, and config
 - **Main README**: [../README.md](../README.md)
 - **Getting Started**: [setup/QUICK_START_GUIDE.md](./setup/QUICK_START_GUIDE.md)
 - **Admin Setup**: [admin/ADMIN_SETUP.md](./admin/ADMIN_SETUP.md)

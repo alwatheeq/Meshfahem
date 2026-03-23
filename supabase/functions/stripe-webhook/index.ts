@@ -1,3 +1,4 @@
+/// <reference path="../_shared/deno.d.ts" />
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Stripe from "npm:stripe@14.21.0";
 import { handleCorsPreflight } from '../_shared/cors.ts';
@@ -93,7 +94,7 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-function getTokenLimitForTier(tier: string): number {
+function getTokenLimitForTier(tier: string, chatBlocks: number = 0): number {
   const limits: Record<string, number> = {
     trial_1day: 10000,
     trial_7day: 121000,
@@ -101,7 +102,10 @@ function getTokenLimitForTier(tier: string): number {
     quarterly: 520000,
     biannual: 520000,
   };
-  return limits[tier] || 520000;
+  if (tier === "standard") {
+    return 520000 + Math.max(0, chatBlocks) * 100000;
+  }
+  return limits[tier] ?? 520000;
 }
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
@@ -129,9 +133,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     billingCycleEnd.setDate(billingCycleEnd.getDate() + 30);
   }
 
-  const tokenLimit = getTokenLimitForTier(planType);
+  const meta = subscription.metadata || {};
+  const zegoHours = Math.max(0, Math.min(100, parseInt(String(meta.zego_hours ?? 0), 10) || 0));
+  const chatBlocks = Math.max(0, Math.min(100, parseInt(String(meta.chat_blocks ?? 0), 10) || 0));
+  const tokenLimit = getTokenLimitForTier(planType, chatBlocks);
 
-  const { error } = await supabase.from("subscriptions").insert({
+  const insertPayload: Record<string, unknown> = {
     user_id: userId,
     subscription_tier: planType,
     status: "active",
@@ -147,7 +154,11 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     billing_cycle_end: billingCycleEnd.toISOString(),
     token_limit: tokenLimit,
     tokens_used_current_cycle: 0,
-  });
+    zego_hours_per_cycle: zegoHours,
+    chat_blocks_per_cycle: chatBlocks,
+  };
+
+  const { error } = await supabase.from("subscriptions").insert(insertPayload);
 
   if (error) {
     console.error("Error creating subscription:", error);
@@ -178,7 +189,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     action_url: "/profile/subscription",
   });
 
-  console.log(`Subscription created for user ${userId} with ${tokenLimit} token limit and 2700 credits`);
+  const creditsDesc = planType === "standard" ? `1500 tools, ${zegoHours * 100} Zego credits` : "1500 tools, 1000 Zego credits";
+  console.log(`Subscription created for user ${userId} with ${tokenLimit} token limit and ${creditsDesc}`);
 }
 
 async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
@@ -198,16 +210,26 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
   }
 
   const endDate = new Date(subscription.current_period_end * 1000);
+  const updatePayload: Record<string, unknown> = {
+    end_date: endDate.toISOString(),
+    next_billing_date: endDate.toISOString(),
+    status: subscription.status === "active" ? "active" : subscription.status === "canceled" ? "canceled" : "expired",
+    payment_method_saved: subscription.default_payment_method ? true : false,
+    updated_at: new Date().toISOString(),
+  };
+
+  const meta = subscription.metadata || {};
+  const zegoHours = Math.max(0, Math.min(100, parseInt(String(meta.zego_hours ?? 0), 10) || 0));
+  const chatBlocks = Math.max(0, Math.min(100, parseInt(String(meta.chat_blocks ?? 0), 10) || 0));
+  updatePayload.zego_hours_per_cycle = zegoHours;
+  updatePayload.chat_blocks_per_cycle = chatBlocks;
+  if (existingSubscription.subscription_tier === "standard") {
+    updatePayload.token_limit = getTokenLimitForTier("standard", chatBlocks);
+  }
 
   await supabase
     .from("subscriptions")
-    .update({
-      end_date: endDate.toISOString(),
-      next_billing_date: endDate.toISOString(),
-      status: subscription.status === "active" ? "active" : subscription.status === "canceled" ? "canceled" : "expired",
-      payment_method_saved: subscription.default_payment_method ? true : false,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq("stripe_subscription_id", subscription.id);
 
   console.log(`Subscription updated: ${subscription.id}`);
@@ -282,7 +304,8 @@ async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
 
     updateData.billing_cycle_start = cycleStart.toISOString();
     updateData.billing_cycle_end = cycleEnd.toISOString();
-    updateData.token_limit = getTokenLimitForTier(subscriptionData.subscription_tier);
+    const chatBlocksCycle = subscriptionData.chat_blocks_per_cycle ?? 0;
+    updateData.token_limit = getTokenLimitForTier(subscriptionData.subscription_tier, chatBlocksCycle);
     updateData.tokens_used_current_cycle = subscriptionData.tokens_used_current_cycle || 0;
 
     await supabase.from("notifications").insert({

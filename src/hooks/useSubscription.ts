@@ -7,7 +7,7 @@ import { ErrorLogger } from '../utils/errorLogger';
 export interface Subscription {
   id: string;
   user_id: string;
-  subscription_tier: 'trial_1day' | 'trial_7day' | 'monthly' | 'quarterly' | 'biannual' | 'none';
+  subscription_tier: 'trial_1day' | 'trial_7day' | 'monthly' | 'quarterly' | 'biannual' | 'standard' | 'none';
   status: 'active' | 'canceled' | 'expired' | 'payment_failed';
   start_date: string;
   end_date: string;
@@ -22,6 +22,10 @@ export interface Subscription {
   billing_cycle_end: string | null;
   tokens_used_current_cycle: number;
   token_limit: number;
+  /** Zego add-on hours per billing cycle (standard tier); 100 credits per hour */
+  zego_hours_per_cycle?: number;
+  /** AI chat add-on blocks per cycle (1 block = 100k tokens); 100 credits per block */
+  chat_blocks_per_cycle?: number;
   created_at: string;
   updated_at: string;
 }
@@ -330,6 +334,7 @@ export const useSubscription = () => {
       monthly: 'Monthly',
       quarterly: 'Quarterly',
       biannual: 'Biannual',
+      standard: 'Standard',
       none: 'No Subscription'
     };
 
@@ -345,6 +350,7 @@ export const useSubscription = () => {
       monthly: 'green',
       quarterly: 'cyan',
       biannual: 'yellow',
+      standard: 'blue',
       none: 'gray'
     };
 

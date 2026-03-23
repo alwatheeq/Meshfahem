@@ -64,18 +64,62 @@ export const recordFlashcardStudy = async (
   userId: string,
   flashcardCount: number,
   itemId?: string,
-  startTime?: Date
+  startTime?: Date,
+  _studyMode: string = 'flip'
 ): Promise<boolean> => {
   const start = startTime || new Date();
   const duration = startTime ? calculateStudyDuration(startTime) : 1;
 
-  return recordStudySession(userId, {
+  const sessionOk = await recordStudySession(userId, {
     sessionType: 'flashcard_study',
     relatedItemId: itemId,
     durationMinutes: duration,
     flashcardsReviewed: flashcardCount,
     startedAt: start
   });
+
+  return sessionOk;
+};
+
+/**
+ * Record fine-grained flashcard rating events for analytics.
+ */
+export const recordFlashcardRating = async (
+  userId: string,
+  params: {
+    itemId?: string;
+    flashcardIndex: number;
+    flashcardFront: string;
+    userRating: 'easy' | 'good' | 'hard';
+    studyMode: string;
+    timeSpentSeconds?: number;
+  }
+): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from('flashcard_study_log')
+      .insert({
+        user_id: userId,
+        item_id: params.itemId || null,
+        flashcard_index: params.flashcardIndex,
+        flashcard_front: params.flashcardFront,
+        user_rating: params.userRating,
+        study_mode: params.studyMode,
+        time_spent_seconds: params.timeSpentSeconds ?? 0
+      });
+
+    if (error) {
+      handleSupabaseError(error, { component: 'studyTracking', action: 'recordFlashcardRating', userId });
+      ErrorLogger.error(error, { component: 'studyTracking', action: 'recordFlashcardRating', userId });
+      return false;
+    }
+    return true;
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    handleSupabaseError(err, { component: 'studyTracking', action: 'recordFlashcardRating', userId });
+    ErrorLogger.error(err, { component: 'studyTracking', action: 'recordFlashcardRating', userId });
+    return false;
+  }
 };
 
 /**

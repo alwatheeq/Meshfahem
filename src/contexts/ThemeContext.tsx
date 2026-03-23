@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useUserPreferences } from './UserPreferencesContext';
 import { ErrorLogger } from '../utils/errorLogger';
 
-export type ColorTheme = 'pink-white' | 'blue-purple' | 'green-teal' | 'orange-amber' | 'indigo-violet';
+export type ColorTheme = 'monochrome' | 'warm-neutrals' | 'cool-neutrals' | 'sky-blue' | 'soft-minimal' | 'rose-pink';
 
 interface BackgroundColors {
   light: {
@@ -24,6 +23,13 @@ interface UIColors {
     to: string;
     accent: string;
     accentHover: string;
+    textPrimary: string;
+    textSecondary: string;
+    textMuted: string;
+    cardBg: string;
+    cardBorder: string;
+    subtleBg: string;
+    tutorialBg: string;
   };
   dark: {
     gradient: string;
@@ -31,6 +37,13 @@ interface UIColors {
     to: string;
     accent: string;
     accentHover: string;
+    textPrimary: string;
+    textSecondary: string;
+    textMuted: string;
+    cardBg: string;
+    cardBorder: string;
+    subtleBg: string;
+    tutorialBg: string;
   };
 }
 
@@ -40,153 +53,267 @@ interface ThemeColors {
 }
 
 const themeDefinitions: Record<ColorTheme, ThemeColors> = {
-  'pink-white': {
+  'monochrome': {
     background: {
       light: {
-        gradient: 'from-pink-50 to-white',
-        from: 'pink-50',
+        gradient: 'from-gray-50 to-white',
+        from: 'gray-50',
         to: 'white',
       },
       dark: {
-        gradient: 'from-pink-900 to-gray-900',
-        from: 'pink-900',
-        to: 'gray-900',
+        gradient: 'from-gray-900 to-black',
+        from: 'gray-900',
+        to: 'black',
       },
     },
     ui: {
       light: {
-        gradient: 'from-blue-500 to-purple-600',
-        from: 'blue-500',
-        to: 'purple-600',
-        accent: 'blue-600',
-        accentHover: 'blue-700',
+        gradient: 'from-gray-600 to-gray-700',
+        from: 'gray-600',
+        to: 'gray-700',
+        accent: 'gray-700',
+        accentHover: 'gray-800',
+        textPrimary: 'text-gray-900',
+        textSecondary: 'text-gray-700',
+        textMuted: 'text-gray-500',
+        cardBg: 'bg-white',
+        cardBorder: 'border-gray-200',
+        subtleBg: 'bg-gray-50',
+        tutorialBg: 'bg-gray-100',
       },
       dark: {
-        gradient: 'from-blue-400 to-purple-500',
-        from: 'blue-400',
-        to: 'purple-500',
-        accent: 'blue-400',
-        accentHover: 'blue-500',
+        gradient: 'from-gray-600 to-gray-700',
+        from: 'gray-600',
+        to: 'gray-700',
+        accent: 'gray-600',
+        accentHover: 'gray-500',
+        textPrimary: 'text-gray-100',
+        textSecondary: 'text-gray-300',
+        textMuted: 'text-gray-500',
+        cardBg: 'bg-gray-800',
+        cardBorder: 'border-gray-700',
+        subtleBg: 'bg-gray-900',
+        tutorialBg: 'bg-gray-800',
       },
     },
   },
-  'blue-purple': {
+  'warm-neutrals': {
     background: {
       light: {
-        gradient: 'from-blue-50 to-purple-50',
-        from: 'blue-50',
-        to: 'purple-50',
-      },
-      dark: {
-        gradient: 'from-blue-900 to-purple-900',
-        from: 'blue-900',
-        to: 'purple-900',
-      },
-    },
-    ui: {
-      light: {
-        gradient: 'from-indigo-500 to-violet-600',
-        from: 'indigo-500',
-        to: 'violet-600',
-        accent: 'indigo-600',
-        accentHover: 'indigo-700',
-      },
-      dark: {
-        gradient: 'from-indigo-400 to-violet-500',
-        from: 'indigo-400',
-        to: 'violet-500',
-        accent: 'indigo-400',
-        accentHover: 'indigo-500',
-      },
-    },
-  },
-  'green-teal': {
-    background: {
-      light: {
-        gradient: 'from-green-50 to-teal-50',
-        from: 'green-50',
-        to: 'teal-50',
-      },
-      dark: {
-        gradient: 'from-green-900 to-teal-900',
-        from: 'green-900',
-        to: 'teal-900',
-      },
-    },
-    ui: {
-      light: {
-        gradient: 'from-emerald-500 to-cyan-600',
-        from: 'emerald-500',
-        to: 'cyan-600',
-        accent: 'emerald-600',
-        accentHover: 'emerald-700',
-      },
-      dark: {
-        gradient: 'from-emerald-400 to-cyan-500',
-        from: 'emerald-400',
-        to: 'cyan-500',
-        accent: 'emerald-400',
-        accentHover: 'emerald-500',
-      },
-    },
-  },
-  'orange-amber': {
-    background: {
-      light: {
-        gradient: 'from-orange-50 to-amber-50',
-        from: 'orange-50',
+        gradient: 'from-stone-50 to-amber-50',
+        from: 'stone-50',
         to: 'amber-50',
       },
       dark: {
-        gradient: 'from-orange-900 to-amber-900',
-        from: 'orange-900',
+        gradient: 'from-stone-900 to-amber-900',
+        from: 'stone-900',
         to: 'amber-900',
       },
     },
     ui: {
       light: {
-        gradient: 'from-red-500 to-pink-600',
-        from: 'red-500',
-        to: 'pink-600',
-        accent: 'red-600',
-        accentHover: 'red-700',
+        gradient: 'from-amber-500 to-orange-600',
+        from: 'amber-500',
+        to: 'orange-600',
+        accent: 'amber-600',
+        accentHover: 'amber-700',
+        textPrimary: 'text-stone-900',
+        textSecondary: 'text-amber-900',
+        textMuted: 'text-amber-700',
+        cardBg: 'bg-stone-50',
+        cardBorder: 'border-amber-200',
+        subtleBg: 'bg-amber-50',
+        tutorialBg: 'bg-amber-100',
       },
       dark: {
-        gradient: 'from-red-400 to-pink-500',
-        from: 'red-400',
-        to: 'pink-500',
-        accent: 'red-400',
-        accentHover: 'red-500',
+        gradient: 'from-amber-600 to-orange-700',
+        from: 'amber-600',
+        to: 'orange-700',
+        accent: 'amber-600',
+        accentHover: 'amber-500',
+        textPrimary: 'text-stone-100',
+        textSecondary: 'text-amber-200',
+        textMuted: 'text-amber-400',
+        cardBg: 'bg-stone-800',
+        cardBorder: 'border-amber-700',
+        subtleBg: 'bg-stone-900',
+        tutorialBg: 'bg-amber-900',
       },
     },
   },
-  'indigo-violet': {
+  'cool-neutrals': {
     background: {
       light: {
-        gradient: 'from-indigo-50 to-violet-50',
-        from: 'indigo-50',
-        to: 'violet-50',
+        gradient: 'from-slate-50 to-gray-50',
+        from: 'slate-50',
+        to: 'gray-50',
       },
       dark: {
-        gradient: 'from-indigo-900 to-violet-900',
-        from: 'indigo-900',
-        to: 'violet-900',
+        gradient: 'from-slate-900 to-gray-900',
+        from: 'slate-900',
+        to: 'gray-900',
       },
     },
     ui: {
       light: {
-        gradient: 'from-blue-500 to-cyan-600',
-        from: 'blue-500',
-        to: 'cyan-600',
-        accent: 'blue-600',
-        accentHover: 'blue-700',
+        gradient: 'from-slate-500 to-slate-600',
+        from: 'slate-500',
+        to: 'slate-600',
+        accent: 'slate-600',
+        accentHover: 'slate-700',
+        textPrimary: 'text-slate-900',
+        textSecondary: 'text-slate-700',
+        textMuted: 'text-slate-500',
+        cardBg: 'bg-slate-50',
+        cardBorder: 'border-slate-200',
+        subtleBg: 'bg-gray-50',
+        tutorialBg: 'bg-slate-100',
       },
       dark: {
-        gradient: 'from-blue-400 to-cyan-500',
-        from: 'blue-400',
-        to: 'cyan-500',
-        accent: 'blue-400',
-        accentHover: 'blue-500',
+        gradient: 'from-slate-600 to-slate-700',
+        from: 'slate-600',
+        to: 'slate-700',
+        accent: 'slate-600',
+        accentHover: 'slate-500',
+        textPrimary: 'text-slate-100',
+        textSecondary: 'text-slate-300',
+        textMuted: 'text-slate-500',
+        cardBg: 'bg-slate-800',
+        cardBorder: 'border-slate-700',
+        subtleBg: 'bg-slate-900',
+        tutorialBg: 'bg-gray-900',
+      },
+    },
+  },
+  'sky-blue': {
+    background: {
+      light: {
+        gradient: 'from-sky-50 to-blue-50',
+        from: 'sky-50',
+        to: 'blue-50',
+      },
+      dark: {
+        gradient: 'from-sky-900 to-blue-900',
+        from: 'sky-900',
+        to: 'blue-900',
+      },
+    },
+    ui: {
+      light: {
+        gradient: 'from-sky-500 to-blue-600',
+        from: 'sky-500',
+        to: 'blue-600',
+        accent: 'sky-600',
+        accentHover: 'sky-700',
+        textPrimary: 'text-sky-900',
+        textSecondary: 'text-blue-800',
+        textMuted: 'text-blue-600',
+        cardBg: 'bg-sky-50',
+        cardBorder: 'border-blue-200',
+        subtleBg: 'bg-blue-50',
+        tutorialBg: 'bg-cyan-100',
+      },
+      dark: {
+        gradient: 'from-sky-600 to-blue-700',
+        from: 'sky-600',
+        to: 'blue-700',
+        accent: 'sky-600',
+        accentHover: 'sky-500',
+        textPrimary: 'text-sky-100',
+        textSecondary: 'text-blue-200',
+        textMuted: 'text-blue-400',
+        cardBg: 'bg-sky-800',
+        cardBorder: 'border-blue-700',
+        subtleBg: 'bg-sky-900',
+        tutorialBg: 'bg-cyan-900',
+      },
+    },
+  },
+  'rose-pink': {
+    background: {
+      light: {
+        gradient: 'from-rose-50 to-pink-50',
+        from: 'rose-50',
+        to: 'pink-50',
+      },
+      dark: {
+        gradient: 'from-rose-950 to-pink-950',
+        from: 'rose-950',
+        to: 'pink-950',
+      },
+    },
+    ui: {
+      light: {
+        gradient: 'from-rose-500 to-pink-600',
+        from: 'rose-500',
+        to: 'pink-600',
+        accent: 'rose-600',
+        accentHover: 'rose-700',
+        textPrimary: 'text-rose-950',
+        textSecondary: 'text-rose-800',
+        textMuted: 'text-rose-600',
+        cardBg: 'bg-white',
+        cardBorder: 'border-rose-200',
+        subtleBg: 'bg-rose-50',
+        tutorialBg: 'bg-pink-100',
+      },
+      dark: {
+        gradient: 'from-rose-600 to-pink-700',
+        from: 'rose-600',
+        to: 'pink-700',
+        accent: 'rose-600',
+        accentHover: 'rose-500',
+        textPrimary: 'text-rose-50',
+        textSecondary: 'text-rose-200',
+        textMuted: 'text-rose-400',
+        cardBg: 'bg-rose-900',
+        cardBorder: 'border-rose-800',
+        subtleBg: 'bg-rose-950',
+        tutorialBg: 'bg-pink-900',
+      },
+    },
+  },
+  'soft-minimal': {
+    background: {
+      light: {
+        gradient: 'from-gray-50 to-white',
+        from: 'gray-50',
+        to: 'white',
+      },
+      dark: {
+        gradient: 'from-gray-800 to-gray-900',
+        from: 'gray-800',
+        to: 'gray-900',
+      },
+    },
+    ui: {
+      light: {
+        gradient: 'from-gray-500 to-gray-600',
+        from: 'gray-500',
+        to: 'gray-600',
+        accent: 'gray-600',
+        accentHover: 'gray-700',
+        textPrimary: 'text-gray-900',
+        textSecondary: 'text-gray-700',
+        textMuted: 'text-gray-500',
+        cardBg: 'bg-white',
+        cardBorder: 'border-gray-200',
+        subtleBg: 'bg-gray-50',
+        tutorialBg: 'bg-gray-100',
+      },
+      dark: {
+        gradient: 'from-gray-600 to-gray-700',
+        from: 'gray-600',
+        to: 'gray-700',
+        accent: 'gray-600',
+        accentHover: 'gray-500',
+        textPrimary: 'text-gray-100',
+        textSecondary: 'text-gray-300',
+        textMuted: 'text-gray-500',
+        cardBg: 'bg-gray-800',
+        cardBorder: 'border-gray-700',
+        subtleBg: 'bg-gray-900',
+        tutorialBg: 'bg-gray-800',
       },
     },
   },
@@ -195,7 +322,7 @@ const themeDefinitions: Record<ColorTheme, ThemeColors> = {
 interface ThemeContextType {
   currentTheme: ColorTheme;
   themeColors: ThemeColors;
-  setTheme: (theme: ColorTheme) => Promise<void>;
+  setTheme: (theme: ColorTheme, updateDatabase?: () => Promise<void>) => Promise<void>;
   getThemeGradient: (type?: 'bg' | 'ui' | 'card') => string;
   getUIGradient: () => string;
   getBackgroundGradient: () => string;
@@ -204,13 +331,28 @@ interface ThemeContextType {
   getThemeBorder: () => string;
   getThemeText: () => string;
   getThemeFocusRing: () => string;
+  getThemeSolid: (type?: 'bg' | 'ui' | 'card') => string;
+  getThemeSubtle: (type?: 'bg' | 'ui' | 'card') => string;
+  getThemeTextPrimary: () => string;
+  getThemeTextSecondary: () => string;
+  getThemeTextMuted: () => string;
+  getThemeCardBg: () => string;
+  getThemeCardBorder: () => string;
 }
 
-const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+export const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+
+const THEME_STORAGE_KEY = 'meshfahem_color_theme';
 
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { preferences, updateColorTheme } = useUserPreferences();
-  const [currentTheme, setCurrentTheme] = useState<ColorTheme>('blue-purple');
+  // Initialize theme from localStorage
+  const [currentTheme, setCurrentTheme] = useState<ColorTheme>(() => {
+    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+    if (savedTheme && ['monochrome', 'warm-neutrals', 'cool-neutrals', 'sky-blue', 'soft-minimal', 'rose-pink'].includes(savedTheme)) {
+      return savedTheme as ColorTheme;
+    }
+    return 'soft-minimal';
+  });
   const [isDark, setIsDark] = useState<boolean>(() => {
     // Check localStorage first
     const savedTheme = localStorage.getItem('meshfahem_theme');
@@ -229,17 +371,6 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return false;
   });
 
-  // Initialize theme from preferences
-  useEffect(() => {
-    if (preferences?.color_theme) {
-      setCurrentTheme(preferences.color_theme as ColorTheme);
-      ErrorLogger.debug('Theme initialized from preferences', { 
-        component: 'ThemeContext', 
-        action: 'init',
-        theme: preferences.color_theme 
-      });
-    }
-  }, [preferences]);
 
   // Listen for theme changes from I18nContext if available
   useEffect(() => {
@@ -298,68 +429,106 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
   }, [currentTheme, isDark, activeBackground, activeUI]);
 
-  const setTheme = async (theme: ColorTheme) => {
-    const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
-    const lastChangeKey = 'theme_last_change';
-    const lastChange = localStorage.getItem(lastChangeKey);
+  const setTheme = async (theme: ColorTheme, updateDatabase?: () => Promise<void>) => {
+    ErrorLogger.debug('Setting theme', { component: 'ThemeContext', action: 'setTheme', theme });
     
-    // Check cooldown
-    if (lastChange) {
-      const timeSinceLastChange = Date.now() - parseInt(lastChange, 10);
-      if (timeSinceLastChange < COOLDOWN_MS) {
-        const remainingSeconds = Math.ceil((COOLDOWN_MS - timeSinceLastChange) / 1000);
-        const remainingMinutes = Math.floor(remainingSeconds / 60);
-        const remainingSecs = remainingSeconds % 60;
-        const errorMessage = remainingMinutes > 0 
-          ? `Please wait ${remainingMinutes} minute${remainingMinutes > 1 ? 's' : ''} and ${remainingSecs} second${remainingSecs !== 1 ? 's' : ''} before changing themes again`
-          : `Please wait ${remainingSeconds} second${remainingSeconds !== 1 ? 's' : ''} before changing themes again`;
-        const error = new Error(errorMessage);
-        ErrorLogger.warn('Theme change cooldown active', { 
+    // Update local state and localStorage immediately
+    setCurrentTheme(theme);
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+    
+    // Optionally update database if callback provided
+    if (updateDatabase) {
+      try {
+        await updateDatabase();
+      } catch (error) {
+        ErrorLogger.warn('Failed to update theme in database, but localStorage updated', { 
           component: 'ThemeContext', 
-          action: 'setTheme',
+          action: 'setTheme', 
           theme,
-          remainingSeconds,
-          remainingMinutes
+          error: error instanceof Error ? error.message : String(error)
         });
-        throw error;
+        // Don't throw - localStorage update is sufficient
       }
     }
     
-    try {
-      ErrorLogger.debug('Setting theme', { component: 'ThemeContext', action: 'setTheme', theme });
-      
-      // Update timestamp before theme change
-      localStorage.setItem(lastChangeKey, Date.now().toString());
-      
-      setCurrentTheme(theme);
-      await updateColorTheme(theme);
-      ErrorLogger.info('Theme updated successfully', { component: 'ThemeContext', action: 'setTheme', theme });
-    } catch (error) {
-      // If it's a cooldown error, re-throw it
-      if (error instanceof Error && error.message.includes('Please wait')) {
-        throw error;
-      }
-      
-      ErrorLogger.error(error instanceof Error ? error : new Error(String(error)), { 
-        component: 'ThemeContext', 
-        action: 'setTheme',
-        theme
-      });
-      // Revert on error (but not for cooldown errors)
-      if (preferences?.color_theme) {
-        setCurrentTheme(preferences.color_theme as ColorTheme);
-      }
-      throw error;
-    }
+    ErrorLogger.info('Theme updated successfully', { component: 'ThemeContext', action: 'setTheme', theme });
   };
 
   const getThemeGradient = (type: 'bg' | 'ui' | 'card' = 'bg'): string => {
+    // For backward compatibility, but now returns solid colors
+    return getThemeSolid(type);
+  };
+
+  const getThemeSolid = (type: 'bg' | 'ui' | 'card' = 'bg'): string => {
     if (type === 'bg') {
-      return `bg-gradient-to-br ${activeBackground.gradient}`;
+      // Return theme-specific background color
+      const bgColor = isDark ? activeBackground.from : activeBackground.to;
+      // Map color names to Tailwind classes
+      const bgClassMap: Record<string, string> = {
+        'gray-50': 'bg-gray-50',
+        'white': 'bg-white',
+        'gray-900': 'bg-gray-900',
+        'black': 'bg-black',
+        'stone-50': 'bg-stone-50',
+        'amber-50': 'bg-amber-50',
+        'stone-900': 'bg-stone-900',
+        'amber-900': 'bg-amber-900',
+        'slate-50': 'bg-slate-50',
+        'slate-900': 'bg-slate-900',
+        'sky-50': 'bg-sky-50',
+        'blue-50': 'bg-blue-50',
+        'sky-900': 'bg-sky-900',
+        'blue-900': 'bg-blue-900',
+        'gray-800': 'bg-gray-800',
+        'rose-50': 'bg-rose-50',
+        'pink-50': 'bg-pink-50',
+        'rose-950': 'bg-rose-950',
+        'pink-950': 'bg-pink-950',
+        'rose-900': 'bg-rose-900',
+      };
+      return bgClassMap[bgColor] || `bg-${bgColor}`;
     } else if (type === 'ui') {
-      return `bg-gradient-to-r ${activeUI.gradient}`;
+      // Return theme-specific UI accent color
+      const accentClassMap: Record<string, string> = {
+        'gray-700': 'bg-gray-700',
+        'gray-300': 'bg-gray-300',
+        'amber-600': 'bg-amber-600',
+        'amber-400': 'bg-amber-400',
+        'slate-600': 'bg-slate-600',
+        'slate-400': 'bg-slate-400',
+        'sky-600': 'bg-sky-600',
+        'sky-400': 'bg-sky-400',
+        'gray-600': 'bg-gray-600',
+        'gray-400': 'bg-gray-400',
+        'rose-600': 'bg-rose-600',
+        'rose-400': 'bg-rose-400',
+        'rose-700': 'bg-rose-700',
+      };
+      return accentClassMap[activeUI.accent] || `bg-${activeUI.accent}`;
     } else {
-      return 'bg-white dark:bg-gray-800';
+      // Return theme-specific card background color
+      return activeUI.cardBg;
+    }
+  };
+
+  const getThemeSubtle = (type: 'bg' | 'ui' | 'card' = 'bg'): string => {
+    if (type === 'bg') {
+      // Return theme-specific subtle background color
+      return activeUI.subtleBg;
+    } else if (type === 'ui') {
+      // Return theme-specific subtle UI color (lighter version of accent)
+      const subtleUIMap: Record<ColorTheme, { light: string; dark: string }> = {
+        'monochrome': { light: 'bg-gray-100', dark: 'bg-gray-700' },
+        'warm-neutrals': { light: 'bg-amber-100', dark: 'bg-amber-800' },
+        'cool-neutrals': { light: 'bg-slate-100', dark: 'bg-slate-700' },
+        'sky-blue': { light: 'bg-blue-100', dark: 'bg-blue-800' },
+        'soft-minimal': { light: 'bg-gray-100', dark: 'bg-gray-700' },
+        'rose-pink': { light: 'bg-rose-100', dark: 'bg-rose-800' },
+      };
+      return isDark ? subtleUIMap[currentTheme].dark : subtleUIMap[currentTheme].light;
+    } else {
+      // Return theme-specific card subtle color
+      return activeUI.cardBg;
     }
   };
 
@@ -380,45 +549,39 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const getThemeBorder = (): string => {
-    // Map theme accents to border colors
-    const borderMap: Record<ColorTheme, { light: string; dark: string }> = {
-      'blue-purple': { light: 'border-indigo-600', dark: 'border-indigo-400' },
-      'pink-white': { light: 'border-rose-600', dark: 'border-rose-400' },
-      'green-teal': { light: 'border-emerald-600', dark: 'border-emerald-400' },
-      'orange-amber': { light: 'border-amber-600', dark: 'border-amber-400' },
-      'indigo-violet': { light: 'border-violet-600', dark: 'border-violet-400' },
-    };
-    
-    const borderColors = borderMap[currentTheme];
-    return isDark ? borderColors.dark : borderColors.light;
+    // Use theme-specific card border color
+    return activeUI.cardBorder;
   };
 
   const getThemeText = (): string => {
-    // Map theme accents to text colors (same as border for consistency)
-    const textMap: Record<ColorTheme, { light: string; dark: string }> = {
-      'blue-purple': { light: 'text-indigo-600', dark: 'text-indigo-400' },
-      'pink-white': { light: 'text-rose-600', dark: 'text-rose-400' },
-      'green-teal': { light: 'text-emerald-600', dark: 'text-emerald-400' },
-      'orange-amber': { light: 'text-amber-600', dark: 'text-amber-400' },
-      'indigo-violet': { light: 'text-violet-600', dark: 'text-violet-400' },
-    };
-    
-    const textColors = textMap[currentTheme];
-    return isDark ? textColors.dark : textColors.light;
+    // Use theme-specific primary text color
+    return activeUI.textPrimary;
   };
 
   const getThemeFocusRing = (): string => {
-    // Map theme accents to focus ring colors (slightly lighter than borders for visibility)
-    const focusMap: Record<ColorTheme, { light: string; dark: string }> = {
-      'blue-purple': { light: 'focus:ring-indigo-500', dark: 'focus:ring-indigo-400' },
-      'pink-white': { light: 'focus:ring-rose-500', dark: 'focus:ring-rose-400' },
-      'green-teal': { light: 'focus:ring-emerald-500', dark: 'focus:ring-emerald-400' },
-      'orange-amber': { light: 'focus:ring-amber-500', dark: 'focus:ring-amber-400' },
-      'indigo-violet': { light: 'focus:ring-violet-500', dark: 'focus:ring-violet-400' },
-    };
-    
-    const focusColors = focusMap[currentTheme];
-    return isDark ? focusColors.dark : focusColors.light;
+    // Use theme-specific accent color for focus ring (slightly lighter for visibility)
+    const focusColor = isDark ? activeUI.accentHover : activeUI.accent;
+    return `focus:ring-${focusColor}`;
+  };
+
+  const getThemeTextPrimary = (): string => {
+    return activeUI.textPrimary;
+  };
+
+  const getThemeTextSecondary = (): string => {
+    return activeUI.textSecondary;
+  };
+
+  const getThemeTextMuted = (): string => {
+    return activeUI.textMuted;
+  };
+
+  const getThemeCardBg = (): string => {
+    return activeUI.cardBg;
+  };
+
+  const getThemeCardBorder = (): string => {
+    return activeUI.cardBorder;
   };
 
   return (
@@ -435,6 +598,13 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         getThemeBorder,
         getThemeText,
         getThemeFocusRing,
+        getThemeSolid,
+        getThemeSubtle,
+        getThemeTextPrimary,
+        getThemeTextSecondary,
+        getThemeTextMuted,
+        getThemeCardBg,
+        getThemeCardBorder,
       }}
     >
       {children}
@@ -473,11 +643,12 @@ export const getThemeGradientClasses = (
 // Helper function to get theme name for display
 export const getThemeDisplayName = (theme: ColorTheme): string => {
   const names: Record<ColorTheme, string> = {
-    'pink-white': 'Pink & White',
-    'blue-purple': 'Blue & Purple',
-    'green-teal': 'Green & Teal',
-    'orange-amber': 'Orange & Amber',
-    'indigo-violet': 'Indigo & Violet',
+    'monochrome': 'Monochrome',
+    'warm-neutrals': 'Warm Neutrals',
+    'cool-neutrals': 'Cool Neutrals',
+    'sky-blue': 'Sky Blue',
+    'soft-minimal': 'Soft Minimal',
+    'rose-pink': 'Rose Pink',
   };
   return names[theme];
 };

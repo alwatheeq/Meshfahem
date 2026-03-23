@@ -6,6 +6,7 @@ export const SUBSCRIPTION_TIERS = {
   MONTHLY: 'monthly',
   QUARTERLY: 'quarterly',
   BIANNUAL: 'biannual',
+  STANDARD: 'standard',
   NONE: 'none'
 } as const;
 
@@ -19,7 +20,13 @@ export const SUBSCRIPTION_STATUS = {
 export const PRICING = {
   monthly: 29.99,
   quarterly: 79.99,
-  biannual: 149.99
+  biannual: 149.99,
+  /** Standard plan base price (USD) per month */
+  standard: 3.2,
+  /** Zegocloud add-on: USD per hour */
+  zegoPerHour: 0.1,
+  /** AI chat add-on: USD per 100k tokens (one block) */
+  chatPer100kTokens: 0.1,
 };
 
 export const TOKEN_LIMITS = {
@@ -28,6 +35,7 @@ export const TOKEN_LIMITS = {
   monthly: 520000,
   quarterly: 520000,
   biannual: 520000,
+  standard: 520000,
   none: 0
 } as const;
 
@@ -62,6 +70,12 @@ export const getTierDisplayInfo = (tier: string) => {
       color: 'text-yellow-700 dark:text-yellow-300',
       bgColor: 'bg-yellow-100 dark:bg-yellow-900',
       description: '520K tokens per 30-day cycle'
+    },
+    standard: {
+      name: 'Standard',
+      color: 'text-sky-700 dark:text-sky-300',
+      bgColor: 'bg-sky-100 dark:bg-sky-900',
+      description: '1500 credits + optional add-ons'
     },
     none: {
       name: 'No Subscription',
@@ -124,6 +138,7 @@ export const calculateSubscriptionEndDate = (tier: string, startDate: Date = new
 
   switch (tier) {
     case SUBSCRIPTION_TIERS.MONTHLY:
+    case SUBSCRIPTION_TIERS.STANDARD:
       return new Date(start.setMonth(start.getMonth() + 1));
     case SUBSCRIPTION_TIERS.QUARTERLY:
       return new Date(start.setMonth(start.getMonth() + 3));

@@ -4,12 +4,13 @@ import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Loader2, AlertCircle } from 'lucide-react';
-import { PRICING, formatCurrency, isStripeEnabled, getCheckoutMode } from '../../utils/subscriptionHelpers';
+import { PRICING, formatCurrency, getCheckoutMode } from '../../utils/subscriptionHelpers';
 import { ErrorLogger } from '../../utils/errorLogger';
 
 export const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { getThemeGradient } = useTheme();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,6 +18,8 @@ export const CheckoutPage: React.FC = () => {
 
   const plan = searchParams.get('plan');
   const promoCode = searchParams.get('promo');
+  const zegoHours = Math.max(0, Math.min(100, parseInt(searchParams.get('zego_hours') ?? '0', 10) || 0));
+  const chatBlocks = Math.max(0, Math.min(100, parseInt(searchParams.get('chat_blocks') ?? '0', 10) || 0));
 
   useEffect(() => {
     if (!user) {
@@ -24,7 +27,8 @@ export const CheckoutPage: React.FC = () => {
       return;
     }
 
-    if (!plan || !['monthly', 'quarterly', 'biannual', 'trial'].includes(plan)) {
+    const validPlans = ['monthly', 'quarterly', 'biannual', 'trial', 'standard'];
+    if (!plan || !validPlans.includes(plan)) {
       navigate('/pricing');
       return;
     }
@@ -52,10 +56,19 @@ export const CheckoutPage: React.FC = () => {
     setError(null);
 
     try {
-      ErrorLogger.debug('Starting trial activation', { component: 'CheckoutPage', action: 'handleTrialActivation', userId: user.id, userEmail: user.email });
+      ErrorLogger.debug('Starting trial activation', { 
+        component: 'CheckoutPage', 
+        action: 'handleTrialActivation', 
+        userId: user.id,
+        metadata: { userEmail: user.email } 
+      });
       const endDate = new Date();
       endDate.setDate(endDate.getDate() + 1);
-      ErrorLogger.debug('Trial end date calculated', { component: 'CheckoutPage', action: 'handleTrialActivation', trialEndDate: endDate.toISOString() });
+      ErrorLogger.debug('Trial end date calculated', { 
+        component: 'CheckoutPage', 
+        action: 'handleTrialActivation', 
+        metadata: { trialEndDate: endDate.toISOString() } 
+      });
 
       // First, check if user already has an active subscription
       const { data: existingSubscriptions, error: checkError } = await supabase
@@ -65,9 +78,18 @@ export const CheckoutPage: React.FC = () => {
         .eq('status', 'active');
 
       if (checkError) {
-        ErrorLogger.warn('Error checking existing subscriptions', { component: 'CheckoutPage', action: 'handleTrialActivation', step: 'checkExisting', checkError });
+        const error = checkError instanceof Error ? checkError : new Error(String(checkError));
+        ErrorLogger.warn('Error checking existing subscriptions', { 
+          component: 'CheckoutPage', 
+          action: 'handleTrialActivation', 
+          metadata: { step: 'checkExisting', error: error.message } 
+        });
       } else if (existingSubscriptions && existingSubscriptions.length > 0) {
-        ErrorLogger.debug('User already has active subscription(s)', { component: 'CheckoutPage', action: 'handleTrialActivation', step: 'checkExisting', subscriptionCount: existingSubscriptions.length });
+        ErrorLogger.debug('User already has active subscription(s)', { 
+          component: 'CheckoutPage', 
+          action: 'handleTrialActivation', 
+          metadata: { step: 'checkExisting', subscriptionCount: existingSubscriptions.length } 
+        });
 
         // Cancel existing subscriptions
         const { error: cancelError } = await supabase
@@ -82,14 +104,26 @@ export const CheckoutPage: React.FC = () => {
 
         if (cancelError) {
           const error = cancelError instanceof Error ? cancelError : new Error(String(cancelError));
-          ErrorLogger.error(error, { component: 'CheckoutPage', action: 'handleTrialActivation', step: 'cancelExistingSubscriptions' });
+          ErrorLogger.error(error, { 
+            component: 'CheckoutPage', 
+            action: 'handleTrialActivation', 
+            metadata: { step: 'cancelExistingSubscriptions' } 
+          });
         } else {
-          ErrorLogger.info('Successfully canceled existing subscriptions', { component: 'CheckoutPage', action: 'handleTrialActivation', step: 'cancelExisting' });
+          ErrorLogger.info('Successfully canceled existing subscriptions', { 
+            component: 'CheckoutPage', 
+            action: 'handleTrialActivation', 
+            metadata: { step: 'cancelExisting' } 
+          });
         }
       }
 
       // Try using the safe database function first
-      ErrorLogger.debug('Attempting to use safe_create_subscription function', { component: 'CheckoutPage', action: 'handleTrialActivation', step: 'createSubscription' });
+      ErrorLogger.debug('Attempting to use safe_create_subscription function', { 
+        component: 'CheckoutPage', 
+        action: 'handleTrialActivation', 
+        metadata: { step: 'createSubscription' } 
+      });
 
       const { data: functionData, error: functionError } = await supabase.rpc(
         'safe_create_subscription',
@@ -102,7 +136,12 @@ export const CheckoutPage: React.FC = () => {
       );
 
       if (functionError) {
-        ErrorLogger.warn('Function method failed, falling back to direct insert', { component: 'CheckoutPage', action: 'handleTrialActivation', step: 'createSubscription', functionError });
+        const error = functionError instanceof Error ? functionError : new Error(String(functionError));
+        ErrorLogger.warn('Function method failed, falling back to direct insert', { 
+          component: 'CheckoutPage', 
+          action: 'handleTrialActivation', 
+          metadata: { step: 'createSubscription', error: error.message } 
+        });
 
         // Fallback to direct insert
         const subscriptionData = {
@@ -116,7 +155,11 @@ export const CheckoutPage: React.FC = () => {
           payment_method_saved: false
         };
 
-        ErrorLogger.debug('Inserting subscription directly', { component: 'CheckoutPage', action: 'handleTrialActivation', step: 'directInsert', subscriptionTier: subscriptionData.subscription_tier });
+        ErrorLogger.debug('Inserting subscription directly', { 
+          component: 'CheckoutPage', 
+          action: 'handleTrialActivation', 
+          metadata: { step: 'directInsert', subscriptionTier: subscriptionData.subscription_tier } 
+        });
 
         const { data: insertedData, error: insertError } = await supabase
           .from('subscriptions')
@@ -126,7 +169,11 @@ export const CheckoutPage: React.FC = () => {
 
         if (insertError) {
           const error = insertError instanceof Error ? insertError : new Error(String(insertError));
-          ErrorLogger.error(error, { component: 'CheckoutPage', action: 'handleTrialActivation', step: 'directInsert', errorDetails: insertError });
+          ErrorLogger.error(error, { 
+            component: 'CheckoutPage', 
+            action: 'handleTrialActivation', 
+            metadata: { step: 'directInsert', errorDetails: insertError.message } 
+          });
 
           // Provide more specific error message
           let userFriendlyError = 'Failed to activate trial. ';
@@ -141,13 +188,25 @@ export const CheckoutPage: React.FC = () => {
           throw new Error(userFriendlyError);
         }
 
-        ErrorLogger.info('Successfully created subscription', { component: 'CheckoutPage', action: 'handleTrialActivation', step: 'directInsert', subscriptionId: insertedData?.id });
+        ErrorLogger.info('Successfully created subscription', { 
+          component: 'CheckoutPage', 
+          action: 'handleTrialActivation', 
+          metadata: { step: 'directInsert', subscriptionId: insertedData?.id } 
+        });
       } else {
-        ErrorLogger.info('Successfully created subscription via function', { component: 'CheckoutPage', action: 'handleTrialActivation', step: 'createSubscription', subscriptionId: functionData?.id });
+        ErrorLogger.info('Successfully created subscription via function', { 
+          component: 'CheckoutPage', 
+          action: 'handleTrialActivation', 
+          metadata: { step: 'createSubscription', subscriptionId: functionData?.id } 
+        });
       }
 
       // Wait for credit initialization and verify
-      ErrorLogger.debug('Waiting for credit initialization', { component: 'CheckoutPage', action: 'handleTrialActivation', step: 'verifyCredits' });
+      ErrorLogger.debug('Waiting for credit initialization', { 
+        component: 'CheckoutPage', 
+        action: 'handleTrialActivation', 
+        metadata: { step: 'verifyCredits' } 
+      });
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Verify credits were initialized
@@ -159,11 +218,23 @@ export const CheckoutPage: React.FC = () => {
 
       if (profileError) {
         const error = profileError instanceof Error ? profileError : new Error(String(profileError));
-        ErrorLogger.error(error, { component: 'CheckoutPage', action: 'handleTrialActivation', step: 'verifyCredits' });
+        ErrorLogger.error(error, { 
+          component: 'CheckoutPage', 
+          action: 'handleTrialActivation', 
+          metadata: { step: 'verifyCredits' } 
+        });
       } else if (profile && profile.credits_remaining > 0) {
-        ErrorLogger.info('Credits verified', { component: 'CheckoutPage', action: 'handleTrialActivation', step: 'verifyCredits', creditsRemaining: profile.credits_remaining });
+        ErrorLogger.info('Credits verified', { 
+          component: 'CheckoutPage', 
+          action: 'handleTrialActivation', 
+          metadata: { step: 'verifyCredits', creditsRemaining: profile.credits_remaining } 
+        });
       } else {
-        ErrorLogger.warn('Credits not initialized, attempting manual initialization', { component: 'CheckoutPage', action: 'handleTrialActivation', step: 'verifyCredits' });
+        ErrorLogger.warn('Credits not initialized, attempting manual initialization', { 
+          component: 'CheckoutPage', 
+          action: 'handleTrialActivation', 
+          metadata: { step: 'verifyCredits' } 
+        });
 
         // Manual fallback - call credit initialization directly
         const { data: initResult, error: initError } = await supabase.rpc(
@@ -176,16 +247,28 @@ export const CheckoutPage: React.FC = () => {
 
         if (initError) {
           const error = initError instanceof Error ? initError : new Error(String(initError));
-          ErrorLogger.error(error, { component: 'CheckoutPage', action: 'handleTrialActivation', step: 'manualCreditInit' });
+          ErrorLogger.error(error, { 
+            component: 'CheckoutPage', 
+            action: 'handleTrialActivation', 
+            metadata: { step: 'manualCreditInit' } 
+          });
         } else {
-          ErrorLogger.info('Manual credit init result', { component: 'CheckoutPage', action: 'handleTrialActivation', step: 'manualCreditInit', initResult });
+          ErrorLogger.info('Manual credit init result', { 
+            component: 'CheckoutPage', 
+            action: 'handleTrialActivation', 
+            metadata: { step: 'manualCreditInit', initResult } 
+          });
         }
       }
 
       navigate('/payment/success?trial=true');
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      ErrorLogger.error(error, { component: 'CheckoutPage', action: 'handleTrialActivation', plan });
+      ErrorLogger.error(error, { 
+        component: 'CheckoutPage', 
+        action: 'handleTrialActivation', 
+        metadata: { plan } 
+      });
       const errorMessage = err instanceof Error ? err.message : 'Failed to activate trial. Please contact support.';
       setError(errorMessage);
       setLoading(false);
@@ -200,15 +283,20 @@ export const CheckoutPage: React.FC = () => {
 
     try {
       const mode = getCheckoutMode();
-      ErrorLogger.debug('Starting checkout', { component: 'CheckoutPage', action: 'initiateCheckout', mode, plan });
+      ErrorLogger.debug('Starting checkout', { 
+        component: 'CheckoutPage', 
+        action: 'initiateCheckout', 
+        metadata: { mode, plan } 
+      });
 
       if (mode === 'free') {
         // FREE TIER MODE - Directly create subscription without payment processing
-        const tierMap: Record<string, 'trial_1day' | 'trial_7day' | 'monthly' | 'quarterly' | 'biannual'> = {
+        const tierMap: Record<string, 'trial_1day' | 'trial_7day' | 'monthly' | 'quarterly' | 'biannual' | 'standard'> = {
           trial: 'trial_1day',
           monthly: 'monthly',
           quarterly: 'quarterly',
-          biannual: 'biannual'
+          biannual: 'biannual',
+          standard: 'standard',
         };
 
         // Set subscription end date to 1 year from now for all paid tiers
@@ -219,21 +307,35 @@ export const CheckoutPage: React.FC = () => {
           endDate.setFullYear(endDate.getFullYear() + 1);
         }
 
-        ErrorLogger.debug('Free mode - Using safe subscription creation', { component: 'CheckoutPage', action: 'initiateCheckout', step: 'freeMode', plan });
+        ErrorLogger.debug('Free mode - Using safe subscription creation', { 
+          component: 'CheckoutPage', 
+          action: 'initiateCheckout', 
+          metadata: { step: 'freeMode', plan } 
+        });
 
         // Try using the safe database function first
+        const rpcParams: Record<string, unknown> = {
+          p_user_id: user.id,
+          p_subscription_tier: tierMap[plan],
+          p_end_date: endDate.toISOString(),
+          p_trial_end_date: plan === 'trial' ? endDate.toISOString() : null,
+        };
+        if (plan === 'standard') {
+          rpcParams.p_zego_hours = zegoHours;
+          rpcParams.p_chat_blocks = chatBlocks;
+        }
         const { data: functionData, error: functionError } = await supabase.rpc(
           'safe_create_subscription',
-          {
-            p_user_id: user.id,
-            p_subscription_tier: tierMap[plan],
-            p_end_date: endDate.toISOString(),
-            p_trial_end_date: plan === 'trial' ? endDate.toISOString() : null
-          }
+          rpcParams
         );
 
         if (functionError) {
-          ErrorLogger.warn('Function method failed, falling back to direct insert', { component: 'CheckoutPage', action: 'initiateCheckout', step: 'createSubscription', functionError });
+          const error = functionError instanceof Error ? functionError : new Error(String(functionError));
+          ErrorLogger.warn('Function method failed, falling back to direct insert', { 
+            component: 'CheckoutPage', 
+            action: 'initiateCheckout', 
+            metadata: { step: 'createSubscription', error: error.message } 
+          });
 
           // Fallback: cancel existing subscriptions first
           const { error: updateError } = await supabase
@@ -247,10 +349,15 @@ export const CheckoutPage: React.FC = () => {
             .eq('status', 'active');
 
           if (updateError) {
-            ErrorLogger.warn('Error canceling existing subscriptions', { component: 'CheckoutPage', action: 'handleTrialActivation', step: 'cancelExisting', updateError });
+            const error = updateError instanceof Error ? updateError : new Error(String(updateError));
+            ErrorLogger.warn('Error canceling existing subscriptions', { 
+              component: 'CheckoutPage', 
+              action: 'handleTrialActivation', 
+              metadata: { step: 'cancelExisting', error: error.message } 
+            });
           }
 
-          const subscriptionData = {
+          const subscriptionData: Record<string, unknown> = {
             user_id: user.id,
             subscription_tier: tierMap[plan],
             status: 'active',
@@ -258,23 +365,55 @@ export const CheckoutPage: React.FC = () => {
             end_date: endDate.toISOString(),
             trial_end_date: plan === 'trial' ? endDate.toISOString() : null,
             auto_renew: false,
-            payment_method_saved: false
+            payment_method_saved: false,
+            billing_cycle_start: new Date().toISOString(),
+            billing_cycle_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            token_limit: plan === 'standard'
+              ? 520000 + Math.max(0, chatBlocks) * 100000
+              : (tierMap[plan] === 'trial_1day' ? 10000 : tierMap[plan] === 'trial_7day' ? 121000 : 520000),
+            tokens_used_current_cycle: 0,
+            zego_hours_per_cycle: plan === 'standard' ? zegoHours : 0,
+            chat_blocks_per_cycle: plan === 'standard' ? chatBlocks : 0,
           };
 
-          ErrorLogger.debug('Creating subscription', { component: 'CheckoutPage', action: 'initiateCheckout', step: 'directInsert', subscriptionTier: subscriptionData.subscription_tier });
+          ErrorLogger.debug('Creating subscription', { 
+            component: 'CheckoutPage', 
+            action: 'initiateCheckout', 
+            metadata: { step: 'directInsert', subscriptionTier: subscriptionData.subscription_tier } 
+          });
 
           // Create new subscription
-          const { data: insertedData, error: insertError } = await supabase
+          let insertPayload = subscriptionData;
+          let { data: insertedData, error: insertError } = await supabase
             .from('subscriptions')
-            .insert(subscriptionData)
+            .insert(insertPayload)
             .select()
             .single();
 
+          if (insertError && (insertError.message.includes('chat_blocks_per_cycle') || insertError.message.includes('schema cache') || insertError.message.includes('zego_hours_per_cycle'))) {
+            ErrorLogger.warn('Insert failed (add-on columns may be missing), retrying without add-on columns', {
+              component: 'CheckoutPage',
+              action: 'handleCheckout',
+              metadata: { step: 'insertRetryWithoutAddons' },
+            });
+            const { zego_hours_per_cycle: _z, chat_blocks_per_cycle: _c, ...minimalData } = subscriptionData as Record<string, unknown>;
+            insertPayload = {
+              ...minimalData,
+              token_limit: plan === 'standard' ? 520000 : (tierMap[plan] === 'trial_1day' ? 10000 : tierMap[plan] === 'trial_7day' ? 121000 : 520000),
+            };
+            const retry = await supabase.from('subscriptions').insert(insertPayload).select().single();
+            insertedData = retry.data;
+            insertError = retry.error;
+          }
+
           if (insertError) {
             const error = insertError instanceof Error ? insertError : new Error(String(insertError));
-            ErrorLogger.error(error, { component: 'CheckoutPage', action: 'handleCheckout', step: 'insertSubscription', errorDetails: insertError });
+            ErrorLogger.error(error, { 
+              component: 'CheckoutPage', 
+              action: 'handleCheckout', 
+              metadata: { step: 'insertSubscription', errorDetails: insertError.message } 
+            });
 
-            // Provide more specific error message
             let userFriendlyError = 'Failed to activate subscription. ';
             if (insertError.message.includes('policy')) {
               userFriendlyError += 'Permission denied. Please contact support.';
@@ -282,16 +421,28 @@ export const CheckoutPage: React.FC = () => {
               userFriendlyError += insertError.message;
             }
 
-          throw new Error(userFriendlyError);
-        }
+            throw new Error(userFriendlyError);
+          }
 
-          ErrorLogger.info('Successfully created subscription', { component: 'CheckoutPage', action: 'initiateCheckout', step: 'directInsert', subscriptionId: insertedData?.id });
+          ErrorLogger.info('Successfully created subscription', { 
+            component: 'CheckoutPage', 
+            action: 'initiateCheckout', 
+            metadata: { step: 'directInsert', subscriptionId: insertedData?.id } 
+          });
         } else {
-          ErrorLogger.info('Successfully created subscription via function', { component: 'CheckoutPage', action: 'initiateCheckout', step: 'createSubscription', subscriptionId: functionData?.id });
+          ErrorLogger.info('Successfully created subscription via function', { 
+            component: 'CheckoutPage', 
+            action: 'initiateCheckout', 
+            metadata: { step: 'createSubscription', subscriptionId: functionData?.id } 
+          });
         }
 
         // NEW: Wait for credit initialization and verify
-        ErrorLogger.debug('Waiting for credit initialization', { component: 'CheckoutPage', action: 'initiateCheckout', step: 'verifyCredits' });
+        ErrorLogger.debug('Waiting for credit initialization', { 
+          component: 'CheckoutPage', 
+          action: 'initiateCheckout', 
+          metadata: { step: 'verifyCredits' } 
+        });
         await new Promise(resolve => setTimeout(resolve, 1000));
 
         // Verify credits were initialized
@@ -303,11 +454,23 @@ export const CheckoutPage: React.FC = () => {
 
         if (profileError) {
           const error = profileError instanceof Error ? profileError : new Error(String(profileError));
-          ErrorLogger.error(error, { component: 'CheckoutPage', action: 'handleCheckout', step: 'verifyCredits' });
+          ErrorLogger.error(error, { 
+            component: 'CheckoutPage', 
+            action: 'handleCheckout', 
+            metadata: { step: 'verifyCredits' } 
+          });
         } else if (profile && profile.credits_remaining > 0) {
-          ErrorLogger.info('Credits verified', { component: 'CheckoutPage', action: 'handleCheckout', step: 'verifyCredits', creditsRemaining: profile.credits_remaining });
+          ErrorLogger.info('Credits verified', { 
+            component: 'CheckoutPage', 
+            action: 'handleCheckout', 
+            metadata: { step: 'verifyCredits', creditsRemaining: profile.credits_remaining } 
+          });
         } else {
-          ErrorLogger.warn('Credits not initialized, attempting manual initialization', { component: 'CheckoutPage', action: 'handleCheckout', step: 'verifyCredits' });
+          ErrorLogger.warn('Credits not initialized, attempting manual initialization', { 
+            component: 'CheckoutPage', 
+            action: 'handleCheckout', 
+            metadata: { step: 'verifyCredits' } 
+          });
 
           // Manual fallback - call credit initialization directly
           const { data: initResult, error: initError } = await supabase.rpc(
@@ -320,49 +483,143 @@ export const CheckoutPage: React.FC = () => {
 
           if (initError) {
             const error = initError instanceof Error ? initError : new Error(String(initError));
-            ErrorLogger.error(error, { component: 'CheckoutPage', action: 'handleCheckout', step: 'manualCreditInit' });
+            ErrorLogger.error(error, { 
+              component: 'CheckoutPage', 
+              action: 'handleCheckout', 
+              metadata: { step: 'manualCreditInit' } 
+            });
           } else {
-            ErrorLogger.info('Manual credit init result', { component: 'CheckoutPage', action: 'handleCheckout', step: 'manualCreditInit', initResult });
+            ErrorLogger.info('Manual credit init result', { 
+              component: 'CheckoutPage', 
+              action: 'handleCheckout', 
+              metadata: { step: 'manualCreditInit', initResult } 
+            });
           }
         }
 
         navigate('/payment/success?free=true');
       } else {
         // STRIPE MODE - Redirect to Stripe checkout
-        ErrorLogger.debug('Stripe mode - Creating checkout session', { component: 'CheckoutPage', action: 'handleCheckout', step: 'stripeMode', plan });
+        ErrorLogger.debug('Stripe mode - Creating checkout session', { 
+          component: 'CheckoutPage', 
+          action: 'handleCheckout', 
+          metadata: { step: 'stripeMode', plan } 
+        });
 
+        const body: {
+          plan: string;
+          userId: string;
+          userEmail: string;
+          promoCode?: string;
+          successUrl?: string;
+          cancelUrl?: string;
+          zegoHours?: number;
+          chatBlocks?: number;
+        } = {
+          plan,
+          userId: user.id,
+          userEmail: user.email,
+          promoCode: promoCode || undefined,
+          successUrl: `${window.location.origin}/payment/success`,
+          cancelUrl: `${window.location.origin}/payment/cancel`,
+        };
+        if (plan === 'standard') {
+          body.zegoHours = zegoHours;
+          body.chatBlocks = chatBlocks;
+        }
         const { data, error: functionError } = await supabase.functions.invoke(
           'create-checkout-session',
-          {
-            body: {
-              plan,
-              userId: user.id,
-              userEmail: user.email,
-              promoCode: promoCode || undefined,
-              successUrl: `${window.location.origin}/payment/success`,
-              cancelUrl: `${window.location.origin}/payment/cancel`,
-            },
-          }
+          { body },
         );
 
-        if (functionError) {
-          const error = functionError instanceof Error ? functionError : new Error(String(functionError));
-          ErrorLogger.error(error, { component: 'CheckoutPage', action: 'handleCheckout', step: 'createCheckoutSession', plan });
-          throw functionError;
+        const stripeFailed = !!functionError || !data?.url;
+        if (stripeFailed) {
+          ErrorLogger.warn('Stripe checkout unavailable, activating subscription without payment', {
+            component: 'CheckoutPage',
+            action: 'initiateCheckout',
+            metadata: { step: 'stripeFallback', plan, error: functionError?.toString?.() || 'No URL' },
+          });
         }
 
-        if (data?.url) {
-          ErrorLogger.info('Redirecting to Stripe checkout', { component: 'CheckoutPage', action: 'initiateCheckout', step: 'stripeRedirect', plan });
+        if (!stripeFailed && data?.url) {
+          ErrorLogger.info('Redirecting to Stripe checkout', { 
+            component: 'CheckoutPage', 
+            action: 'initiateCheckout', 
+            metadata: { step: 'stripeRedirect', plan } 
+          });
           window.location.href = data.url;
-        } else {
-          const error = new Error('No checkout URL returned');
-          ErrorLogger.error(error, { component: 'CheckoutPage', action: 'handleCheckout', step: 'getCheckoutUrl', plan });
-          throw error;
+          return;
+        }
+
+        if (stripeFailed) {
+          const tierMap: Record<string, 'trial_1day' | 'trial_7day' | 'monthly' | 'quarterly' | 'biannual' | 'standard'> = {
+            trial: 'trial_1day',
+            monthly: 'monthly',
+            quarterly: 'quarterly',
+            biannual: 'biannual',
+            standard: 'standard',
+          };
+          const endDate = new Date();
+          if (plan === 'trial') {
+            endDate.setDate(endDate.getDate() + 1);
+          } else {
+            endDate.setFullYear(endDate.getFullYear() + 1);
+          }
+          const rpcParams: Record<string, unknown> = {
+            p_user_id: user.id,
+            p_subscription_tier: tierMap[plan],
+            p_end_date: endDate.toISOString(),
+            p_trial_end_date: plan === 'trial' ? endDate.toISOString() : null,
+          };
+          if (plan === 'standard') {
+            rpcParams.p_zego_hours = zegoHours;
+            rpcParams.p_chat_blocks = chatBlocks;
+          }
+          const { error: rpcError } = await supabase.rpc('safe_create_subscription', rpcParams);
+          if (rpcError) {
+            await supabase.from('subscriptions').update({
+              status: 'canceled',
+              canceled_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }).eq('user_id', user.id).eq('status', 'active');
+            const subscriptionDataStripe: Record<string, unknown> = {
+              user_id: user.id,
+              subscription_tier: tierMap[plan],
+              status: 'active',
+              start_date: new Date().toISOString(),
+              end_date: endDate.toISOString(),
+              trial_end_date: plan === 'trial' ? endDate.toISOString() : null,
+              auto_renew: false,
+              payment_method_saved: false,
+              billing_cycle_start: new Date().toISOString(),
+              billing_cycle_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+              token_limit: plan === 'standard' ? 520000 + Math.max(0, chatBlocks) * 100000 : (tierMap[plan] === 'trial_1day' ? 10000 : tierMap[plan] === 'trial_7day' ? 121000 : 520000),
+              tokens_used_current_cycle: 0,
+              zego_hours_per_cycle: plan === 'standard' ? zegoHours : 0,
+              chat_blocks_per_cycle: plan === 'standard' ? chatBlocks : 0,
+            };
+            let { error: insertErrorStripe } = await supabase.from('subscriptions').insert(subscriptionDataStripe).select().single();
+            if (insertErrorStripe && (insertErrorStripe.message.includes('chat_blocks_per_cycle') || insertErrorStripe.message.includes('schema cache') || insertErrorStripe.message.includes('zego_hours_per_cycle'))) {
+              const { zego_hours_per_cycle: _z2, chat_blocks_per_cycle: _c2, ...minimalStripe } = subscriptionDataStripe;
+              const minimalPayload = { ...minimalStripe, token_limit: plan === 'standard' ? 520000 : (tierMap[plan] === 'trial_1day' ? 10000 : tierMap[plan] === 'trial_7day' ? 121000 : 520000) };
+              const retryStripe = await supabase.from('subscriptions').insert(minimalPayload).select().single();
+              insertErrorStripe = retryStripe.error;
+            }
+            if (insertErrorStripe) throw new Error(insertErrorStripe.message);
+          }
+          await new Promise((r) => setTimeout(r, 1000));
+          await supabase.rpc('initialize_subscription_credits', { p_user_id: user.id, p_subscription_tier: tierMap[plan] });
+          navigate('/payment/success?free=true');
+          return;
         }
       }
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      ErrorLogger.error(error, { component: 'CheckoutPage', action: 'handleCheckout', plan, mode: getCheckoutMode() });
+      ErrorLogger.error(error, { 
+        component: 'CheckoutPage', 
+        action: 'handleCheckout', 
+        metadata: { plan, mode: getCheckoutMode() } 
+      });
       const mode = getCheckoutMode();
       const errorMessage = err instanceof Error ? err.message : (mode === 'free' ? 'Failed to activate subscription' : 'Failed to initiate checkout');
       setError(errorMessage);
@@ -376,18 +633,26 @@ export const CheckoutPage: React.FC = () => {
       monthly: 'Monthly Plan',
       quarterly: 'Quarterly Plan',
       biannual: 'Biannual Plan',
+      standard: 'Standard Plan',
     };
 
-    const planPrices: Record<string, number> = {
+    const basePrices: Record<string, number> = {
       trial: 0,
       monthly: PRICING.monthly,
       quarterly: PRICING.quarterly,
       biannual: PRICING.biannual,
+      standard: PRICING.standard,
     };
+
+    const base = basePrices[plan || ''] ?? 0;
+    const addons = plan === 'standard'
+      ? zegoHours * PRICING.zegoPerHour + chatBlocks * PRICING.chatPer100kTokens
+      : 0;
+    const price = base + addons;
 
     return {
       name: planNames[plan || ''] || 'Unknown Plan',
-      price: planPrices[plan || ''] || 0,
+      price,
     };
   };
 
@@ -397,7 +662,7 @@ export const CheckoutPage: React.FC = () => {
     const mode = getCheckoutMode();
     return (
       <div className={`min-h-screen ${getThemeGradient('bg')} flex items-center justify-center p-6`}>
-        <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
+        <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8">
           <div className="flex items-center justify-center mb-6">
             <div className="bg-red-100 dark:bg-red-900/30 p-4 rounded-full">
               <AlertCircle className="h-12 w-12 text-red-600 dark:text-red-400" />
@@ -472,7 +737,7 @@ export const CheckoutPage: React.FC = () => {
 
   return (
     <div className={`min-h-screen ${getThemeGradient('bg')} flex items-center justify-center p-6`}>
-      <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
+      <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8">
         <div className="flex items-center justify-center mb-6">
           <Loader2 className="h-12 w-12 text-blue-600 dark:text-blue-400 animate-spin" />
         </div>
@@ -501,7 +766,7 @@ export const CheckoutPage: React.FC = () => {
               {planDetails.price === 0 ? 'Free' : formatCurrency(planDetails.price)}
             </span>
           </div>
-          {plan !== 'trial' && (
+          {plan !== 'trial' && plan !== 'standard' && (
             <div className="flex justify-between items-center">
               <span className="text-gray-700 dark:text-gray-300">Trial:</span>
               <span className="font-semibold text-green-600 dark:text-green-400">7 Days Free</span>

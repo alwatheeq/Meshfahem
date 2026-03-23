@@ -1,11 +1,11 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import { handleSupabaseError, isOffline } from '../utils/errorHandler';
 import { ErrorLogger } from '../utils/errorLogger';
 import { PageName } from '../components/Onboarding/tutorialConfigs';
 
-interface OnboardingContextType {
+export interface OnboardingContextType {
   // Dashboard overview
   isDashboardTutorialCompleted: boolean;
   completeDashboardTutorial: () => Promise<void>;
@@ -16,9 +16,11 @@ interface OnboardingContextType {
   
   // Loading states
   loading: boolean;
+  // Cache for synchronous tutorial status checks
+  pageTutorialCache: Record<PageName, boolean>;
 }
 
-const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
+export const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
 
 export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { user } = useAuth();
@@ -33,27 +35,26 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
     informational: false,
     feedback: false,
     profile: false,
+    academics: false,
   });
   // Use ref to store latest cache value for stable callback
   const pageTutorialCacheRef = useRef(pageTutorialCache);
   const [loading, setLoading] = useState(true);
+  // Use ref for loading to avoid stale closures in callbacks
+  const loadingRef = useRef(loading);
+  // Track if initial load has completed at least once
+  const initialLoadCompletedRef = useRef(false);
 
-  // Keep ref in sync with state
+  // Keep refs in sync with state
   useEffect(() => {
     pageTutorialCacheRef.current = pageTutorialCache;
   }, [pageTutorialCache]);
 
-  // Load dashboard tutorial status
   useEffect(() => {
-    if (user) {
-      loadDashboardTutorialStatus();
-      loadPageTutorialStatus();
-    } else {
-      setLoading(false);
-    }
-  }, [user]);
+    loadingRef.current = loading;
+  }, [loading]);
 
-  const loadDashboardTutorialStatus = async () => {
+  const loadDashboardTutorialStatus = useCallback(async () => {
     if (!user) return;
 
     if (isOffline()) {
@@ -62,7 +63,6 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
         action: 'loadDashboardTutorialStatus',
         userId: user.id,
       });
-      setLoading(false);
       return;
     }
 
@@ -101,20 +101,35 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
         userId: user.id,
       });
       setIsDashboardCompleted(false);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [user]);
 
-  const loadPageTutorialStatus = async () => {
+  const loadPageTutorialStatus = useCallback(async () => {
     if (!user) return;
 
+    // Initialize empty cache - this ensures cache is always in a known state
+    const emptyCache: Record<PageName, boolean> = {
+      dashboard: false,
+      library: false,
+      quiz: false,
+      eduplay: false,
+      'study-rooms': false,
+      history: false,
+      informational: false,
+      feedback: false,
+      profile: false,
+      academics: false,
+    };
+
     if (isOffline()) {
-      ErrorLogger.warn('Offline detected', {
+      ErrorLogger.warn('Offline detected, initializing cache to empty state', {
         component: 'OnboardingContext',
         action: 'loadPageTutorialStatus',
         userId: user.id,
       });
+      // Initialize cache to empty state when offline (fail-safe: don't show tutorials)
+      pageTutorialCacheRef.current = emptyCache;
+      setPageTutorialCache(emptyCache);
       return;
     }
 
@@ -135,7 +150,17 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
           action: 'loadPageTutorialStatus',
           userId: user.id,
         });
-      } else if (data) {
+        // Even on error, initialize cache to empty state (fail-safe)
+        // This prevents tutorials from showing incorrectly when database query fails
+        pageTutorialCacheRef.current = emptyCache;
+        setPageTutorialCache(emptyCache);
+        ErrorLogger.debug('Cache initialized to empty state due to error', {
+          component: 'OnboardingContext',
+          action: 'loadPageTutorialStatus',
+          userId: user.id,
+        });
+      } else {
+        // Always update cache, even if data is empty (no completed tutorials)
         const completedPages: Record<PageName, boolean> = {
           dashboard: false,
           library: false,
@@ -146,15 +171,32 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
           informational: false,
           feedback: false,
           profile: false,
+          academics: false,
         };
 
-        data.forEach((item) => {
-          if (item.page_name in completedPages) {
-            completedPages[item.page_name as PageName] = true;
-          }
-        });
+        // If we have data, mark completed pages as true
+        if (data && data.length > 0) {
+          data.forEach((item) => {
+            if (item.page_name in completedPages) {
+              completedPages[item.page_name as PageName] = true;
+            }
+          });
+        }
 
+        // Update ref FIRST, then state, to ensure ref is ready when isPageTutorialCompleted is called
+        // This prevents race conditions where the ref isn't updated when checked
+        pageTutorialCacheRef.current = completedPages;
         setPageTutorialCache(completedPages);
+        
+        ErrorLogger.debug('Page tutorial cache loaded', {
+          component: 'OnboardingContext',
+          action: 'loadPageTutorialStatus',
+          userId: user.id,
+          metadata: {
+            completedPages: Object.entries(completedPages).filter(([_, completed]) => completed).map(([page]) => page),
+            totalCompleted: Object.values(completedPages).filter(Boolean).length,
+          },
+        });
       }
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -163,8 +205,52 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
         action: 'loadPageTutorialStatus',
         userId: user.id,
       });
+      // Even on exception, initialize cache to empty state (fail-safe)
+      pageTutorialCacheRef.current = emptyCache;
+      setPageTutorialCache(emptyCache);
+      ErrorLogger.debug('Cache initialized to empty state due to exception', {
+        component: 'OnboardingContext',
+        action: 'loadPageTutorialStatus',
+        userId: user.id,
+      });
     }
-  };
+  }, [user]);
+
+  // Load dashboard + page tutorial status when user changes
+  useEffect(() => {
+    initialLoadCompletedRef.current = false;
+
+    if (user) {
+      Promise.all([loadDashboardTutorialStatus(), loadPageTutorialStatus()]).finally(() => {
+        if (pageTutorialCacheRef.current) {
+          setLoading(false);
+          initialLoadCompletedRef.current = true;
+          ErrorLogger.debug('Onboarding context loading completed', {
+            component: 'OnboardingContext',
+            action: 'initializeOnboarding',
+            userId: user.id,
+            cacheInitialized: true,
+          });
+        } else {
+          ErrorLogger.warn('Cache not initialized after load, retrying...', {
+            component: 'OnboardingContext',
+            action: 'initializeOnboarding',
+            userId: user.id,
+          });
+          setTimeout(() => {
+            loadPageTutorialStatus().finally(() => {
+              if (pageTutorialCacheRef.current) {
+                setLoading(false);
+                initialLoadCompletedRef.current = true;
+              }
+            });
+          }, 500);
+        }
+      });
+    } else {
+      setLoading(false);
+    }
+  }, [user, loadDashboardTutorialStatus, loadPageTutorialStatus]);
 
   const completeDashboardTutorial = async () => {
     if (!user) return;
@@ -226,18 +312,50 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
   const isPageTutorialCompleted = useCallback(async (pageName: PageName): Promise<boolean> => {
     if (!user) return false;
 
-    // Check cache first - read from ref for stable callback
+    // Check cache first - synchronous check
+    // If cache shows completed, return immediately
     if (pageTutorialCacheRef.current[pageName]) {
+      ErrorLogger.debug('Tutorial found in cache as completed', {
+        component: 'OnboardingContext',
+        action: 'isPageTutorialCompleted',
+        metadata: { pageName },
+      });
       return true;
     }
 
-    // If not in cache, check database
+    // If loading is still in progress, wait for it to complete
+    // This is a fallback for any code that might call this function directly
+    if (loadingRef.current) {
+      ErrorLogger.debug('Context still loading, waiting before checking database', {
+        component: 'OnboardingContext',
+        action: 'isPageTutorialCompleted',
+        metadata: { pageName },
+      });
+      // Wait for loading to complete - check every 50ms up to 1 second
+      let attempts = 0;
+      const maxAttempts = 20; // 20 * 50ms = 1 second max wait
+      while (loadingRef.current && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        attempts++;
+        // Check cache again after each wait
+        if (pageTutorialCacheRef.current[pageName]) {
+          ErrorLogger.debug('Tutorial found in cache after wait', {
+            component: 'OnboardingContext',
+            action: 'isPageTutorialCompleted',
+            metadata: { pageName },
+          });
+          return true;
+        }
+      }
+    }
+
+    // If not in cache and loading is complete, check database as fallback
     if (isOffline()) {
       ErrorLogger.warn('Offline detected', {
         component: 'OnboardingContext',
         action: 'isPageTutorialCompleted',
         userId: user.id,
-        pageName,
+        metadata: { pageName },
       });
       return false;
     }
@@ -255,24 +373,35 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
           component: 'OnboardingContext',
           action: 'isPageTutorialCompleted',
           userId: user.id,
-          pageName,
+          metadata: { pageName },
         });
         ErrorLogger.error(error, {
           component: 'OnboardingContext',
           action: 'isPageTutorialCompleted',
           userId: user.id,
-          pageName,
+          metadata: { pageName },
         });
         return false;
       }
 
       const isCompleted = !!data;
       
-      // Update cache
-      setPageTutorialCache((prev) => ({
-        ...prev,
-        [pageName]: isCompleted,
-      }));
+      ErrorLogger.debug('Tutorial completion status from database', {
+        component: 'OnboardingContext',
+        action: 'isPageTutorialCompleted',
+        metadata: { pageName, isCompleted },
+      });
+      
+      // Update cache and ref synchronously to prevent race conditions
+      setPageTutorialCache((prev) => {
+        const updated = {
+          ...prev,
+          [pageName]: isCompleted,
+        };
+        // Update ref immediately, don't wait for useEffect
+        pageTutorialCacheRef.current = updated;
+        return updated;
+      });
 
       return isCompleted;
     } catch (error) {
@@ -281,28 +410,34 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
         component: 'OnboardingContext',
         action: 'isPageTutorialCompleted',
         userId: user.id,
-        pageName,
+        metadata: { pageName },
       });
       return false;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Note: loading is checked inside the function but not in deps to keep callback stable
+     
   }, [user]);
 
   const completePageTutorial = async (pageName: PageName) => {
     if (!user) return;
 
-    // Update cache synchronously BEFORE async database call to prevent race conditions
-    setPageTutorialCache((prev) => ({
-      ...prev,
-      [pageName]: true,
-    }));
+    // Update cache and ref synchronously BEFORE async database call to prevent race conditions
+    setPageTutorialCache((prev) => {
+      const updated = {
+        ...prev,
+        [pageName]: true,
+      };
+      // Update ref immediately, don't wait for useEffect
+      pageTutorialCacheRef.current = updated;
+      return updated;
+    });
 
     if (isOffline()) {
       ErrorLogger.warn('Offline detected', {
         component: 'OnboardingContext',
         action: 'completePageTutorial',
         userId: user.id,
-        pageName,
+        metadata: { pageName },
       });
       return;
     }
@@ -326,23 +461,58 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
           component: 'OnboardingContext',
           action: 'completePageTutorial',
           userId: user.id,
-          pageName,
+          metadata: { pageName },
         });
         ErrorLogger.error(error, {
           component: 'OnboardingContext',
           action: 'completePageTutorial',
           userId: user.id,
-          pageName,
+          metadata: { pageName },
         });
-        // Don't revert cache on error - tutorial should stay marked as completed
+        // Don't revert cache on error - tutorial should stay marked as completed (optimistic update)
         throw error;
+      }
+
+      // Verify that the record was actually saved to the database
+      const { data: verifyData, error: verifyError } = await supabase
+        .from('user_page_tutorials')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('page_name', pageName)
+        .maybeSingle();
+
+      if (verifyError) {
+        ErrorLogger.warn('Failed to verify tutorial completion in database', {
+          component: 'OnboardingContext',
+          action: 'completePageTutorial',
+          userId: user.id,
+          metadata: { pageName, verifyError: verifyError.message },
+        });
+      } else if (!verifyData) {
+        ErrorLogger.warn('Tutorial completion not found in database after upsert', {
+          component: 'OnboardingContext',
+          action: 'completePageTutorial',
+          userId: user.id,
+          metadata: { pageName },
+        });
+      } else {
+        ErrorLogger.debug('Tutorial completion verified in database', {
+          component: 'OnboardingContext',
+          action: 'completePageTutorial',
+          userId: user.id,
+          metadata: { pageName, recordId: verifyData.id },
+        });
       }
 
       ErrorLogger.info('Page tutorial completed', {
         component: 'OnboardingContext',
         action: 'completePageTutorial',
         userId: user.id,
-        pageName,
+        metadata: { 
+          pageName,
+          cacheUpdated: pageTutorialCacheRef.current[pageName],
+          verified: !!verifyData,
+        },
       });
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -350,7 +520,7 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
         component: 'OnboardingContext',
         action: 'completePageTutorial',
         userId: user.id,
-        pageName,
+        metadata: { pageName },
       });
       // Don't revert cache on error - tutorial should stay marked as completed
       throw err;
@@ -365,19 +535,11 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
         isPageTutorialCompleted,
         completePageTutorial,
         loading,
+        pageTutorialCache,
       }}
     >
       {children}
     </OnboardingContext.Provider>
   );
 };
-
-export const useOnboarding = (): OnboardingContextType => {
-  const context = useContext(OnboardingContext);
-  if (context === undefined) {
-    throw new Error('useOnboarding must be used within an OnboardingProvider');
-  }
-  return context;
-};
-
 

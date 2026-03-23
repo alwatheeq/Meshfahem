@@ -1,66 +1,43 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../hooks/useAuth';
-import { supabase } from '../../lib/supabase';
-import { ErrorLogger } from '../../utils/errorLogger';
-
-interface CreditBalance {
-  credits_remaining: number;
-  credits_total: number;
-  cycle_end: string | null;
-}
+import React from 'react';
+import { Gauge } from 'lucide-react';
+import { useCredits } from '../../contexts/CreditContext';
+import { useSubscription } from '../../hooks/useSubscription';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export const CreditBalanceWidget: React.FC = () => {
-  const { user } = useAuth();
-  const [balance, setBalance] = useState<CreditBalance | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (user) {
-      fetchBalance();
-      // Set up interval to refresh balance every 30 seconds
-      const interval = setInterval(fetchBalance, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [user]);
-
-  const fetchBalance = async () => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase.rpc('get_user_credit_balance', {
-        p_user_id: user.id
-      });
-
-      if (error) {
-        const err = error instanceof Error ? error : new Error(String(error));
-        ErrorLogger.error(err, { component: 'CreditBalanceWidget', action: 'fetchBalance', userId: user.id });
-        return;
-      }
-
-      if (data && data.success) {
-        setBalance({
-          credits_remaining: data.credits_remaining,
-          credits_total: data.credits_total,
-          cycle_end: data.cycle_end
-        });
-      }
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      ErrorLogger.error(error, { component: 'CreditBalanceWidget', action: 'fetchBalance', userId: user?.id });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { balance, loading } = useCredits();
+  const { subscription } = useSubscription();
+  const { getThemeCardBg, getThemeCardBorder, getThemeTextSecondary, getThemeSubtle } = useTheme();
 
   if (loading || !balance) {
     return null;
   }
 
-  const percentage = balance.credits_total > 0
-    ? (balance.credits_remaining / balance.credits_total) * 100
+  const toolsTotal = balance.credits_total ?? 1500;
+  const toolsRemaining = balance.credits_remaining ?? 0;
+  const studyTotal = balance.zego_credits_total ?? 0;
+  const studyRemaining = balance.zego_credits_remaining ?? 0;
+  const showStudyRoom = studyTotal > 0;
+
+  const hasAiAddon = !!subscription && (
+    (subscription.subscription_tier === 'standard' && (subscription.chat_blocks_per_cycle ?? 0) > 0) ||
+    (subscription.token_limit ?? 0) > 520000
+  );
+  const aiChatTotal = hasAiAddon && subscription
+    ? (subscription.token_limit && subscription.token_limit > 520000
+        ? Math.round((subscription.token_limit - 520000) / 1000)
+        : (subscription.chat_blocks_per_cycle ?? 0) * 100)
+    : 0;
+  const aiChatUsed = hasAiAddon && subscription ? Math.round((subscription.tokens_used_current_cycle ?? 0) / 1000) : 0;
+  const aiChatRemaining = Math.max(0, aiChatTotal - aiChatUsed);
+
+  const combinedTotal = toolsTotal + (showStudyRoom ? studyTotal : 0) + (hasAiAddon ? aiChatTotal : 0);
+  const combinedRemaining = toolsRemaining + (showStudyRoom ? studyRemaining : 0) + (hasAiAddon ? aiChatRemaining : 0);
+
+  const percentage = combinedTotal > 0
+    ? (combinedRemaining / combinedTotal) * 100
     : 0;
 
-  // Determine color based on percentage
   const getColor = () => {
     if (percentage > 30) return 'text-green-600 dark:text-green-400';
     if (percentage > 10) return 'text-yellow-600 dark:text-yellow-400';
@@ -73,29 +50,35 @@ export const CreditBalanceWidget: React.FC = () => {
     return 'bg-red-500';
   };
 
+  const parts: string[] = [`Tools: ${toolsRemaining.toLocaleString()} / ${toolsTotal.toLocaleString()}`];
+  if (showStudyRoom) parts.push(`Study room: ${studyRemaining.toLocaleString()} / ${studyTotal.toLocaleString()}`);
+  if (hasAiAddon) parts.push(`AI Chat: ${aiChatRemaining.toLocaleString()} / ${aiChatTotal.toLocaleString()}`);
+
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
+    <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} p-4`}>
       <div className="flex items-center justify-between mb-2">
         <div>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Credit Balance</p>
+          <p className={`text-sm ${getThemeTextSecondary()}`}>Credit Balance</p>
           <p className={`text-xl font-bold ${getColor()}`}>
-            {balance.credits_remaining.toLocaleString()} / {balance.credits_total.toLocaleString()}
+            {combinedRemaining.toLocaleString()} / {combinedTotal.toLocaleString()}
+          </p>
+          <p className={`text-xs ${getThemeTextSecondary()}`}>
+            {parts.join(' · ')}
           </p>
         </div>
         <div className={`text-2xl ${getColor()}`}>
-          💳
+          <Gauge className="h-7 w-7" />
         </div>
       </div>
 
-      {/* Progress bar */}
-      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-2">
+      <div className={`w-full ${getThemeSubtle('ui')} rounded-full h-2 mb-2`}>
         <div
-          className={`${getBarColor()} h-2 rounded-full transition-all duration-300`}
+          className={`${getBarColor()} h-2 rounded-full transition-colors duration-150`}
           style={{ width: `${Math.max(0, Math.min(100, percentage))}%` }}
         />
       </div>
 
-      <p className="text-xs text-gray-500 dark:text-gray-400">
+      <p className={`text-xs ${getThemeTextSecondary()}`}>
         {percentage.toFixed(0)}% remaining
         {balance.cycle_end && (
           <span className="ml-1">

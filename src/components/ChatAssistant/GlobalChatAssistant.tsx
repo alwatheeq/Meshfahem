@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Sparkles, X, Send, Minimize2, Maximize2, Loader2, GripVertical } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, useContext } from 'react';
+import { Sparkles, X, Send, Minimize2, Loader2, GripVertical } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
-import { useI18n } from '../../contexts/I18nContext';
+import { useI18n, I18nContext } from '../../contexts/I18nContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useToast } from '../Toast/Toast';
 import { supabase } from '../../lib/supabase';
@@ -18,10 +18,11 @@ interface Message {
   created_at?: string;
 }
 
-export const GlobalChatAssistant: React.FC = () => {
+// Internal component that uses hooks
+const GlobalChatAssistantContent: React.FC = () => {
   const { user } = useAuth();
   const { t } = useI18n();
-  const { getThemeGradient, getThemeBorder } = useTheme();
+  const { getThemeGradient, getThemeBorder, getThemeFocusRing } = useTheme();
   const { error: showErrorToast } = useToast();
   const location = useLocation();
   const { context: chatContext } = useChatContext();
@@ -66,6 +67,7 @@ export const GlobalChatAssistant: React.FC = () => {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const chatRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const wasDraggingRef = useRef(false);
 
   // Exclude from EduPlay routes
   const isEduPlayRoute = location.pathname.includes('/eduplay') || 
@@ -244,7 +246,7 @@ export const GlobalChatAssistant: React.FC = () => {
         newWidth = Math.max(minWidth, Math.min(maxWidth, resizeStart.width + deltaX));
       }
       if (resizeDirection.includes('left')) {
-        const widthChange = resizeStart.width - Math.max(minWidth, Math.min(maxWidth, resizeStart.width - deltaX));
+        const _widthChange = resizeStart.width - Math.max(minWidth, Math.min(maxWidth, resizeStart.width - deltaX));
         newWidth = Math.max(minWidth, Math.min(maxWidth, resizeStart.width - deltaX));
         newX = position.x + (resizeStart.width - newWidth);
       }
@@ -252,7 +254,7 @@ export const GlobalChatAssistant: React.FC = () => {
         newHeight = Math.max(minHeight, Math.min(maxHeight, resizeStart.height + deltaY));
       }
       if (resizeDirection.includes('top')) {
-        const heightChange = resizeStart.height - Math.max(minHeight, Math.min(maxHeight, resizeStart.height - deltaY));
+        const _heightChange = resizeStart.height - Math.max(minHeight, Math.min(maxHeight, resizeStart.height - deltaY));
         newHeight = Math.max(minHeight, Math.min(maxHeight, resizeStart.height - deltaY));
         newY = position.y + (resizeStart.height - newHeight);
       }
@@ -273,6 +275,7 @@ export const GlobalChatAssistant: React.FC = () => {
     // Track if we actually moved (dragged) vs just clicked
     if (!wasDragging && (Math.abs(e.clientX - (position.x + dragOffset.x)) > 5 || Math.abs(e.clientY - (position.y + dragOffset.y)) > 5)) {
       setWasDragging(true);
+      wasDraggingRef.current = true;
     }
 
     const newX = e.clientX - dragOffset.x;
@@ -292,14 +295,14 @@ export const GlobalChatAssistant: React.FC = () => {
   };
 
   const handleMouseUp = () => {
-    const dragged = wasDragging;
     setIsDragging(false);
     setIsResizing(false);
     setResizeDirection('');
     setWasDragging(false);
-    // Reset wasDragging after a short delay to allow click handler to check it
+    // Reset ref after a short delay so click handler can read it first
     setTimeout(() => {
       setWasDragging(false);
+      wasDraggingRef.current = false;
     }, 100);
   };
 
@@ -427,11 +430,12 @@ export const GlobalChatAssistant: React.FC = () => {
         action: 'sendMessage'
       });
       
-      // Fix: Get error message from handleApiError and display it
-      const errorMessage = handleApiError(error, {
-        component: 'GlobalChatAssistant',
-        action: 'sendMessage'
-      });
+      const errorMessage = error instanceof TypeError && error.message.includes('fetch')
+        ? "Cannot reach the AI assistant. Check your connection and that the app's Supabase URL is correct."
+        : handleApiError(error, {
+            component: 'GlobalChatAssistant',
+            action: 'sendMessage'
+          });
       showErrorToast(errorMessage);
       
       // Remove temp message on error
@@ -457,24 +461,36 @@ export const GlobalChatAssistant: React.FC = () => {
     return null;
   }
 
-  if (!isOpen) {
+  // Show circular button when chat is closed or minimized
+  if (!isOpen || isMinimized) {
     return (
       <button
         ref={buttonRef}
         onMouseDown={handleButtonMouseDown}
-        onClick={(e) => {
-          // Only open if we weren't dragging
+        onClick={() => {
+          // Only open/expand if we weren't dragging (ref survives until click runs)
+          if (wasDraggingRef.current) {
+            wasDraggingRef.current = false;
+            return;
+          }
           if (!wasDragging && !isDragging) {
             setIsOpen(true);
+            setIsMinimized(false);
+            ErrorLogger.debug('AI chat opened/expanded from circular button', {
+              component: 'GlobalChatAssistant',
+              action: 'openChat',
+              userId: user?.id,
+              metadata: { wasMinimized: isMinimized }
+            });
           }
         }}
-        className={`fixed z-50 ${getThemeGradient('ui')} text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110 flex items-center justify-center ${shouldShake ? 'animate-shake' : ''} ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`fixed z-50 ${getThemeGradient('ui')} text-white p-4 rounded-full shadow hover:shadow-sm transition-colors duration-150  flex items-center justify-center ${shouldShake ? 'animate-shake' : ''} ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
         style={{
           left: `${position.x}px`,
           top: `${position.y}px`,
           transform: 'translate(-50%, -50%)'
         }}
-        aria-label={t('chat.open_assistant')}
+        aria-label={isMinimized ? t('chat.maximize') : t('chat.open_assistant')}
       >
         <Sparkles className="h-6 w-6" />
       </button>
@@ -484,12 +500,12 @@ export const GlobalChatAssistant: React.FC = () => {
   return (
     <div
       ref={chatRef}
-      className={`fixed z-50 flex flex-col bg-white dark:bg-gray-800 rounded-lg shadow-2xl border ${getThemeBorder()} transition-all duration-300 ${isDragging ? 'cursor-move' : ''}`}
+      className={`fixed z-50 flex flex-col bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-lg border ${getThemeBorder()} transition-colors duration-150 ${isDragging ? 'cursor-move' : ''}`}
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
         width: `${size.width}px`,
-        height: isMinimized ? '64px' : `${size.height}px`,
+        height: `${size.height}px`,
         transform: 'none'
       }}
       onMouseDown={handleChatMouseDown}
@@ -505,11 +521,18 @@ export const GlobalChatAssistant: React.FC = () => {
         </div>
         <div className="flex items-center space-x-2">
           <button
-            onClick={() => setIsMinimized(!isMinimized)}
+            onClick={() => {
+              setIsMinimized(true);
+              ErrorLogger.debug('AI chat minimized to circular button', {
+                component: 'GlobalChatAssistant',
+                action: 'minimizeChat',
+                userId: user?.id
+              });
+            }}
             className="hover:bg-white/20 p-1 rounded transition-colors"
-            aria-label={isMinimized ? t('chat.maximize') : t('chat.minimize')}
+            aria-label={t('chat.minimize')}
           >
-            {isMinimized ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+            <Minimize2 className="h-4 w-4" />
           </button>
           <button
             onClick={() => {
@@ -524,50 +547,50 @@ export const GlobalChatAssistant: React.FC = () => {
         </div>
       </div>
 
-      {/* Resize handles */}
-      {!isMinimized && (
-        <>
-          {/* Corner handles */}
+      {/* Resize handles - only show when not minimized (minimized shows circular button) */}
+      {/* Note: At this point, we know isOpen && !isMinimized due to early return above */}
+      <>
+        {/* Corner handles */}
           <div
-            className="absolute top-0 left-0 w-3 h-3 cursor-nwse-resize hover:bg-blue-500/50 rounded-tl-lg resize-handle z-10"
+            className="absolute top-0 left-0 w-3 h-3 cursor-nwse-resize hover:bg-gray-600 dark:hover:bg-gray-400 shadow-[0_2px_8px_rgba(0,0,0,0.08)]/50 rounded-tl-lg resize-handle z-10"
             onMouseDown={(e) => handleResizeStart(e, 'top-left')}
           />
           <div
-            className="absolute top-0 right-0 w-3 h-3 cursor-nesw-resize hover:bg-blue-500/50 rounded-tr-lg resize-handle z-10"
+            className="absolute top-0 right-0 w-3 h-3 cursor-nesw-resize hover:bg-blue-500 shadow-[0_2px_8px_rgba(0,0,0,0.08)]/50 rounded-tr-lg resize-handle z-10"
             onMouseDown={(e) => handleResizeStart(e, 'top-right')}
           />
           <div
-            className="absolute bottom-0 left-0 w-3 h-3 cursor-nesw-resize hover:bg-blue-500/50 rounded-bl-lg resize-handle z-10"
+            className="absolute bottom-0 left-0 w-3 h-3 cursor-nesw-resize hover:bg-blue-500 shadow-[0_2px_8px_rgba(0,0,0,0.08)]/50 rounded-bl-lg resize-handle z-10"
             onMouseDown={(e) => handleResizeStart(e, 'bottom-left')}
           />
           <div
-            className="absolute bottom-0 right-0 w-3 h-3 cursor-nwse-resize hover:bg-blue-500/50 rounded-br-lg resize-handle z-10"
+            className="absolute bottom-0 right-0 w-3 h-3 cursor-nwse-resize hover:bg-blue-500 shadow-[0_2px_8px_rgba(0,0,0,0.08)]/50 rounded-br-lg resize-handle z-10"
             onMouseDown={(e) => handleResizeStart(e, 'bottom-right')}
           />
           {/* Edge handles */}
           <div
-            className="absolute top-0 left-3 right-3 h-1 cursor-ns-resize hover:bg-blue-500/50 resize-handle z-10"
+            className="absolute top-0 left-3 right-3 h-1 cursor-ns-resize hover:bg-blue-500 shadow-[0_2px_8px_rgba(0,0,0,0.08)]/50 resize-handle z-10"
             onMouseDown={(e) => handleResizeStart(e, 'top')}
           />
           <div
-            className="absolute bottom-0 left-3 right-3 h-1 cursor-ns-resize hover:bg-blue-500/50 resize-handle z-10"
+            className="absolute bottom-0 left-3 right-3 h-1 cursor-ns-resize hover:bg-blue-500 shadow-[0_2px_8px_rgba(0,0,0,0.08)]/50 resize-handle z-10"
             onMouseDown={(e) => handleResizeStart(e, 'bottom')}
           />
           <div
-            className="absolute left-0 top-3 bottom-3 w-1 cursor-ew-resize hover:bg-blue-500/50 resize-handle z-10"
+            className="absolute left-0 top-3 bottom-3 w-1 cursor-ew-resize hover:bg-blue-500 shadow-[0_2px_8px_rgba(0,0,0,0.08)]/50 resize-handle z-10"
             onMouseDown={(e) => handleResizeStart(e, 'left')}
           />
           <div
-            className="absolute right-0 top-3 bottom-3 w-1 cursor-ew-resize hover:bg-blue-500/50 resize-handle z-10"
+            className="absolute right-0 top-3 bottom-3 w-1 cursor-ew-resize hover:bg-blue-500 shadow-[0_2px_8px_rgba(0,0,0,0.08)]/50 resize-handle z-10"
             onMouseDown={(e) => handleResizeStart(e, 'right')}
           />
-        </>
-      )}
+      </>
 
-      {!isMinimized && (
-        <>
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 dark:bg-gray-900">
+      {/* Messages and input - only show when not minimized (minimized shows circular button) */}
+      {/* Note: At this point, we know isOpen && !isMinimized due to early return above */}
+      <>
+        {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-100 dark:bg-gray-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
             {messages.length === 0 ? (
               <div className="text-center py-8">
                 <Sparkles className="h-12 w-12 mx-auto mb-4 text-gray-400" />
@@ -585,7 +608,7 @@ export const GlobalChatAssistant: React.FC = () => {
                     className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
-                      className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                      className={`max-w-[80%] rounded-lg px-5 py-2.5 ${
                         message.role === 'user'
                           ? `${getThemeGradient('ui')} text-white`
                           : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-600'
@@ -597,7 +620,7 @@ export const GlobalChatAssistant: React.FC = () => {
                 ))}
                 {loading && (
                   <div className="flex justify-start">
-                    <div className="bg-white dark:bg-gray-700 rounded-lg px-4 py-2 border border-gray-200 dark:border-gray-600">
+                    <div className="bg-white dark:bg-gray-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-lg px-5 py-2.5 border border-gray-200 dark:border-gray-600">
                       <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
                     </div>
                   </div>
@@ -608,7 +631,7 @@ export const GlobalChatAssistant: React.FC = () => {
           </div>
 
           {/* Input */}
-          <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+          <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
             <div className="flex items-end space-x-2">
               <textarea
                 ref={inputRef}
@@ -616,7 +639,7 @@ export const GlobalChatAssistant: React.FC = () => {
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder={t('chat.input_placeholder')}
-                className="flex-1 resize-none px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                className={`flex-1 resize-none px-5 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 ${getThemeFocusRing()}`}
                 rows={1}
                 style={{ minHeight: '40px', maxHeight: '120px' }}
               />
@@ -634,9 +657,23 @@ export const GlobalChatAssistant: React.FC = () => {
               </button>
             </div>
           </div>
-        </>
-      )}
+      </>
     </div>
   );
+};
+
+// Wrapper component that checks context availability
+export const GlobalChatAssistant: React.FC = () => {
+  // Check if context is available before rendering
+  const i18nContext = useContext(I18nContext);
+  
+  // If context is not available, don't render (this should never happen in normal flow)
+  if (!i18nContext) {
+    console.warn('GlobalChatAssistant: I18nContext not available, skipping render');
+    return null;
+  }
+  
+  // Context is available, render the component
+  return <GlobalChatAssistantContent />;
 };
 

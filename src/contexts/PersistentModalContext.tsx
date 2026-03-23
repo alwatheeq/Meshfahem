@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { handleSupabaseError, isOffline } from '../utils/errorHandler';
 import { ErrorLogger } from '../utils/errorLogger';
 
-export type FeatureType = 'library' | 'dashboard_processing' | 'quiz' | 'goals_achievements';
+export type FeatureType = 'library' | 'dashboard_processing' | 'quiz' | 'goals_achievements' | 'academics';
 
 interface FeatureConfig {
   title: string;
@@ -52,6 +52,15 @@ const FEATURE_CONFIGS: Record<FeatureType, FeatureConfig> = {
       'Stay motivated with milestones',
       'Compete on leaderboards'
     ]
+  },
+  academics: {
+    title: 'Academics',
+    benefits: [
+      'Create courses and organize study material',
+      'Generate summaries, flashcards, and quizzes',
+      'Track topic-based performance across courses',
+      'View focused analytics per course'
+    ]
   }
 };
 
@@ -75,7 +84,8 @@ export const PersistentModalProvider: React.FC<{ children: ReactNode }> = ({ chi
     library: false,
     dashboard_processing: false,
     quiz: false,
-    goals_achievements: false
+    goals_achievements: false,
+    academics: false
   });
 
   useEffect(() => {
@@ -108,7 +118,8 @@ export const PersistentModalProvider: React.FC<{ children: ReactNode }> = ({ chi
         library: false,
         dashboard_processing: false,
         quiz: false,
-        goals_achievements: false
+        goals_achievements: false,
+        academics: false
       };
 
       data?.forEach((item) => {
@@ -239,7 +250,8 @@ export const PersistentModalProvider: React.FC<{ children: ReactNode }> = ({ chi
         library: false,
         dashboard_processing: false,
         quiz: false,
-        goals_achievements: false
+        goals_achievements: false,
+        academics: false
       });
       return;
     }
@@ -260,7 +272,8 @@ export const PersistentModalProvider: React.FC<{ children: ReactNode }> = ({ chi
         library: false,
         dashboard_processing: false,
         quiz: false,
-        goals_achievements: false
+        goals_achievements: false,
+        academics: false
       });
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
