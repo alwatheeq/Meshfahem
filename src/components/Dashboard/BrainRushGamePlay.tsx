@@ -7,6 +7,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useToast } from '../Toast/Toast';
 import { handleApiError, handleSupabaseError, isOffline, handleOfflineError } from '../../utils/errorHandler';
 import { ErrorLogger } from '../../utils/errorLogger';
+import { ReadAloudButton } from './ReadAloud/ReadAloudButton';
 
 interface GameSession {
   id: string;
@@ -60,6 +61,7 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
   onGameEnd
 }) => {
   const { user } = useAuth();
+  const { getThemeGradient, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeSubtle } = useTheme();
   const { error: showErrorToast } = useToast();
   const [currentQuestion, setCurrentQuestion] = useState<GameQuestion | null>(null);
   const [timeLeft, setTimeLeft] = useState(gameSession.question_timer_seconds);
@@ -69,7 +71,7 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
   const [answerFeedback, setAnswerFeedback] = useState<'correct' | 'incorrect' | null>(null);
   const [participants, setParticipants] = useState<Participant[]>(initialParticipants);
   const [loading, setLoading] = useState(true);
-  const [currentAnswers, setCurrentAnswers] = useState<Answer[]>([]);
+  const [_currentAnswers, setCurrentAnswers] = useState<Answer[]>([]);
   const [gameState, setGameState] = useState(gameSession);
 
   useEffect(() => {
@@ -168,8 +170,8 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
         ErrorLogger.error(error, { 
           component: 'BrainRushGamePlay', 
           action: 'fetchParticipants',
-          gameSessionId: gameSession.id,
-          userId: user?.id
+          userId: user?.id,
+          metadata: { gameSessionId: gameSession.id }
         });
         // Non-blocking for game flow
         return;
@@ -182,8 +184,8 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
       ErrorLogger.error(error, { 
         component: 'BrainRushGamePlay', 
         action: 'fetchParticipants',
-        gameSessionId: gameSession.id,
-        userId: user?.id
+        userId: user?.id,
+        metadata: { gameSessionId: gameSession.id }
       });
       // Non-blocking for game flow
     }
@@ -215,9 +217,11 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
         ErrorLogger.error(error, { 
           component: 'BrainRushGamePlay', 
           action: 'loadCurrentQuestion',
-          gameSessionId: gameSession.id,
-          questionIndex: gameState.current_question_index,
-          userId: user?.id
+          userId: user?.id,
+          metadata: { 
+            gameSessionId: gameSession.id,
+            questionIndex: gameState.current_question_index
+          }
         });
         showErrorToast(message);
         return;
@@ -236,8 +240,8 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
       ErrorLogger.error(error, { 
         component: 'BrainRushGamePlay', 
         action: 'loadCurrentQuestion',
-        gameSessionId: gameSession.id,
-        userId: user?.id
+        userId: user?.id,
+        metadata: { gameSessionId: gameSession.id }
       });
       showErrorToast(message);
     } finally {
@@ -311,10 +315,12 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
         ErrorLogger.error(answerError, { 
           component: 'BrainRushGamePlay', 
           action: 'submitAnswer',
-          step: 'insertAnswer',
-          gameSessionId: gameSession.id,
-          participantId: myParticipant.id,
-          userId: user.id
+          userId: user.id,
+          metadata: { 
+            step: 'insertAnswer',
+            gameSessionId: gameSession.id,
+            participantId: myParticipant.id
+          }
         });
         showErrorToast('Failed to submit answer. Please try again.');
         return;
@@ -330,10 +336,12 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
           ErrorLogger.error(updateError, { 
             component: 'BrainRushGamePlay', 
             action: 'submitAnswer',
-            step: 'updateScore',
-            gameSessionId: gameSession.id,
-            participantId: myParticipant.id,
-            userId: user.id
+            userId: user.id,
+            metadata: { 
+              step: 'updateScore',
+              gameSessionId: gameSession.id,
+              participantId: myParticipant.id
+            }
           });
           // Non-blocking: answer was submitted, score update can fail
         }
@@ -348,8 +356,8 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
       ErrorLogger.error(error, { 
         component: 'BrainRushGamePlay', 
         action: 'submitAnswer',
-        gameSessionId: gameSession.id,
-        userId: user.id
+        userId: user.id,
+        metadata: { gameSessionId: gameSession.id }
       });
       showErrorToast(message);
     }
@@ -386,9 +394,11 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
           ErrorLogger.error(error, { 
             component: 'BrainRushGamePlay', 
             action: 'handleNextQuestion',
-            step: 'completeGame',
-            gameSessionId: gameSession.id,
-            userId: user?.id
+            userId: user?.id,
+            metadata: { 
+              step: 'completeGame',
+              gameSessionId: gameSession.id
+            }
           });
           showErrorToast(message);
           // Still call onGameEnd to allow game to end even if update fails
@@ -413,10 +423,12 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
           ErrorLogger.error(error, { 
             component: 'BrainRushGamePlay', 
             action: 'handleNextQuestion',
-            step: 'updateQuestionIndex',
-            gameSessionId: gameSession.id,
-            nextIndex,
-            userId: user?.id
+            userId: user?.id,
+            metadata: { 
+              step: 'updateQuestionIndex',
+              gameSessionId: gameSession.id,
+              nextIndex
+            }
           });
           showErrorToast(message);
         }
@@ -431,8 +443,8 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
       ErrorLogger.error(error, { 
         component: 'BrainRushGamePlay', 
         action: 'handleNextQuestion',
-        gameSessionId: gameSession.id,
-        userId: user?.id
+        userId: user?.id,
+        metadata: { gameSessionId: gameSession.id }
       });
       showErrorToast(message);
     }
@@ -441,9 +453,9 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
   if (loading || !currentQuestion) {
     return (
       <div className="max-w-6xl mx-auto">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-12 text-center">
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-12 text-center`}>
           <Loader2 className="h-16 w-16 text-purple-600 dark:text-purple-400 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600 dark:text-gray-400">Loading question...</p>
+          <p className={getThemeTextSecondary()}>Loading question...</p>
         </div>
       </div>
     );
@@ -473,11 +485,11 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
         {/* Main Question Area */}
         <div className="lg:col-span-3">
           {/* Header */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-4 mb-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-4 mb-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <div className="bg-purple-100 dark:bg-purple-900 px-4 py-2 rounded-lg">
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Question</span>
+                  <span className={`text-sm ${getThemeTextSecondary()}`}>Question</span>
                   <p className="text-lg font-bold text-purple-600 dark:text-purple-400">{questionProgress}</p>
                 </div>
                 <div className="bg-blue-100 dark:bg-blue-900 px-4 py-2 rounded-lg">
@@ -499,10 +511,13 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
           </div>
 
           {/* Question */}
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 mb-4">
-            <h2 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-gray-100 mb-8 text-center">
-              {currentQuestion.question_text}
-            </h2>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8 mb-4">
+            <div className={`flex items-start gap-2 mb-8`}>
+              <h2 className={`text-2xl md:text-3xl font-bold ${getThemeTextPrimary()} text-center flex-1`}>
+                {currentQuestion.question_text}
+              </h2>
+              <ReadAloudButton text={currentQuestion.question_text} />
+            </div>
 
             {/* Answer Options */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -511,35 +526,42 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
                 const isCorrect = option === currentQuestion.correct_answer;
                 const showCorrectAnswer = hasAnswered;
 
-                let buttonClass = 'bg-white dark:bg-gray-700 border-2 border-gray-300 dark:border-gray-600 hover:border-purple-400 dark:hover:border-purple-500';
+                let optionClass = `${getThemeCardBg()} border-2 ${getThemeCardBorder()} hover:border-purple-400 dark:hover:border-purple-500`;
 
                 if (showCorrectAnswer && isCorrect) {
-                  buttonClass = 'bg-green-100 dark:bg-green-900 border-2 border-green-500 dark:border-green-400';
+                  optionClass = 'bg-green-100 dark:bg-green-900 border-2 border-green-500 dark:border-green-400';
                 } else if (showCorrectAnswer && isSelected && !isCorrect) {
-                  buttonClass = 'bg-red-100 dark:bg-red-900 border-2 border-red-500 dark:border-red-400';
+                  optionClass = 'bg-red-100 dark:bg-red-900 border-2 border-red-500 dark:border-red-400';
                 } else if (isSelected) {
-                  buttonClass = 'bg-purple-100 dark:bg-purple-900 border-2 border-purple-500 dark:border-purple-400';
+                  optionClass = 'bg-purple-100 dark:bg-purple-900 border-2 border-purple-500 dark:border-purple-400';
                 }
 
                 return (
-                  <button
+                  <div
                     key={index}
-                    onClick={() => handleAnswerSelect(option)}
-                    disabled={hasAnswered}
-                    className={`${buttonClass} rounded-xl p-6 text-left transition-all transform hover:scale-105 disabled:cursor-not-allowed disabled:transform-none relative`}
+                    role="button"
+                    tabIndex={hasAnswered ? -1 : 0}
+                    onClick={() => !hasAnswered && handleAnswerSelect(option)}
+                    onKeyDown={(e) => !hasAnswered && e.key === 'Enter' && handleAnswerSelect(option)}
+                    className={`${optionClass} rounded-md p-6 text-left transition-all relative ${hasAnswered ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-lg font-medium text-gray-900 dark:text-gray-100">
+                      <span className={`text-lg font-medium ${getThemeTextPrimary()} flex-1`}>
                         {option}
                       </span>
-                      {showCorrectAnswer && isCorrect && (
-                        <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
-                      )}
-                      {showCorrectAnswer && isSelected && !isCorrect && (
-                        <XCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
-                      )}
+                      <div className="flex items-center gap-2">
+                        {showCorrectAnswer && isCorrect && (
+                          <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
+                        )}
+                        {showCorrectAnswer && isSelected && !isCorrect && (
+                          <XCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
+                        )}
+                        <span onClick={(e) => e.stopPropagation()}>
+                          <ReadAloudButton text={option} />
+                        </span>
+                      </div>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -580,7 +602,7 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
 
           {/* Host Controls */}
           {isHost && hasAnswered && (
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-4">
               <button
                 onClick={handleNextQuestion}
                 className={`w-full px-6 py-3 ${getThemeGradient('ui')} text-white rounded-lg hover:opacity-90 transition font-semibold`}
@@ -592,19 +614,19 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
 
           {/* Waiting for Host */}
           {!isHost && hasAnswered && (
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 text-center">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-6 text-center">
               <Loader2 className="h-8 w-8 text-purple-600 dark:text-purple-400 animate-spin mx-auto mb-2" />
-              <p className="text-gray-600 dark:text-gray-400">Waiting for next question...</p>
+              <p className={getThemeTextSecondary()}>Waiting for next question...</p>
             </div>
           )}
         </div>
 
         {/* Leaderboard Sidebar */}
         <div className="lg:col-span-1">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 sticky top-6">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-6 sticky top-6">
             <div className="flex items-center space-x-2 mb-4">
               <Trophy className="h-6 w-6 text-yellow-500" />
-              <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">Live Rankings</h3>
+              <h3 className={`text-xl font-bold ${getThemeTextPrimary()}`}>Live Rankings</h3>
             </div>
 
             <div className="space-y-2">
@@ -617,7 +639,7 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
                     className={`p-3 rounded-lg ${
                       myParticipant
                         ? 'bg-purple-100 dark:bg-purple-900 border-2 border-purple-500'
-                        : 'bg-gray-50 dark:bg-gray-700'
+                        : getThemeSubtle('bg')
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -626,21 +648,21 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
                           index === 0
                             ? 'bg-yellow-400 text-yellow-900'
                             : index === 1
-                            ? 'bg-gray-300 text-gray-900'
+                            ? `${getThemeSubtle('ui')} ${getThemeTextPrimary()}`
                             : index === 2
                             ? 'bg-orange-400 text-orange-900'
-                            : 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300'
+                            : `${getThemeSubtle('ui')} ${getThemeTextSecondary()}`
                         }`}>
                           {index + 1}
                         </div>
                         <div>
-                          <p className="font-medium text-gray-900 dark:text-gray-100 text-sm">
+                          <p className={`font-medium ${getThemeTextPrimary()} text-sm`}>
                             {participant.display_name}
                             {myParticipant && <span className="text-purple-600 dark:text-purple-400"> (You)</span>}
                           </p>
                         </div>
                       </div>
-                      <p className="font-bold text-gray-900 dark:text-gray-100">
+                      <p className={`font-bold ${getThemeTextPrimary()}`}>
                         {participant.score.toLocaleString()}
                       </p>
                     </div>
@@ -649,8 +671,8 @@ export const BrainRushGamePlay: React.FC<BrainRushGamePlayProps> = ({
               })}
             </div>
 
-            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-              <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
+            <div className={`mt-4 pt-4 border-t ${getThemeCardBorder()}`}>
+              <div className={`flex items-center justify-between text-sm ${getThemeTextSecondary()}`}>
                 <div className="flex items-center space-x-1">
                   <Users className="h-4 w-4" />
                   <span>{participants.length} Players</span>

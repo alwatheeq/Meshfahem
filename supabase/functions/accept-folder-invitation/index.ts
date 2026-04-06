@@ -1,3 +1,4 @@
+/// <reference path="../_shared/deno.d.ts" />
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { handleCorsPreflight } from '../_shared/cors.ts';
 import { jsonResponse, errorResponse, successResponse } from '../_shared/response.ts';

@@ -39,7 +39,7 @@ export const InsufficientCreditsModal: React.FC<InsufficientCreditsModalProps> =
 
       {/* Modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full p-6 relative">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-lg max-w-md w-full p-6 relative">
           {/* Close button */}
           <button
             onClick={onClose}

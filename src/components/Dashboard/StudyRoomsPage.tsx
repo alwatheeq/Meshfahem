@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Users, Plus, Video, X, Copy, Check, Clock, UserPlus, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Users, Plus, X, Copy, Check, Clock, UserPlus, Trash2, Search } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { ZegoVideoRoom } from './ZegoVideoRoom';
 import { useI18n } from '../../contexts/I18nContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useSubscription } from '../../hooks/useSubscription';
 import { useToast } from '../Toast/Toast';
 import { handleApiError, handleSupabaseError, isOffline, handleOfflineError } from '../../utils/errorHandler';
 import { ErrorLogger } from '../../utils/errorLogger';
@@ -13,6 +12,7 @@ import { useConfirm } from '../../hooks/useConfirm';
 import { LoadingSkeleton } from '../Common/LoadingSkeleton';
 import { usePageTutorial } from '../../hooks/usePageTutorial';
 import { PageTutorial } from '../Onboarding/PageTutorial';
+import { useSubscriptionUpsellGate } from '../../contexts/SubscriptionUpsellGateContext';
 
 interface StudyRoom {
   id: string;
@@ -40,15 +40,22 @@ interface RoomParticipant {
 export const StudyRoomsPage: React.FC = () => {
   const { user } = useAuth();
   const { t } = useI18n();
-  const { getThemeGradient, getThemeBorder, getThemeText, getThemeFocusRing } = useTheme();
+  const { getThemeGradient, getBackgroundGradient, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
   const { error: showErrorToast, success: showSuccessToast } = useToast();
   const { confirm, ConfirmModal } = useConfirm();
   const { shouldShowTutorial, showTutorial, isTutorialOpen, completeTutorial, skipTutorial, config: tutorialConfig } = usePageTutorial('study-rooms');
+  const { setBusy } = useSubscriptionUpsellGate();
   const [activeTab, setActiveTab] = useState<'browse' | 'my-rooms' | 'create'>('browse');
   const [rooms, setRooms] = useState<StudyRoom[]>([]);
   const [myRooms, setMyRooms] = useState<StudyRoom[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<StudyRoom | null>(null);
+
+  useEffect(() => {
+    setBusy('studyRoom', !!selectedRoom);
+    return () => setBusy('studyRoom', false);
+  }, [selectedRoom, setBusy]);
+
   const [participants, setParticipants] = useState<RoomParticipant[]>([]);
   const [copiedCode, setCopiedCode] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
@@ -60,7 +67,30 @@ export const StudyRoomsPage: React.FC = () => {
   const [creating, setCreating] = useState(false);
   const [joiningRoom, setJoiningRoom] = useState(false);
   const [leavingRoom, setLeavingRoom] = useState(false);
-  const { hasActiveSubscription } = useSubscription();
+  const [creditsExhaustedCountdown, setCreditsExhaustedCountdown] = useState<number | null>(null);
+  const [browseSearchQuery, setBrowseSearchQuery] = useState('');
+  const zegoPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const forceLeaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const forceLeaveTriggeredRef = useRef(false);
+
+  const filteredBrowseRooms = useMemo(() => {
+    const q = browseSearchQuery.trim().toLowerCase();
+    if (!q) return rooms;
+    return rooms.filter(
+      (r) =>
+        r.room_name.toLowerCase().includes(q) ||
+        r.room_code.toLowerCase().includes(q) ||
+        (r.room_description && r.room_description.toLowerCase().includes(q))
+    );
+  }, [rooms, browseSearchQuery]);
+
+  const displayRoomList = activeTab === 'browse' ? filteredBrowseRooms : myRooms;
+  const browseSearchNoMatches =
+    activeTab === 'browse' &&
+    !loading &&
+    rooms.length > 0 &&
+    filteredBrowseRooms.length === 0 &&
+    browseSearchQuery.trim().length > 0;
 
   useEffect(() => {
     if (user) {
@@ -116,7 +146,7 @@ export const StudyRoomsPage: React.FC = () => {
           schema: 'public',
           table: 'study_room_participants',
           filter: `room_id=eq.${selectedRoom.id}`
-        }, async (payload) => {
+        }, async (_payload) => {
           await fetchParticipants();
           
           // Check if room should be auto-ended (no active participants)
@@ -153,6 +183,69 @@ export const StudyRoomsPage: React.FC = () => {
       };
     }
   }, [selectedRoom?.id]);
+
+  // In-session Zego credit check: poll every 60s; when 0, show 30s warning then force leave
+  useEffect(() => {
+    if (!showVideo || !selectedRoom || !user) {
+      setCreditsExhaustedCountdown(null);
+      return;
+    }
+    forceLeaveTriggeredRef.current = false;
+    const limitMessage = t('study_rooms.usage_limit_reached') || 'Study room usage limit reached. You have no Study Room credits left. Top up or renew to use study rooms again.';
+    const warningMessage = t('study_rooms.credits_exhausted_warning') || 'Study room credits exhausted. You will be removed in 30 seconds.';
+
+    const check = async () => {
+      const { data } = await supabase.rpc('can_use_study_room', { p_user_id: user.id });
+      const allowed = data?.allowed === true;
+      const remaining = data?.zego_credits_remaining ?? 0;
+      if (allowed && remaining > 0) return;
+      if (forceLeaveTriggeredRef.current) return;
+      if (zegoPollIntervalRef.current) {
+        clearInterval(zegoPollIntervalRef.current);
+        zegoPollIntervalRef.current = null;
+      }
+      setCreditsExhaustedCountdown(30);
+      showErrorToast(warningMessage);
+      if (forceLeaveTimeoutRef.current) clearTimeout(forceLeaveTimeoutRef.current);
+      forceLeaveTimeoutRef.current = setTimeout(async () => {
+        if (forceLeaveTriggeredRef.current) return;
+        forceLeaveTriggeredRef.current = true;
+        try {
+          await supabase.rpc('force_leave_study_rooms', { p_user_id: user.id });
+        } catch (e) {
+          ErrorLogger.warn('force_leave_study_rooms error', { component: 'StudyRoomsPage', error: e });
+        }
+        setShowVideo(false);
+        setSelectedRoom(null);
+        setCreditsExhaustedCountdown(null);
+        await Promise.all([fetchRooms(), fetchMyRooms()]);
+        showErrorToast(limitMessage);
+      }, 30000);
+    };
+
+    check();
+    zegoPollIntervalRef.current = setInterval(check, 60000);
+    return () => {
+      if (zegoPollIntervalRef.current) {
+        clearInterval(zegoPollIntervalRef.current);
+        zegoPollIntervalRef.current = null;
+      }
+      if (forceLeaveTimeoutRef.current) {
+        clearTimeout(forceLeaveTimeoutRef.current);
+        forceLeaveTimeoutRef.current = null;
+      }
+      setCreditsExhaustedCountdown(null);
+    };
+  }, [showVideo, selectedRoom?.id, user?.id]);
+
+  // Countdown tick for credits exhausted warning
+  useEffect(() => {
+    if (creditsExhaustedCountdown == null || creditsExhaustedCountdown <= 0) return;
+    const tick = setInterval(() => {
+      setCreditsExhaustedCountdown((prev) => (prev == null || prev <= 1 ? null : prev - 1));
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [creditsExhaustedCountdown]);
 
   const fetchRooms = async () => {
     if (!user) return;
@@ -312,6 +405,24 @@ export const StudyRoomsPage: React.FC = () => {
   // Chat functionality now handled by ZegoCloud built-in chat
   // Removed fetchChatMessages function - no longer needed
 
+  /** Single place for study room credit check. Returns { allowed, message } for create/join. */
+  const checkCanUseStudyRoom = async (): Promise<{ allowed: boolean; message: string }> => {
+    const limitMessage = t('study_rooms.usage_limit_reached') || 'Study room usage limit reached. You have no Study Room credits left. Top up or renew to use study rooms again.';
+    if (!user) return { allowed: false, message: limitMessage };
+    try {
+      const { data, error } = await supabase.rpc('can_use_study_room', { p_user_id: user.id });
+      if (error) {
+        ErrorLogger.warn('can_use_study_room failed', { component: 'StudyRoomsPage', action: 'checkCanUseStudyRoom', error });
+        return { allowed: false, message: limitMessage };
+      }
+      const allowed = data?.allowed === true;
+      return { allowed, message: limitMessage };
+    } catch (e) {
+      ErrorLogger.warn('checkCanUseStudyRoom error', { component: 'StudyRoomsPage', action: 'checkCanUseStudyRoom', error: e });
+      return { allowed: false, message: limitMessage };
+    }
+  };
+
   const handleCreateRoom = async () => {
     if (!user || !roomName.trim()) {
       ErrorLogger.debug('Validation failed: missing user or room name', { component: 'StudyRoomsPage', action: 'handleCreateRoom' });
@@ -333,6 +444,12 @@ export const StudyRoomsPage: React.FC = () => {
     // Validate max participants range (minimum 1, maximum 20)
     if (maxParticipants < 1 || maxParticipants > 20) {
       showErrorToast('Room capacity must be between 1 and 20 participants');
+      return;
+    }
+
+    const { allowed: canUseStudyRoom, message: studyRoomLimitMessage } = await checkCanUseStudyRoom();
+    if (!canUseStudyRoom) {
+      showErrorToast(studyRoomLimitMessage);
       return;
     }
 
@@ -541,6 +658,12 @@ export const StudyRoomsPage: React.FC = () => {
       return;
     }
 
+    const { allowed: canUseStudyRoom, message: studyRoomLimitMessage } = await checkCanUseStudyRoom();
+    if (!canUseStudyRoom) {
+      showErrorToast(studyRoomLimitMessage);
+      return;
+    }
+
     setJoiningRoom(true);
     ErrorLogger.debug('Joining Room', { component: 'StudyRoomsPage', action: 'handleJoinRoom', roomId: room.id, roomName: room.room_name, roomCode: room.room_code, userId: user.id });
 
@@ -664,6 +787,16 @@ export const StudyRoomsPage: React.FC = () => {
       ErrorLogger.debug('Cannot leave: missing user or room or already leaving', { component: 'StudyRoomsPage', action: 'handleLeaveRoom' });
       return;
     }
+
+    if (zegoPollIntervalRef.current) {
+      clearInterval(zegoPollIntervalRef.current);
+      zegoPollIntervalRef.current = null;
+    }
+    if (forceLeaveTimeoutRef.current) {
+      clearTimeout(forceLeaveTimeoutRef.current);
+      forceLeaveTimeoutRef.current = null;
+    }
+    setCreditsExhaustedCountdown(null);
 
     setLeavingRoom(true);
     ErrorLogger.debug('Leaving Room', { component: 'StudyRoomsPage', action: 'handleLeaveRoom', roomId: selectedRoom.id, roomName: selectedRoom.room_name, userId: user.id });
@@ -804,7 +937,7 @@ export const StudyRoomsPage: React.FC = () => {
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
-  const formatTime = (dateString: string) => {
+  const _formatTime = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   };
@@ -821,7 +954,7 @@ export const StudyRoomsPage: React.FC = () => {
       <div className="min-h-screen bg-gray-900 p-4">
         <div className="max-w-7xl mx-auto">
           {/* Minimal header with room info and leave button */}
-          <div className="mb-4 flex justify-between items-center bg-gray-800 rounded-lg p-4 shadow-lg">
+          <div className="mb-4 flex justify-between items-center bg-gray-800 rounded-lg p-4 shadow">
             <div className="flex items-center space-x-4">
               <div>
                 <h2 className="text-xl font-bold text-white">
@@ -834,7 +967,7 @@ export const StudyRoomsPage: React.FC = () => {
                   </span>
                   <button
                     onClick={() => copyRoomCode(selectedRoom.room_code)}
-                    className="flex items-center space-x-1 hover:text-blue-400 transition-colors"
+                    className="flex items-center space-x-1 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
                   >
                     {copiedCode ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                     <span className="font-mono">{selectedRoom.room_code}</span>
@@ -851,8 +984,16 @@ export const StudyRoomsPage: React.FC = () => {
             </button>
           </div>
 
+          {creditsExhaustedCountdown != null && creditsExhaustedCountdown > 0 && (
+            <div className="mb-4 rounded-lg bg-amber-600 text-white px-4 py-3 flex items-center justify-center gap-2">
+              <Clock className="h-5 w-5 flex-shrink-0" />
+              <span>{t('study_rooms.credits_exhausted_warning') || 'Study room credits exhausted. You will be removed in 30 seconds.'}</span>
+              <span className="font-bold">{creditsExhaustedCountdown}s</span>
+            </div>
+          )}
+
           {/* Full-screen ZegoCloud video interface */}
-          <div className="bg-black rounded-xl overflow-hidden shadow-2xl" style={{ height: 'calc(100vh - 140px)' }}>
+          <div className="bg-black rounded-md overflow-hidden shadow-lg" style={{ height: 'calc(100vh - 140px)' }}>
             <ZegoVideoRoom
               roomId={selectedRoom.room_code}
               roomName={selectedRoom.room_name}
@@ -866,41 +1007,43 @@ export const StudyRoomsPage: React.FC = () => {
   }
 
   return (
-    <div className={`min-h-screen ${getThemeGradient('bg')} p-6`}>
+    <div className={`min-h-screen ${getBackgroundGradient()} p-6`}>
       <div className="max-w-6xl mx-auto">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-6">
-          <div className="flex items-center space-x-3 mb-6">
-            <Users className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">{t('study_rooms.title')}</h1>
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow p-6 mb-6`}>
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
+            <div className="flex items-center space-x-3">
+              <Users className={`h-8 w-8 ${getThemeTextPrimary()}`} />
+              <h1 className={`text-3xl font-bold ${getThemeTextPrimary()}`}>{t('study_rooms.title')}</h1>
+            </div>
           </div>
 
-          <div className={`flex space-x-2 border-b ${getThemeBorder()}`}>
+          <div className={`inline-flex items-center space-x-3 rounded-lg p-1 ${getThemeSubtle('ui')}`}>
             <button
               onClick={() => setActiveTab('browse')}
-              className={`px-6 py-3 font-medium transition-colors ${
+              className={`px-4 py-2 rounded-md transition-colors duration-150 font-medium ${
                 activeTab === 'browse'
-                  ? `border-b-2 ${getThemeBorder()} ${getThemeText()}`
-                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+                  ? `${getThemeCardBg()} ${getThemeTextPrimary()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow`
+                  : `${getThemeTextSecondary()} hover:opacity-80`
               }`}
             >
               {t('study_rooms.browse')}
             </button>
             <button
               onClick={() => setActiveTab('my-rooms')}
-              className={`px-6 py-3 font-medium transition-colors ${
+              className={`px-4 py-2 rounded-md transition-colors duration-150 font-medium ${
                 activeTab === 'my-rooms'
-                  ? `border-b-2 ${getThemeBorder()} ${getThemeText()}`
-                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+                  ? `${getThemeCardBg()} ${getThemeTextPrimary()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow`
+                  : `${getThemeTextSecondary()} hover:opacity-80`
               }`}
             >
               {t('study_rooms.my_rooms')} ({myRooms.length})
             </button>
             <button
               onClick={() => setActiveTab('create')}
-              className={`px-6 py-3 font-medium transition-colors ${
+              className={`px-4 py-2 rounded-md transition-colors duration-150 font-medium ${
                 activeTab === 'create'
-                  ? `border-b-2 ${getThemeBorder()} ${getThemeText()}`
-                  : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+                  ? `${getThemeCardBg()} ${getThemeTextPrimary()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow`
+                  : `${getThemeTextSecondary()} hover:opacity-80`
               }`}
             >
               {t('study_rooms.create')}
@@ -909,12 +1052,12 @@ export const StudyRoomsPage: React.FC = () => {
         </div>
 
         {activeTab === 'create' && (
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-6">{t('study_rooms.create_new')}</h2>
+          <div className={`${getThemeCardBg()} rounded-lg p-6`}>
+            <h2 className={`text-xl font-semibold ${getThemeTextPrimary()} mb-6`}>{t('study_rooms.create_new')}</h2>
 
-            <div className="space-y-6">
+            <div className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-2`}>
                   {t('study_rooms.room_name')}
                 </label>
                 <input
@@ -923,12 +1066,12 @@ export const StudyRoomsPage: React.FC = () => {
                   onChange={(e) => setRoomName(e.target.value)}
                   placeholder={t('study_rooms.room_name_placeholder')}
                   maxLength={100}
-                  className={`w-full px-4 py-2 border ${getThemeBorder()} rounded-lg ${getThemeFocusRing()} focus:ring-2 focus:ring-offset-2 dark:bg-gray-700 dark:text-gray-100`}
+                  className={`w-full px-4 py-2 input-clean ${getThemeCardBorder()} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${getThemeCardBg()} ${getThemeTextPrimary()}`}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-2`}>
                   {t('study_rooms.description')}
                 </label>
                 <textarea
@@ -937,12 +1080,12 @@ export const StudyRoomsPage: React.FC = () => {
                   placeholder={t('study_rooms.description_placeholder')}
                   maxLength={500}
                   rows={3}
-                  className={`w-full px-4 py-2 border ${getThemeBorder()} rounded-lg ${getThemeFocusRing()} focus:ring-2 focus:ring-offset-2 dark:bg-gray-700 dark:text-gray-100`}
+                  className={`w-full px-4 py-2 input-clean ${getThemeCardBorder()} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${getThemeCardBg()} ${getThemeTextPrimary()}`}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-2`}>
                   {t('study_rooms.max_participants')}
                 </label>
                 <input
@@ -953,16 +1096,16 @@ export const StudyRoomsPage: React.FC = () => {
                   onChange={(e) => setMaxParticipants(Number(e.target.value))}
                   className="w-full"
                 />
-                <div className="text-center mt-2">
-                  <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">{maxParticipants}</span>
-                  <span className="text-sm text-gray-600 dark:text-gray-400 ml-2">{t('study_rooms.participants')}</span>
+                <div className={`text-center mt-2 px-4 py-2 ${getThemeCardBorder()} rounded-lg ${getThemeSubtle('bg')}`}>
+                  <span className={`text-xl font-bold ${getThemeTextPrimary()}`}>{maxParticipants}</span>
+                  <span className={`text-sm ${getThemeTextSecondary()} ml-2`}>{t('study_rooms.participants')}</span>
                 </div>
               </div>
 
               <button
                 onClick={handleCreateRoom}
                 disabled={creating || !roomName.trim()}
-                className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center space-x-2"
+                className={`w-full py-2.5 ${getThemeGradient('ui')} text-white rounded-lg hover:opacity-90 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center space-x-2 ${getThemeCardBorder()}`}
               >
                 {creating ? (
                   <>
@@ -982,32 +1125,50 @@ export const StudyRoomsPage: React.FC = () => {
 
         {(activeTab === 'browse' || activeTab === 'my-rooms') && (
           <div className="space-y-4">
+            {activeTab === 'browse' && (
+              <div className={`relative ${getThemeCardBg()} ${getThemeCardBorder()} border rounded-lg`}>
+                <Search className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 ${getThemeTextMuted()}`} aria-hidden />
+                <input
+                  type="search"
+                  value={browseSearchQuery}
+                  onChange={(e) => setBrowseSearchQuery(e.target.value)}
+                  placeholder={t('study_rooms.browse_search_placeholder')}
+                  className={`w-full pl-10 pr-4 py-2.5 rounded-lg bg-transparent ${getThemeTextPrimary()} placeholder:text-gray-500 dark:placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40`}
+                  aria-label={t('study_rooms.browse_search_placeholder')}
+                />
+              </div>
+            )}
             {loading ? (
               <LoadingSkeleton type="card" count={3} />
-            ) : (activeTab === 'browse' ? rooms : myRooms).length === 0 ? (
-              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-12 text-center">
-                <Users className="h-16 w-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-                <p className="text-gray-600 dark:text-gray-400 mb-2">
+            ) : browseSearchNoMatches ? (
+              <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow p-12 text-center`}>
+                <Search className={`h-16 w-16 ${getThemeTextMuted()} mx-auto mb-4`} />
+                <p className={`${getThemeTextSecondary()}`}>{t('study_rooms.browse_no_matches')}</p>
+              </div>
+            ) : displayRoomList.length === 0 ? (
+              <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow p-12 text-center`}>
+                <Users className={`h-16 w-16 ${getThemeTextMuted()} mx-auto mb-4`} />
+                <p className={`${getThemeTextSecondary()} mb-2`}>
                   {activeTab === 'browse' ? t('study_rooms.no_active_rooms') : t('study_rooms.no_rooms_yet')}
                 </p>
-                <p className="text-sm text-gray-500 dark:text-gray-500">
+                <p className={`text-sm ${getThemeTextMuted()}`}>
                   {activeTab === 'browse' ? t('study_rooms.create_to_start') : t('study_rooms.create_first_room')}
                 </p>
               </div>
             ) : (
-              (activeTab === 'browse' ? rooms : myRooms).map((room) => (
-                <div key={room.id} className="bg-white dark:bg-gray-800 rounded-xl shadow p-6 hover:shadow-lg transition-shadow">
+              displayRoomList.map((room) => (
+                <div key={room.id} className={`${getThemeCardBg()} rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow p-6 hover:shadow transition-shadow`}>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                      <h3 className={`text-lg font-semibold ${getThemeTextPrimary()} mb-2`}>
                         {room.room_name}
                       </h3>
                       {room.room_description && (
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                        <p className={`text-sm ${getThemeTextSecondary()} mb-3`}>
                           {room.room_description}
                         </p>
                       )}
-                      <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
+                      <div className={`flex items-center space-x-4 text-sm ${getThemeTextSecondary()}`}>
                         <span className="flex items-center">
                           <Users className="h-4 w-4 mr-1" />
                           {room.participant_count || 0}/{room.max_participants}
@@ -1016,7 +1177,7 @@ export const StudyRoomsPage: React.FC = () => {
                           <Clock className="h-4 w-4 mr-1" />
                           {formatExpiry(room.expires_at)}
                         </span>
-                        <span className="font-mono text-xs bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                        <span className={`font-mono text-xs ${getThemeSubtle('ui')} px-2 py-1 rounded`}>
                           {room.room_code}
                         </span>
                       </div>
@@ -1024,7 +1185,7 @@ export const StudyRoomsPage: React.FC = () => {
                     <div className="flex items-center space-x-2">
                       <button
                         onClick={() => handleJoinRoom(room)}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2"
+                        className={`px-4 py-2 ${getThemeGradient('ui')} text-white dark:text-gray-900 rounded-lg hover:opacity-90 flex items-center space-x-2`}
                       >
                         <UserPlus className="h-4 w-4" />
                         <span>{t('study_rooms.join')}</span>

@@ -5,6 +5,16 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MeshFahem - AI-Powered Document Processing App</title>
+    <script>
+      // Apply persisted language direction before React mounts to prevent LTR flash on refresh
+      (function() {
+        try {
+          var lang = localStorage.getItem('meshfahem_language') || 'en';
+          document.documentElement.lang = lang;
+          document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

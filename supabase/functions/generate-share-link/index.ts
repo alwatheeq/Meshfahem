@@ -1,46 +1,63 @@
+/// <reference path="../_shared/deno.d.ts" />
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-import { handleCorsPreflight } from '../_shared/cors.ts';
-import { jsonResponse, errorResponse, successResponse } from '../_shared/response.ts';
-import { authenticateUser, getSupabaseClient } from '../_shared/auth.ts';
-import { validateMethod, parseJsonBody, validateRequiredFields } from '../_shared/validation.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.54.0';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      ...corsHeaders
+    }
+  });
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return handleCorsPreflight();
+    return new Response(null, { headers: corsHeaders });
   }
 
-  const methodError = validateMethod(req, ['POST']);
-  if (methodError) {
-    return methodError;
+  if (req.method !== 'POST') {
+    return jsonResponse({ error: 'Method not allowed' }, 405);
   }
 
   // Initialize Supabase client
-  const supabase = getSupabaseClient();
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    {
+      auth: {
+        persistSession: false,
+      },
+    }
+  );
 
   try {
-    const bodyResult = await parseJsonBody<{
-      item_id: string;
-      action: string;
-    }>(req);
-    if (bodyResult.error) {
-      return bodyResult.error;
+    const requestBody = await req.json();
+    const { item_id, action } = requestBody;
+
+    // Extract user ID from the request
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return jsonResponse({ error: 'Authorization required' }, 401);
     }
 
-    const { item_id, action } = bodyResult.data;
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
 
-    // Authenticate user
-    const authResult = await authenticateUser(req, true);
-    if (authResult.error || !authResult.user) {
-      return errorResponse(authResult.error || 'Unauthorized', 401);
+    if (userError || !user) {
+      return jsonResponse({ error: 'Invalid authorization' }, 401);
     }
 
-    const missingFields = validateRequiredFields(
-      { item_id, action },
-      ['item_id', 'action']
-    );
-    if (missingFields) {
-      return errorResponse(missingFields, 400);
+    if (!item_id || !action) {
+      return jsonResponse({ error: 'item_id and action are required' }, 400);
     }
 
     // Verify user owns the item
@@ -48,17 +65,17 @@ serve(async (req) => {
       .from('user_library_items')
       .select('id, user_id, title, shareable_link, is_public')
       .eq('id', item_id)
-      .eq('user_id', authResult.user.id)
+      .eq('user_id', user.id)
       .single();
 
     if (itemError || !item) {
-      return errorResponse('Item not found or access denied', 404);
+      return jsonResponse({ error: 'Item not found or access denied' }, 404);
     }
 
     if (action === 'generate') {
       // Generate new shareable link
       const shareableLink = crypto.randomUUID();
-      
+
       const { error: updateError } = await supabase
         .from('user_library_items')
         .update({
@@ -68,14 +85,15 @@ serve(async (req) => {
         .eq('id', item_id);
 
       if (updateError) {
-        return errorResponse('Failed to generate share link', 500);
+        return jsonResponse({ error: 'Failed to generate share link' }, 500);
       }
 
       // Construct the public URL
       const baseUrl = req.headers.get('origin') || 'https://your-app.com';
       const publicUrl = `${baseUrl}/share/${shareableLink}`;
 
-      return successResponse({
+      return jsonResponse({
+        success: true,
         shareable_link: shareableLink,
         public_url: publicUrl,
         message: 'Share link generated successfully'
@@ -92,22 +110,23 @@ serve(async (req) => {
         .eq('id', item_id);
 
       if (updateError) {
-        return errorResponse('Failed to revoke share link', 500);
+        return jsonResponse({ error: 'Failed to revoke share link' }, 500);
       }
 
-      return successResponse({
+      return jsonResponse({
+        success: true,
         message: 'Share link revoked successfully'
       });
 
     } else {
-      return errorResponse('Invalid action. Use "generate" or "revoke"', 400);
+      return jsonResponse({ error: 'Invalid action. Use "generate" or "revoke"' }, 400);
     }
 
   } catch (error) {
     console.error('Share link function error:', error);
-    return errorResponse(
-      `Server error: ${error instanceof Error ? error.message : String(error)}`,
-      500
-    );
+    return jsonResponse({
+      error: 'Server error',
+      details: (error as any)?.message || String(error)
+    }, 500);
   }
 });

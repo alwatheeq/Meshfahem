@@ -17,7 +17,7 @@ export const GameJoinPage: React.FC = () => {
   const { gameCode } = useParams<{ gameCode: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { getThemeGradient } = useTheme();
+  const { getThemeGradient, getBackgroundGradient, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted } = useTheme();
 
   const [displayName, setDisplayName] = useState('');
   const [joinAsGuest, setJoinAsGuest] = useState(false);
@@ -136,10 +136,10 @@ export const GameJoinPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className={`min-h-screen ${getThemeGradient('bg')} flex items-center justify-center p-4`}>
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-12 text-center max-w-md w-full">
+      <div className={`min-h-screen ${getBackgroundGradient()} flex items-center justify-center p-4`}>
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-12 text-center max-w-md w-full`}>
           <Loader2 className="h-16 w-16 text-blue-600 dark:text-blue-400 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600 dark:text-gray-400">Validating game code...</p>
+          <p className={getThemeTextSecondary()}>Validating game code...</p>
         </div>
       </div>
     );
@@ -147,11 +147,11 @@ export const GameJoinPage: React.FC = () => {
 
   if (error && !gameInfo) {
     return (
-      <div className={`min-h-screen ${getThemeGradient('bg')} flex items-center justify-center p-4`}>
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-12 text-center max-w-md w-full">
+      <div className={`min-h-screen ${getBackgroundGradient()} flex items-center justify-center p-4`}>
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-12 text-center max-w-md w-full`}>
           <AlertCircle className="h-16 w-16 text-red-600 dark:text-red-400 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Unable to Join Game</h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">{error}</p>
+          <h2 className={`text-2xl font-bold ${getThemeTextPrimary()} mb-2`}>Unable to Join Game</h2>
+          <p className={`${getThemeTextSecondary()} mb-6`}>{error}</p>
           <button
             onClick={() => navigate('/dashboard?view=eduplay')}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
@@ -165,22 +165,22 @@ export const GameJoinPage: React.FC = () => {
 
   return (
     <div className={`min-h-screen ${getThemeGradient('bg')} flex items-center justify-center p-4`}>
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 max-w-md w-full">
+      <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8 max-w-md w-full`}>
         {/* Header */}
         <div className="text-center mb-8">
           <div className={`${getThemeGradient('ui')} rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4`}>
             <Gamepad2 className="h-12 w-12 text-white" />
           </div>
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Join Game</h2>
+          <h2 className={`text-3xl font-bold ${getThemeTextPrimary()} mb-2`}>Join Game</h2>
           {gameInfo && (
-            <p className="text-lg text-gray-600 dark:text-gray-400">{gameInfo.game_title}</p>
+            <p className={`text-lg ${getThemeTextSecondary()}`}>{gameInfo.game_title}</p>
           )}
         </div>
 
         {/* Join Form */}
         <div className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-2`}>
               Game Code
             </label>
             <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
@@ -191,7 +191,7 @@ export const GameJoinPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-2`}>
               Your Display Name
             </label>
             <input
@@ -200,7 +200,7 @@ export const GameJoinPage: React.FC = () => {
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Enter your name"
               maxLength={50}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+              className={`w-full px-4 py-3 ${getThemeCardBorder()} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${getThemeCardBg()} ${getThemeTextPrimary()}`}
             />
           </div>
 
@@ -234,9 +234,9 @@ export const GameJoinPage: React.FC = () => {
       {/* Auth Modal */}
       {showAuthModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 max-w-md w-full">
-            <h3 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Join the Game</h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-lg p-8 max-w-md w-full">
+            <h3 className={`text-2xl font-bold ${getThemeTextPrimary()} mb-4`}>Join the Game</h3>
+            <p className={`${getThemeTextSecondary()} mb-6`}>
               Choose how you'd like to join this game:
             </p>
 
@@ -257,13 +257,13 @@ export const GameJoinPage: React.FC = () => {
 
               <button
                 onClick={handleContinueAsGuest}
-                className="w-full px-6 py-3 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition font-medium"
+                className={`w-full px-6 py-3 border-2 ${getThemeCardBorder()} ${getThemeTextSecondary()} rounded-lg hover:opacity-60 transition font-medium`}
               >
                 Continue as Guest
               </button>
             </div>
 
-            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400 text-center">
+            <p className={`mt-4 text-sm ${getThemeTextMuted()} text-center`}>
               Guest users won't have their progress saved
             </p>
           </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Search, Filter, Eye, X, CheckCircle, Clock, Image as ImageIcon, Video, Download, Trash2 } from 'lucide-react';
+import { Search, Filter, Eye, X, Clock, Image as ImageIcon, Download, Trash2 } from 'lucide-react';
 import { useToast } from '../Toast/Toast';
 import { ErrorLogger } from '../../utils/errorLogger';
 import { useDebounce } from '../../hooks/useDebounce';
@@ -71,18 +71,31 @@ export const FeedbackManagementPage: React.FC = React.memo(() => {
 
       // Log audit action
       if (user?.id) {
-        await supabase.rpc('log_admin_action', {
-          p_action_type: 'UPDATE',
-          p_table_name: 'user_feedback',
-          p_record_id: id,
-          p_old_values: { status: feedbacks.find(f => f.id === id)?.status },
-          p_new_values: { status: newStatus },
-          p_description: `Updated feedback status to ${newStatus}`
-        }).catch(err => ErrorLogger.warn('Failed to log admin action', { component: 'FeedbackManagementPage', action: 'updateFeedbackStatus', feedbackId: id, error: err instanceof Error ? err : new Error(String(err)) }));
+        try {
+          await supabase.rpc('log_admin_action', {
+            p_action_type: 'UPDATE',
+            p_table_name: 'user_feedback',
+            p_record_id: id,
+            p_old_values: { status: feedbacks.find(f => f.id === id)?.status },
+            p_new_values: { status: newStatus },
+            p_description: `Updated feedback status to ${newStatus}`
+          });
+        } catch (logErr: unknown) {
+          const logError = logErr instanceof Error ? logErr : new Error(String(logErr));
+          ErrorLogger.warn('Failed to log admin action', { 
+            component: 'FeedbackManagementPage', 
+            action: 'updateFeedbackStatus', 
+            metadata: { feedbackId: id, error: logError.message } 
+          });
+        }
       }
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      ErrorLogger.error(err, { component: 'FeedbackManagementPage', action: 'updateFeedbackStatus', feedbackId: id, newStatus });
+      ErrorLogger.error(err, { 
+        component: 'FeedbackManagementPage', 
+        action: 'updateFeedbackStatus', 
+        metadata: { feedbackId: id, newStatus } 
+      });
       showErrorToast('Failed to update feedback status');
     }
   };
@@ -113,19 +126,32 @@ export const FeedbackManagementPage: React.FC = React.memo(() => {
 
       // Log audit action
       if (user?.id) {
-        await supabase.rpc('log_admin_action', {
-          p_action_type: 'DELETE',
-          p_table_name: 'user_feedback',
-          p_record_id: id,
-          p_old_values: { feedback_text: feedbacks.find(f => f.id === id)?.feedback_text, status: feedbacks.find(f => f.id === id)?.status },
-          p_description: `Deleted feedback from ${feedbacks.find(f => f.id === id)?.user_email || 'unknown user'}`
-        }).catch(err => ErrorLogger.warn('Failed to log admin action', { component: 'FeedbackManagementPage', action: 'deleteFeedback', feedbackId: id, error: err instanceof Error ? err : new Error(String(err)) }));
+        try {
+          await supabase.rpc('log_admin_action', {
+            p_action_type: 'DELETE',
+            p_table_name: 'user_feedback',
+            p_record_id: id,
+            p_old_values: { feedback_text: feedbacks.find(f => f.id === id)?.feedback_text, status: feedbacks.find(f => f.id === id)?.status },
+            p_description: `Deleted feedback from ${feedbacks.find(f => f.id === id)?.user_email || 'unknown user'}`
+          });
+        } catch (logErr: unknown) {
+          const logError = logErr instanceof Error ? logErr : new Error(String(logErr));
+          ErrorLogger.warn('Failed to log admin action', { 
+            component: 'FeedbackManagementPage', 
+            action: 'deleteFeedback', 
+            metadata: { feedbackId: id, error: logError.message } 
+          });
+        }
       }
 
       showSuccessToast('Feedback deleted successfully');
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      ErrorLogger.error(err, { component: 'FeedbackManagementPage', action: 'deleteFeedback', feedbackId: id });
+      ErrorLogger.error(err, { 
+        component: 'FeedbackManagementPage', 
+        action: 'deleteFeedback', 
+        metadata: { feedbackId: id } 
+      });
       showErrorToast('Failed to delete feedback');
     }
   };
@@ -167,7 +193,7 @@ export const FeedbackManagementPage: React.FC = React.memo(() => {
 
   const getStatusBadge = (status: string) => {
     const styles = {
-      pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
+      pending: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-white',
       reviewed: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
       resolved: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
     };
@@ -189,15 +215,15 @@ export const FeedbackManagementPage: React.FC = React.memo(() => {
         </div>
         <button
           onClick={exportFeedbackToCSV}
-          className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+          className="flex items-center space-x-2 px-5 py-2.5 bg-green-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-white rounded-lg hover:bg-green-700 transition"
         >
           <Download className="h-4 w-4" />
           <span>Export CSV</span>
         </button>
       </div>
 
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow border border-gray-200 dark:border-gray-700 p-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
@@ -205,7 +231,7 @@ export const FeedbackManagementPage: React.FC = React.memo(() => {
               placeholder="Search feedback..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 dark:text-white"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
             />
           </div>
 
@@ -214,7 +240,7 @@ export const FeedbackManagementPage: React.FC = React.memo(() => {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 dark:text-white appearance-none"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white appearance-none"
             >
               <option value="all">All Statuses</option>
               <option value="pending">Pending</option>
@@ -228,7 +254,7 @@ export const FeedbackManagementPage: React.FC = React.memo(() => {
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 dark:text-white appearance-none"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white appearance-none"
             >
               <option value="all">All Types</option>
               <option value="feedback">Feedback</option>
@@ -244,7 +270,7 @@ export const FeedbackManagementPage: React.FC = React.memo(() => {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 dark:bg-slate-700">
+              <thead className="bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-slate-700">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     User
@@ -266,20 +292,20 @@ export const FeedbackManagementPage: React.FC = React.memo(() => {
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-gray-700">
+              <tbody className="bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] divide-y divide-gray-200 dark:divide-gray-700">
                 {filteredFeedbacks.map((feedback) => (
-                  <tr key={feedback.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                    <td className="px-6 py-4 whitespace-nowrap">
+                  <tr key={feedback.id} className="hover:bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:hover:bg-slate-700/50">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900 dark:text-white">
                         {feedback.user_email}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getTypeBadge(feedback.feedback_type)}`}>
                         {feedback.feedback_type}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-6">
                       <div className="text-sm text-gray-900 dark:text-white max-w-xs truncate">
                         {feedback.feedback_text}
                       </div>
@@ -292,12 +318,12 @@ export const FeedbackManagementPage: React.FC = React.memo(() => {
                         </div>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadge(feedback.status)}`}>
                         {feedback.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <div className="flex items-center space-x-2">
                         <Clock className="h-4 w-4 text-gray-400" />
                         <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -305,7 +331,7 @@ export const FeedbackManagementPage: React.FC = React.memo(() => {
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <td className="px-6 py-6 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center space-x-3">
                         <button
                           onClick={() => setSelectedFeedback(feedback)}
@@ -338,20 +364,20 @@ export const FeedbackManagementPage: React.FC = React.memo(() => {
       </div>
 
       {selectedFeedback && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] border-b border-gray-200 dark:border-gray-700 px-6 py-6 flex items-center justify-between">
               <h3 className="text-xl font-bold text-gray-900 dark:text-white">Feedback Details</h3>
               <button
                 onClick={() => setSelectedFeedback(null)}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+                className="p-2 hover:bg-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:hover:bg-gray-700 rounded-lg transition"
               >
                 <X className="h-5 w-5 text-gray-500 dark:text-gray-400" />
               </button>
             </div>
 
             <div className="p-6 space-y-6">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
                     User Email
@@ -388,7 +414,7 @@ export const FeedbackManagementPage: React.FC = React.memo(() => {
                   <select
                     value={selectedFeedback.status}
                     onChange={(e) => updateFeedbackStatus(selectedFeedback.id, e.target.value as 'pending' | 'reviewed' | 'resolved')}
-                    className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                    className="px-3 py-1 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
                   >
                     <option value="pending">Pending</option>
                     <option value="reviewed">Reviewed</option>
@@ -401,7 +427,7 @@ export const FeedbackManagementPage: React.FC = React.memo(() => {
                 <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
                   Feedback Message
                 </label>
-                <div className="bg-gray-50 dark:bg-slate-700 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
+                <div className="bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-slate-700 rounded-lg p-6 border border-gray-200 dark:border-gray-600">
                   <p className="text-gray-900 dark:text-white whitespace-pre-wrap">{selectedFeedback.feedback_text}</p>
                 </div>
               </div>
@@ -411,7 +437,7 @@ export const FeedbackManagementPage: React.FC = React.memo(() => {
                   <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
                     Attachments ({selectedFeedback.media_urls.length})
                   </label>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-6">
                     {selectedFeedback.media_urls.map((url, index) => {
                       const isVideo = url.match(/\.(mp4|mov|webm)$/i);
                       return (
@@ -433,7 +459,7 @@ export const FeedbackManagementPage: React.FC = React.memo(() => {
                             href={url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="absolute top-2 right-2 bg-white dark:bg-slate-800 p-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition"
+                            className="absolute top-2 right-2 bg-white dark:bg-slate-800 p-2 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow opacity-0 group-hover:opacity-100 transition"
                           >
                             <Eye className="h-4 w-4 text-gray-600 dark:text-gray-300" />
                           </a>

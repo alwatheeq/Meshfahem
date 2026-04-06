@@ -1,17 +1,19 @@
-import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2.39.3';
-import { handleCorsPreflight } from '../_shared/cors.ts';
-import { jsonResponse, errorResponse, successResponse } from '../_shared/response.ts';
-import { authenticateUser, getSupabaseClient } from '../_shared/auth.ts';
-import { validateMethod, parseJsonBody, validateRequiredFields, validateNumberRange } from '../_shared/validation.ts';
+/// <reference path="../_shared/deno.d.ts" />
+import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
 
 const MODEL_TOKEN_LIMITS: { [key: string]: number } = {
   'claude-3-haiku-20240307': 4096,
 };
 
 const DEFAULT_MODEL = 'claude-3-haiku-20240307';
-const DEFAULT_MAX_TOKENS = 4096;
 const QUESTIONS_PER_CHUNK = 3;
 const MAX_CHUNK_RETRIES = 3;
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
+};
 
 interface QuizRequest {
   text: string;
@@ -33,6 +35,18 @@ interface Question {
   type: 'multiple_choice' | 'true_false';
 }
 
+// ─── Text segment interface ───────────────────────────────────────────────────
+// Each chunk of the document gets its own text slice, which forces the model
+// to focus on genuinely different content rather than re-reading the same passage.
+
+interface DocumentSegment {
+  text: string;
+  segmentIndex: number;
+  totalSegments: number;
+}
+
+// ─── String utilities ─────────────────────────────────────────────────────────
+
 function normalizeString(str: string): string {
   return str.trim().replace(/\s+/g, ' ');
 }
@@ -47,8 +61,63 @@ function normalizeUnicode(str: string): string {
     .replace(/[\u2022\u2023\u25E6\u2043\u2219]/g, '-');
 }
 
+// ─── Document segmentation ────────────────────────────────────────────────────
+// Split the source text into as many segments as there are chunks so that each
+// chunk call receives a genuinely different slice of content.
+
+function segmentDocument(text: string, totalChunks: number, targetLanguage: string): DocumentSegment[] {
+  const maxCharsPerSegment = targetLanguage === 'en' ? 12000 : 10000;
+
+  // If the document is short enough to fit in one segment, replicate it for all
+  // chunks but rely on the question-history mechanism to ensure variety.
+  if (text.length <= maxCharsPerSegment || totalChunks === 1) {
+    return Array.from({ length: totalChunks }, (_, i) => ({
+      text,
+      segmentIndex: i,
+      totalSegments: totalChunks,
+    }));
+  }
+
+  // Split on paragraph boundaries where possible so we don't cut mid-sentence.
+  const paragraphs = text.split(/\n\n+/);
+  const segments: DocumentSegment[] = [];
+  const targetSegmentLength = Math.ceil(text.length / totalChunks);
+
+  let current = '';
+  let segmentIndex = 0;
+
+  for (const para of paragraphs) {
+    if (
+      current.length + para.length > targetSegmentLength &&
+      current.length > 0 &&
+      segmentIndex < totalChunks - 1
+    ) {
+      segments.push({ text: current.trim(), segmentIndex, totalSegments: totalChunks });
+      segmentIndex++;
+      current = para;
+    } else {
+      current += (current ? '\n\n' : '') + para;
+    }
+  }
+
+  // Last segment gets whatever remains
+  if (current.trim()) {
+    segments.push({ text: current.trim(), segmentIndex, totalSegments: totalChunks });
+  }
+
+  // If we ended up with fewer segments than chunks (e.g. few paragraphs),
+  // pad by reusing segments cyclically — at least different slices are attempted.
+  while (segments.length < totalChunks) {
+    const src = segments[segments.length % segments.length];
+    segments.push({ ...src, segmentIndex: segments.length, totalSegments: totalChunks });
+  }
+
+  return segments.slice(0, totalChunks);
+}
+
+// ─── JSON parsing ─────────────────────────────────────────────────────────────
+
 function smartRepairJSON(text: string): string {
-  console.log('🔧 Starting smart JSON repair...');
   let repaired = text;
 
   repaired = repaired.replace(/"\s*\n\s*"/g, '", "');
@@ -56,122 +125,64 @@ function smartRepairJSON(text: string): string {
   repaired = repaired.replace(/\}\s*\n\s*\{/g, '}, {');
   repaired = repaired.replace(/"\s*\n\s*\[/g, '", [');
   repaired = repaired.replace(/\]\s*\n\s*\{/g, '], {');
-
   repaired = repaired.replace(/"(\w+)":\s*"([^"]*)"(\s+)"(\w+)":/g, '"$1": "$2", "$4":');
   repaired = repaired.replace(/"(\w+)":\s*"([^"]*)"(\s+)\}/g, '"$1": "$2" }');
-
   repaired = repaired.replace(/\}\s+\{/g, '}, {');
   repaired = repaired.replace(/\]\s+\[/g, '], [');
-
   repaired = repaired.replace(/,(\s*[\]}])/g, '$1');
 
   const quoteCount = (repaired.match(/"/g) || []).length;
   if (quoteCount % 2 !== 0) {
-    console.log('⚠️ Odd number of quotes, closing last string');
     const lastQuoteIndex = repaired.lastIndexOf('"');
     if (lastQuoteIndex !== -1) {
       const afterQuote = repaired.substring(lastQuoteIndex + 1);
-      if (!afterQuote.match(/^\s*[,}\]]/)) {
-        repaired = repaired + '"';
-      }
+      if (!afterQuote.match(/^\s*[,}\]]/)) repaired = repaired + '"';
     }
   }
 
   const openBrackets = (repaired.match(/\[/g) || []).length;
   const closeBrackets = (repaired.match(/\]/g) || []).length;
-  if (openBrackets > closeBrackets) {
-    console.log(`⚠️ Adding ${openBrackets - closeBrackets} closing bracket(s)`);
-    repaired = repaired + ']'.repeat(openBrackets - closeBrackets);
-  }
+  if (openBrackets > closeBrackets) repaired += ']'.repeat(openBrackets - closeBrackets);
 
   const openBraces = (repaired.match(/\{/g) || []).length;
   const closeBraces = (repaired.match(/\}/g) || []).length;
-  if (openBraces > closeBraces) {
-    console.log(`⚠️ Adding ${openBraces - closeBraces} closing brace(s)`);
-    repaired = repaired + '}'.repeat(openBraces - closeBraces);
-  }
+  if (openBraces > closeBraces) repaired += '}'.repeat(openBraces - closeBraces);
 
-  console.log('✅ Smart repair complete');
   return repaired;
 }
 
 function extractCompleteQuestions(text: string): string {
-  console.log('✂️ Extracting complete questions from potentially truncated response...');
-
   const sanitized = advancedSanitizeJSON(text);
-
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-  let result = '';
-  let lastCompleteQuestionEnd = -1;
-  let questionCount = 0;
+  let depth = 0, inString = false, escape = false;
+  let result = '', lastCompleteQuestionEnd = -1, questionCount = 0;
 
   for (let i = 0; i < sanitized.length; i++) {
     const char = sanitized[i];
 
-    if (escape) {
-      result += char;
-      escape = false;
-      continue;
-    }
-
-    if (char === '\\' && inString) {
-      escape = true;
-      result += char;
-      continue;
-    }
-
-    if (char === '"' && !escape) {
-      inString = !inString;
-      result += char;
-      continue;
-    }
+    if (escape) { result += char; escape = false; continue; }
+    if (char === '\\' && inString) { escape = true; result += char; continue; }
+    if (char === '"' && !escape) { inString = !inString; result += char; continue; }
 
     if (!inString) {
-      if (char === '[') {
-        depth++;
-        result += char;
-      } else if (char === '{') {
-        depth++;
-        result += char;
-      } else if (char === '}') {
-        depth--;
-        result += char;
-        if (depth === 1) {
-          lastCompleteQuestionEnd = i;
-          questionCount++;
-        }
+      if (char === '[' || char === '{') { depth++; result += char; }
+      else if (char === '}') {
+        depth--; result += char;
+        if (depth === 1) { lastCompleteQuestionEnd = i; questionCount++; }
       } else if (char === ']') {
-        depth--;
-        result += char;
-        if (depth === 0) {
-          console.log(`✅ Found ${questionCount} complete questions`);
-          return result;
-        }
-      } else {
-        result += char;
-      }
-    } else {
-      result += char;
-    }
+        depth--; result += char;
+        if (depth === 0) return result;
+      } else { result += char; }
+    } else { result += char; }
   }
 
   if (lastCompleteQuestionEnd > 0 && depth > 0) {
-    const truncated = result.substring(0, lastCompleteQuestionEnd + 1) + ']';
-    console.log(`✂️ Truncated to ${questionCount} complete questions (removed incomplete question)`);
-    return truncated;
+    return result.substring(0, lastCompleteQuestionEnd + 1) + ']';
   }
-
-  console.log('⚠️ Could not find complete questions boundary, returning sanitized text');
   return result;
 }
 
 function advancedSanitizeJSON(text: string): string {
   let cleaned = text.trim();
-
-  console.log('🧹 Starting JSON sanitization, original length:', cleaned.length);
-
   cleaned = normalizeUnicode(cleaned);
   cleaned = cleaned.replace(/^\uFEFF/gm, '');
   cleaned = cleaned.replace(/\uFFFD/g, '');
@@ -183,115 +194,77 @@ function advancedSanitizeJSON(text: string): string {
     cleaned.indexOf('[') === -1 ? Infinity : cleaned.indexOf('['),
     cleaned.indexOf('{') === -1 ? Infinity : cleaned.indexOf('{')
   );
-  if (jsonStart !== Infinity && jsonStart > 0) {
-    console.log(`✂️ Trimming ${jsonStart} characters from start`);
-    cleaned = cleaned.substring(jsonStart);
-  }
+  if (jsonStart !== Infinity && jsonStart > 0) cleaned = cleaned.substring(jsonStart);
 
   const lastBracket = Math.max(cleaned.lastIndexOf(']'), cleaned.lastIndexOf('}'));
   if (lastBracket !== -1 && lastBracket < cleaned.length - 1) {
     const afterContent = cleaned.substring(lastBracket + 1).trim();
     if (afterContent.length > 0 && !afterContent.startsWith(',')) {
-      const trimmed = cleaned.length - lastBracket - 1;
-      console.log(`✂️ Trimming ${trimmed} characters from end`);
       cleaned = cleaned.substring(0, lastBracket + 1);
     }
   }
 
   cleaned = cleaned.replace(/,(\s*[\]}])/g, '$1');
   cleaned = cleaned.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '');
-  cleaned = cleaned.replace(/\r\n/g, '\n');
-  cleaned = cleaned.replace(/\r/g, '\n');
+  cleaned = cleaned.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
-  console.log('✨ Sanitization complete, final length:', cleaned.length);
   return cleaned;
 }
 
 function tryParseJSON(text: string): any {
-  const strategies: Array<{name: string, fn: () => any}> = [
-    {
-      name: 'Direct Parse',
-      fn: () => JSON.parse(text)
-    },
-    {
-      name: 'Sanitized Parse',
-      fn: () => {
-        const sanitized = advancedSanitizeJSON(text);
-        return JSON.parse(sanitized);
-      }
-    },
+  const strategies: Array<{ name: string; fn: () => any }> = [
+    { name: 'Direct Parse', fn: () => JSON.parse(text) },
+    { name: 'Sanitized Parse', fn: () => JSON.parse(advancedSanitizeJSON(text)) },
     {
       name: 'Smart Repair + Parse',
-      fn: () => {
-        const sanitized = advancedSanitizeJSON(text);
-        const repaired = smartRepairJSON(sanitized);
-        return JSON.parse(repaired);
-      }
+      fn: () => JSON.parse(smartRepairJSON(advancedSanitizeJSON(text))),
     },
     {
       name: 'Extract Complete Questions + Parse',
-      fn: () => {
-        const complete = extractCompleteQuestions(text);
-        return JSON.parse(complete);
-      }
+      fn: () => JSON.parse(extractCompleteQuestions(text)),
     },
     {
       name: 'Extract Complete Questions + Smart Repair',
-      fn: () => {
-        const complete = extractCompleteQuestions(text);
-        const repaired = smartRepairJSON(complete);
-        return JSON.parse(repaired);
-      }
+      fn: () => JSON.parse(smartRepairJSON(extractCompleteQuestions(text))),
     },
     {
       name: 'Array Extraction',
       fn: () => {
-        const arrayMatch = text.match(/\[[\s\S]*\]/);
-        if (!arrayMatch) throw new Error('No array found');
-        return JSON.parse(arrayMatch[0]);
-      }
+        const m = text.match(/\[[\s\S]*\]/);
+        if (!m) throw new Error('No array found');
+        return JSON.parse(m[0]);
+      },
     },
     {
       name: 'Array Extraction + Smart Repair',
       fn: () => {
-        const arrayMatch = text.match(/\[[\s\S]*\]/);
-        if (!arrayMatch) throw new Error('No array found');
-        const repaired = smartRepairJSON(arrayMatch[0]);
-        return JSON.parse(repaired);
-      }
+        const m = text.match(/\[[\s\S]*\]/);
+        if (!m) throw new Error('No array found');
+        return JSON.parse(smartRepairJSON(m[0]));
+      },
     },
     {
       name: 'Aggressive Complete Question Extraction',
-      fn: () => {
-        const sanitized = advancedSanitizeJSON(text);
-        const complete = extractCompleteQuestions(sanitized);
-        const repaired = smartRepairJSON(complete);
-        return JSON.parse(repaired);
-      }
-    }
+      fn: () =>
+        JSON.parse(smartRepairJSON(extractCompleteQuestions(advancedSanitizeJSON(text)))),
+    },
   ];
 
-  const errors: Array<{strategy: string, error: string}> = [];
-
+  const errors: Array<{ strategy: string; error: string }> = [];
   for (const strategy of strategies) {
     try {
-      console.log(`🔍 Trying strategy: ${strategy.name}`);
-      const result = strategy.fn();
-      console.log(`✅ Strategy "${strategy.name}" succeeded!`);
-      return result;
+      return strategy.fn();
     } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : String(e);
-      console.log(`❌ Strategy "${strategy.name}" failed:`, errorMsg.substring(0, 100));
-      errors.push({ strategy: strategy.name, error: errorMsg });
+      errors.push({ strategy: strategy.name, error: e instanceof Error ? e.message : String(e) });
     }
   }
 
-  console.error('💥 All parsing strategies failed');
-  console.error('📄 Text sample (first 500):', text.substring(0, 500));
-  console.error('📄 Text sample (last 500):', text.substring(Math.max(0, text.length - 500)));
-
-  throw new Error(`All JSON parsing strategies failed. Attempted ${strategies.length} strategies. First error: ${errors[0]?.error || 'Unknown'}`);
+  throw new Error(
+    `All JSON parsing strategies failed. First error: ${errors[0]?.error || 'Unknown'}`
+  );
 }
+
+// ─── Answer matching ──────────────────────────────────────────────────────────
 
 function stripOptionPrefix(str: string): string {
   return str.replace(/^[A-Da-d][\).\]:]\s*/, '').replace(/^[1-4][\).\]:]\s*/, '').trim();
@@ -302,174 +275,85 @@ function removePunctuation(str: string): string {
 }
 
 function fullyNormalize(str: string): string {
-  let normalized = normalizeString(str);
-  normalized = stripOptionPrefix(normalized);
-  normalized = removePunctuation(normalized);
-  return normalized;
-}
-
-function calculateSimilarity(str1: string, str2: string): number {
-  const s1 = str1.toLowerCase();
-  const s2 = str2.toLowerCase();
-
-  if (s1 === s2) return 1.0;
-
-  const longer = s1.length > s2.length ? s1 : s2;
-  const shorter = s1.length > s2.length ? s2 : s1;
-
-  if (longer.length === 0) return 1.0;
-
-  const editDistance = levenshteinDistance(s1, s2);
-  return (longer.length - editDistance) / longer.length;
+  return removePunctuation(stripOptionPrefix(normalizeString(str)));
 }
 
 function levenshteinDistance(str1: string, str2: string): number {
   const matrix: number[][] = [];
-
-  for (let i = 0; i <= str2.length; i++) {
-    matrix[i] = [i];
-  }
-
-  for (let j = 0; j <= str1.length; j++) {
-    matrix[0][j] = j;
-  }
-
+  for (let i = 0; i <= str2.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= str1.length; j++) matrix[0][j] = j;
   for (let i = 1; i <= str2.length; i++) {
     for (let j = 1; j <= str1.length; j++) {
-      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j] + 1
-        );
-      }
+      matrix[i][j] =
+        str2[i - 1] === str1[j - 1]
+          ? matrix[i - 1][j - 1]
+          : Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
     }
   }
-
   return matrix[str2.length][str1.length];
 }
 
+function calculateSimilarity(str1: string, str2: string): number {
+  const s1 = str1.toLowerCase(), s2 = str2.toLowerCase();
+  if (s1 === s2) return 1.0;
+  const longer = s1.length > s2.length ? s1 : s2;
+  if (longer.length === 0) return 1.0;
+  return (longer.length - levenshteinDistance(s1, s2)) / longer.length;
+}
+
 function findBestMatch(correctAnswer: string, options: string[]): string | null {
-  const normalizedAnswer = normalizeString(correctAnswer);
-  const strippedAnswer = stripOptionPrefix(normalizedAnswer);
-  const fullyNormalizedAnswer = fullyNormalize(correctAnswer);
-
-  console.log(`🔍 Finding match for: "${correctAnswer}"`);
+  const norm = normalizeString(correctAnswer);
+  const stripped = stripOptionPrefix(norm);
+  const full = fullyNormalize(correctAnswer);
 
   for (const option of options) {
-    const normalizedOption = normalizeString(option);
-    const fullyNormalizedOption = fullyNormalize(option);
-
-    if (normalizedOption === normalizedAnswer) {
-      console.log(`✅ Exact match found: "${option}"`);
-      return option;
-    }
-
-    if (normalizedOption === strippedAnswer) {
-      console.log(`✅ Stripped match found: "${option}"`);
-      return option;
-    }
-
-    if (normalizedOption.toLowerCase() === normalizedAnswer.toLowerCase()) {
-      console.log(`✅ Case-insensitive match found: "${option}"`);
-      return option;
-    }
-
-    if (normalizedOption.toLowerCase() === strippedAnswer.toLowerCase()) {
-      console.log(`✅ Case-insensitive stripped match found: "${option}"`);
-      return option;
-    }
-
-    if (fullyNormalizedOption.toLowerCase() === fullyNormalizedAnswer.toLowerCase()) {
-      console.log(`✅ Fully normalized match found: "${option}"`);
+    const o = normalizeString(option);
+    if (o === norm || o === stripped || o.toLowerCase() === norm.toLowerCase() ||
+        o.toLowerCase() === stripped.toLowerCase() || fullyNormalize(option).toLowerCase() === full.toLowerCase()) {
       return option;
     }
   }
 
   for (const option of options) {
-    const normalizedOption = normalizeString(stripOptionPrefix(option));
-    const normalizedAnswerStripped = stripOptionPrefix(normalizedAnswer);
-
-    if (normalizedOption.toLowerCase() === normalizedAnswerStripped.toLowerCase()) {
-      console.log(`✅ Double-stripped match found: "${option}"`);
-      return option;
-    }
+    const o = normalizeString(stripOptionPrefix(option));
+    if (o.toLowerCase() === stripOptionPrefix(norm).toLowerCase()) return option;
   }
 
   for (const option of options) {
-    const fullyNormalizedOption = fullyNormalize(option);
-
-    if (fullyNormalizedOption.toLowerCase().includes(fullyNormalizedAnswer.toLowerCase()) ||
-        fullyNormalizedAnswer.toLowerCase().includes(fullyNormalizedOption.toLowerCase())) {
-      const longer = Math.max(fullyNormalizedOption.length, fullyNormalizedAnswer.length);
-      const shorter = Math.min(fullyNormalizedOption.length, fullyNormalizedAnswer.length);
-
-      if (shorter / longer >= 0.8) {
-        console.log(`✅ Substring match found (80%+ overlap): "${option}"`);
-        return option;
-      }
+    const fo = fullyNormalize(option);
+    if (fo.toLowerCase().includes(full.toLowerCase()) || full.toLowerCase().includes(fo.toLowerCase())) {
+      const longer = Math.max(fo.length, full.length);
+      const shorter = Math.min(fo.length, full.length);
+      if (shorter / longer >= 0.8) return option;
     }
   }
 
   let bestMatch: { option: string; similarity: number } | null = null;
-
   for (const option of options) {
-    const similarity = calculateSimilarity(fullyNormalize(option), fullyNormalizedAnswer);
-
-    if (similarity >= 0.85) {
-      if (!bestMatch || similarity > bestMatch.similarity) {
-        bestMatch = { option, similarity };
-      }
+    const similarity = calculateSimilarity(fullyNormalize(option), full);
+    if (similarity >= 0.85 && (!bestMatch || similarity > bestMatch.similarity)) {
+      bestMatch = { option, similarity };
     }
   }
 
-  if (bestMatch) {
-    console.log(`✅ Fuzzy match found with ${(bestMatch.similarity * 100).toFixed(1)}% similarity: "${bestMatch.option}"`);
-    return bestMatch.option;
-  }
-
-  console.log('❌ No match found after all strategies');
-  return null;
+  return bestMatch?.option ?? null;
 }
+
+// ─── Question validation ──────────────────────────────────────────────────────
 
 function validateAndNormalizeQuestion(q: any, index: number): Question | null {
   try {
-    if (!q.question || typeof q.question !== 'string') {
-      console.warn(`⚠️ Question ${index + 1}: Missing or invalid question text`);
-      return null;
-    }
-
-    if (!q.options || !Array.isArray(q.options)) {
-      console.warn(`⚠️ Question ${index + 1}: Missing or invalid options array`);
-      return null;
-    }
-
-    if (q.options.length < 2) {
-      console.warn(`⚠️ Question ${index + 1}: Must have at least 2 options`);
-      return null;
-    }
-
-    if (!q.correct_answer || typeof q.correct_answer !== 'string') {
-      console.warn(`⚠️ Question ${index + 1}: Missing or invalid correct answer`);
-      return null;
-    }
+    if (!q.question || typeof q.question !== 'string') return null;
+    if (!Array.isArray(q.options) || q.options.length < 2) return null;
+    if (!q.correct_answer || typeof q.correct_answer !== 'string') return null;
 
     const normalizedOptions = q.options.map((opt: any) => normalizeString(String(opt)));
     let normalizedCorrectAnswer = normalizeString(q.correct_answer);
 
     if (!normalizedOptions.includes(normalizedCorrectAnswer)) {
-      console.warn(`⚠️ Question ${index + 1}: Exact match failed, attempting smart matching...`);
-
       const bestMatch = findBestMatch(normalizedCorrectAnswer, normalizedOptions);
-
-      if (bestMatch) {
-        normalizedCorrectAnswer = bestMatch;
-      } else {
-        console.warn(`❌ Question ${index + 1}: Could not match correct answer, skipping question`);
-        return null;
-      }
+      if (bestMatch) normalizedCorrectAnswer = bestMatch;
+      else return null;
     }
 
     return {
@@ -479,55 +363,57 @@ function validateAndNormalizeQuestion(q: any, index: number): Question | null {
       correct_answer: normalizedCorrectAnswer,
       explanation: q.explanation ? String(q.explanation).trim() : '',
       topic: q.topic ? String(q.topic).trim() : '',
-      type: q.type === 'true_false' ? 'true_false' : 'multiple_choice'
+      type: q.type === 'true_false' ? 'true_false' : 'multiple_choice',
     };
-  } catch (error) {
-    console.warn(`⚠️ Question ${index + 1}: Validation error:`, error);
+  } catch {
     return null;
   }
 }
 
-async function extractKeyTopics(text: string, targetLanguage: string, claudeApiKey: string): Promise<string> {
-  console.log('🔍 Extracting key topics from large document...');
+// ─── Duplicate detection ──────────────────────────────────────────────────────
+// Prevents semantically equivalent questions from appearing across chunks.
 
-  const languageInstructions = {
-    en: 'Respond in English.',
-    ar: 'Respond in Arabic (العربية).',
-    fr: 'Respond in French (Français).',
-    tr: 'Respond in Turkish (Türkçe).'
-  };
+function isDuplicateQuestion(newQuestion: string, existingQuestions: Question[]): boolean {
+  const normalizedNew = fullyNormalize(newQuestion).toLowerCase();
+  for (const existing of existingQuestions) {
+    const normalizedExisting = fullyNormalize(existing.question).toLowerCase();
+    if (calculateSimilarity(normalizedNew, normalizedExisting) >= 0.75) return true;
+  }
+  return false;
+}
 
-  const langInstruction = languageInstructions[targetLanguage as keyof typeof languageInstructions] || languageInstructions.en;
+// ─── Topic extraction ─────────────────────────────────────────────────────────
+// For large documents only. Returns an array of distinct topic summaries,
+// one per planned chunk, so each chunk prompt targets a different section.
 
-  const prompt = `You are analyzing a document to identify the most important topics for quiz generation. ${langInstruction}
+async function extractTopicSegments(
+  text: string,
+  totalChunks: number,
+  targetLanguage: string,
+  claudeApiKey: string
+): Promise<string[]> {
+  console.log('Extracting topic segments from large document...');
 
-CONTENT TO ANALYZE:
+  const langName =
+    targetLanguage === 'ar' ? 'Arabic' :
+    targetLanguage === 'fr' ? 'French' :
+    targetLanguage === 'tr' ? 'Turkish' : 'English';
+
+  const prompt = `You are analyzing a document to plan quiz generation. Respond in ${langName}.
+
+CONTENT:
 ${text.substring(0, 15000)}
 
 YOUR TASK:
-Extract and summarize the 8-10 most important topics, concepts, or sections from this content. Focus on:
-- Main themes and key concepts
-- Important facts, definitions, and principles
-- Significant processes, events, or examples
-- Critical details that would make good quiz questions
+Divide the content into exactly ${totalChunks} distinct topic areas. For each topic area:
+- Give it a clear label
+- Write 2-3 sentences summarizing the key facts and concepts in that area
+- Make sure each area covers DIFFERENT content from the others
 
-Provide a comprehensive summary that covers diverse aspects of the content, ensuring questions can be generated from different sections. Write in ${targetLanguage === 'ar' ? 'Arabic' : targetLanguage === 'fr' ? 'French' : targetLanguage === 'tr' ? 'Turkish' : 'English'}.
+Return ONLY a JSON array of ${totalChunks} strings, each string being the topic label and summary.
+Example format: ["Topic 1: summary...", "Topic 2: summary...", ...]
 
-=== REQUIREMENTS ===
-- Extract 8-10 most important topics
-- Cover diverse aspects of the content
-- Focus on quiz-worthy concepts
-- Be thorough but concise
-
-=== VALIDATION CHECKLIST ===
-Before responding, verify:
-✓ 8-10 topics extracted
-✓ Topics cover diverse aspects
-✓ Topics are quiz-worthy
-✓ Summary is comprehensive but concise
-✓ Written in ${targetLanguage === 'ar' ? 'Arabic' : targetLanguage === 'fr' ? 'French' : targetLanguage === 'tr' ? 'Turkish' : 'English'}
-
-Format: Return ONLY the extracted key topics and summaries as plain text. Be thorough but concise.`;
+No markdown, no code blocks, just the JSON array.`;
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -540,164 +426,144 @@ Format: Return ONLY the extracted key topics and summaries as plain text. Be tho
       model: DEFAULT_MODEL,
       max_tokens: 2000,
       temperature: 0.3,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
+      messages: [{ role: 'user', content: prompt }],
     }),
   });
 
   if (!response.ok) {
-    console.warn('⚠️ Topic extraction failed, using original text');
-    return text;
+    console.warn('Topic segment extraction failed, falling back to text slicing');
+    return [];
   }
 
   const data = await response.json();
-  const extractedTopics = data.content[0].text.trim();
+  const raw = (data?.content?.[0]?.text || '').trim();
 
-  console.log('✅ Key topics extracted successfully');
-  console.log('📊 Extracted topics length:', extractedTopics.length, 'characters');
+  try {
+    const parsed = tryParseJSON(raw);
+    if (Array.isArray(parsed) && parsed.length >= totalChunks) {
+      console.log(`Extracted ${parsed.length} topic segments`);
+      return parsed.slice(0, totalChunks).map(String);
+    }
+  } catch {
+    console.warn('Could not parse topic segments, falling back to text slicing');
+  }
 
-  return extractedTopics;
+  return [];
 }
 
+// ─── Prompt builder ───────────────────────────────────────────────────────────
+
 function buildChunkedPrompt(
-  text: string,
-  chunkNumber: number,
-  totalChunks: number,
+  segment: DocumentSegment,
   questionsInChunk: number,
   difficulty: 'easy' | 'medium' | 'hard',
   targetLanguage: string,
-  usedTopics: string[]
+  previousQuestions: Question[],   // Full question objects so we can show exact text
+  topicFocus: string               // From topic segment extraction, may be empty
 ): string {
   const difficultyInstructions = {
     easy: 'Create straightforward questions testing basic recall and understanding. Use simple language.',
     medium: 'Create questions requiring comprehension and application of concepts. Mix recall with reasoning.',
-    hard: 'Create challenging questions requiring analysis, synthesis, and critical thinking. Include complex scenarios.'
+    hard: 'Create challenging questions requiring analysis, synthesis, and critical thinking. Include complex scenarios.',
   };
 
-  const languageInstructions = {
+  const languageInstructions: Record<string, string> = {
     en: 'Generate all questions, options, explanations, and topics in English.',
-    ar: 'Generate all questions, options, explanations, and topics in Arabic (العربية). Use proper Arabic grammar, vocabulary, and sentence structure. Write naturally and fluently in Arabic.',
-    fr: 'Generate all questions, options, explanations, and topics in French (Français). Use proper French grammar, vocabulary, and sentence structure. Write naturally and fluently in French.',
-    tr: 'Generate all questions, options, explanations, and topics in Turkish (Türkçe). Use proper Turkish grammar, vocabulary, and sentence structure. Write naturally and fluently in Turkish.'
+    ar: 'Generate all questions, options, explanations, and topics in Arabic (العربية). Use proper Arabic grammar and vocabulary.',
+    fr: 'Generate all questions, options, explanations, and topics in French (Français). Use proper French grammar and vocabulary.',
+    tr: 'Generate all questions, options, explanations, and topics in Turkish (Türkçe). Use proper Turkish grammar and vocabulary.',
   };
 
-  const langInstruction = languageInstructions[targetLanguage as keyof typeof languageInstructions] || languageInstructions.en;
-  const maxTextLength = targetLanguage === 'en' ? 12000 : 10000;
+  const langInstruction = languageInstructions[targetLanguage] || languageInstructions.en;
+  const langName = targetLanguage === 'ar' ? 'Arabic' : targetLanguage === 'fr' ? 'French' : targetLanguage === 'tr' ? 'Turkish' : 'English';
 
-  let topicGuidance = '';
-  if (usedTopics.length > 0) {
-    topicGuidance = `\nIMPORTANT: This is chunk ${chunkNumber} of ${totalChunks}. Previous chunks covered these topics: ${usedTopics.join(', ')}.
-Try to focus on DIFFERENT topics or aspects to ensure variety across all questions. Avoid repeating the same topics.`;
-  }
+  // Build a list of already-asked questions to give the model precise context.
+  const alreadyAsked = previousQuestions.length > 0
+    ? previousQuestions.map((q, i) => `${i + 1}. ${q.question}`).join('\n')
+    : 'None yet.';
+
+  const topicFocusSection = topicFocus
+    ? `\nFOCUS AREA FOR THIS SECTION:\n${topicFocus}\nBase your questions primarily on this focus area and the content below.\n`
+    : `\nThis is section ${segment.segmentIndex + 1} of ${segment.totalSegments}. Focus on content unique to this section.\n`;
 
   return `You are an expert quiz creator. Generate EXACTLY ${questionsInChunk} multiple-choice questions.
 
-LANGUAGE: ${langInstruction} - All content must be in ${targetLanguage === 'ar' ? 'Arabic' : targetLanguage === 'fr' ? 'French' : targetLanguage === 'tr' ? 'Turkish' : 'English'}.
+LANGUAGE: ${langInstruction}
+DIFFICULTY: ${difficulty} — ${difficultyInstructions[difficulty]}
+${topicFocusSection}
+CONTENT FOR THIS SECTION:
+${segment.text}
 
-DIFFICULTY: ${difficulty}
-${difficultyInstructions[difficulty]}
+QUESTIONS ALREADY GENERATED (DO NOT repeat or closely rephrase any of these):
+${alreadyAsked}
 
-CONTENT:
-${text.substring(0, maxTextLength)}
-${topicGuidance}
+=== STRICT DIVERSITY RULES ===
+- Your questions MUST test different facts, concepts, or ideas than the ones already generated above
+- Do NOT ask about anything already covered by the questions listed above
+- If the content overlap is unavoidable, choose the least-tested angle or specific detail
+- Each of your ${questionsInChunk} questions must also test a different thing from each other
 
 === REQUIREMENTS ===
 1. Generate EXACTLY ${questionsInChunk} questions
 2. Each question: clear text, exactly 4 options, one correct answer, brief explanation (1-2 sentences), topic identifier
-3. Question quality: test understanding, not just recall. Avoid trivial questions.
-4. Options: Make all options plausible. The correct answer should be clearly best, not just technically correct.
-
-=== QUALITY METRICS ===
-A good quiz question:
-✓ Tests understanding or application, not just recall
-✓ Has clear, unambiguous question text
-✓ All 4 options are plausible (not obviously wrong)
-✓ Correct answer is clearly the best choice
-✓ Explanation clarifies why the answer is correct
-✓ Topic identifier accurately categorizes the question
-✓ Appropriate difficulty level for ${difficulty}
-✓ Question is answerable from the provided content
+3. All options must be plausible — not obviously wrong
+4. The correct answer must be clearly the best choice
+5. Questions must be answerable from the provided content
 
 === JSON FORMAT (CRITICAL) ===
 - Start with [ and end with ]
 - NO text before [ or after ]
-- NO markdown code blocks (no \`\`\`json)
+- NO markdown code blocks
 - Use double quotes only
-- Escape quotes in strings with \\"
-- NO trailing comma after last question
+- Escape internal quotes with \\"
+- NO trailing comma after last item
 - Options: plain text, NO prefixes like "A)" or "1."
-- "correct_answer" must EXACTLY match one option (case-sensitive, character-for-character)
+- "correct_answer" must EXACTLY match one option (case-sensitive)
 
-=== EXAMPLE FORMAT ===
+=== EXAMPLE ===
 [
   {
     "index": 0,
     "question": "What is the primary function of mitochondria?",
     "options": ["Protein synthesis", "Energy production", "DNA replication", "Waste removal"],
     "correct_answer": "Energy production",
-    "explanation": "Mitochondria are the powerhouses of the cell, producing ATP through cellular respiration.",
+    "explanation": "Mitochondria produce ATP through cellular respiration.",
     "topic": "Cell Biology",
     "type": "multiple_choice"
   }
 ]
 
-=== DO NOT ===
-- DO NOT use markdown code blocks (\`\`\`json)
-- DO NOT add text before [ or after ]
-- DO NOT use "A)", "B)" prefixes in options
-- DO NOT add trailing comma after last question
-- DO NOT repeat topics from previous chunks: ${usedTopics.join(', ') || 'none'}
-- DO NOT create trivial or obvious questions
-- DO NOT make correct_answer ambiguous
-
 === VALIDATION CHECKLIST ===
-Before responding, verify:
 ✓ Exactly ${questionsInChunk} questions
+✓ None repeat or closely rephrase the already-generated questions listed above
 ✓ Each correct_answer exactly matches an option
 ✓ Response starts with [ and ends with ]
-✓ No text outside the JSON array
 ✓ No markdown formatting
-✓ Topics are diverse (different from: ${usedTopics.join(', ') || 'none'})
-✓ All options are plausible
-✓ Questions test understanding, not just recall
+✓ All content in ${langName}
 
-RESPOND WITH PURE JSON ONLY - NO MARKDOWN, NO EXPLANATIONS, NO CODE BLOCKS.`;
+RESPOND WITH PURE JSON ONLY.`;
 }
 
+// ─── Chunk generation ─────────────────────────────────────────────────────────
+
 async function generateChunk(
-  text: string,
+  segment: DocumentSegment,
   chunkNumber: number,
   totalChunks: number,
   questionsInChunk: number,
   difficulty: 'easy' | 'medium' | 'hard',
   targetLanguage: string,
   claudeApiKey: string,
-  usedTopics: string[]
-): Promise<{ questions: Question[], topics: string[] }> {
-  console.log(`📦 Chunk ${chunkNumber}/${totalChunks}: Generating ${questionsInChunk} questions...`);
+  previousQuestions: Question[],
+  topicFocus: string
+): Promise<{ questions: Question[]; tokens: { input: number; output: number; total: number } }> {
+  console.log(`Chunk ${chunkNumber}/${totalChunks}: generating ${questionsInChunk} questions (${segment.text.length} chars of content)`);
 
-  const prompt = buildChunkedPrompt(text, chunkNumber, totalChunks, questionsInChunk, difficulty, targetLanguage, usedTopics);
+  const prompt = buildChunkedPrompt(segment, questionsInChunk, difficulty, targetLanguage, previousQuestions, topicFocus);
 
-  const languageMultipliers: { [key: string]: number } = {
-    'en': 1.0,
-    'ar': 2.0,
-    'fr': 1.5,
-    'tr': 1.5
-  };
+  const languageMultipliers: Record<string, number> = { en: 1.0, ar: 2.0, fr: 1.5, tr: 1.5 };
   const langMultiplier = languageMultipliers[targetLanguage] || 1.0;
-  const calculatedMaxTokens = Math.min(
-    Math.ceil(questionsInChunk * 250 * langMultiplier),
-    4096
-  );
-
-  console.log(`🤖 Chunk ${chunkNumber}: Calling Claude API`);
-  console.log(`   - Model: ${DEFAULT_MODEL}`);
-  console.log(`   - Max tokens: ${calculatedMaxTokens}`);
-  console.log(`   - Language: ${targetLanguage}`);
+  const calculatedMaxTokens = Math.min(Math.ceil(questionsInChunk * 250 * langMultiplier), 4096);
 
   const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -709,13 +575,8 @@ async function generateChunk(
     body: JSON.stringify({
       model: DEFAULT_MODEL,
       max_tokens: calculatedMaxTokens,
-      temperature: 0.5,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
+      temperature: 0.7, // Slightly higher temperature encourages more varied output
+      messages: [{ role: 'user', content: prompt }],
     }),
   });
 
@@ -725,9 +586,10 @@ async function generateChunk(
   }
 
   const claudeData = await claudeResponse.json();
-  const responseText = claudeData.content[0].text.trim();
-
-  console.log(`📊 Chunk ${chunkNumber}: Response received (${responseText.length} chars)`);
+  const responseText = (claudeData?.content?.[0]?.text || '').trim();
+  const inputTokens = claudeData?.usage?.input_tokens || 0;
+  const outputTokens = claudeData?.usage?.output_tokens || 0;
+  const tokens = { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens };
 
   const rawQuestions = tryParseJSON(responseText);
   if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
@@ -735,23 +597,26 @@ async function generateChunk(
   }
 
   const validatedQuestions: Question[] = [];
-  const chunkTopics: string[] = [];
 
   for (let i = 0; i < rawQuestions.length; i++) {
     const validated = validateAndNormalizeQuestion(rawQuestions[i], i);
-    if (validated) {
-      validatedQuestions.push(validated);
-      if (validated.topic && !chunkTopics.includes(validated.topic)) {
-        chunkTopics.push(validated.topic);
-      }
+    if (!validated) continue;
+
+    // Reject questions that are semantically too close to ones we already have
+    if (isDuplicateQuestion(validated.question, previousQuestions)) {
+      console.warn(`Chunk ${chunkNumber}: Rejected duplicate question — "${validated.question.substring(0, 60)}..."`);
+      continue;
     }
+
+    validatedQuestions.push(validated);
   }
 
-  console.log(`✅ Chunk ${chunkNumber}: Validated ${validatedQuestions.length}/${questionsInChunk} questions`);
-  console.log(`📚 Chunk ${chunkNumber}: Topics covered: ${chunkTopics.join(', ')}`);
+  console.log(`Chunk ${chunkNumber}: accepted ${validatedQuestions.length}/${questionsInChunk} questions`);
 
-  return { questions: validatedQuestions, topics: chunkTopics };
+  return { questions: validatedQuestions, tokens };
 }
+
+// ─── Main orchestrator ────────────────────────────────────────────────────────
 
 async function generateQuizInChunks(
   text: string,
@@ -761,60 +626,67 @@ async function generateQuizInChunks(
   claudeApiKey: string,
   userId: string,
   sourceType: string,
-  supabase: SupabaseClient
-): Promise<Question[]> {
-  console.log('🚀 Starting chunked quiz generation');
-  console.log(`📊 Target: ${totalQuestions} questions in chunks of ${QUESTIONS_PER_CHUNK}`);
+  supabase: any
+): Promise<{ questions: Question[]; tokensUsed: number }> {
+  console.log(`Starting quiz generation: ${totalQuestions} questions, difficulty=${difficulty}, lang=${targetLanguage}`);
 
-  let processedText = text;
+  const totalChunks = Math.ceil(totalQuestions / QUESTIONS_PER_CHUNK);
 
-  if (text.length > 10000 && totalQuestions <= 15) {
-    console.log('📚 Large document detected, extracting key topics first...');
-    processedText = await extractKeyTopics(text, targetLanguage, claudeApiKey);
+  // Step 1: Split the document into per-chunk segments
+  const segments = segmentDocument(text, totalChunks, targetLanguage);
+  console.log(`Document split into ${segments.length} segments`);
+
+  // Step 2: For large documents, extract distinct topic focuses per segment
+  let topicFocuses: string[] = [];
+  if (text.length > 8000 && totalChunks > 1) {
+    topicFocuses = await extractTopicSegments(text, totalChunks, targetLanguage, claudeApiKey);
   }
 
   const allQuestions: Question[] = [];
-  const usedTopics: string[] = [];
-  const totalChunks = Math.ceil(totalQuestions / QUESTIONS_PER_CHUNK);
+  let tokensUsedTotal = 0;
 
   for (let chunkNum = 1; chunkNum <= totalChunks; chunkNum++) {
+    const segment = segments[chunkNum - 1];
+    const topicFocus = topicFocuses[chunkNum - 1] || '';
     const remainingQuestions = totalQuestions - allQuestions.length;
-    const questionsInThisChunk = Math.min(QUESTIONS_PER_CHUNK, remainingQuestions);
+    if (remainingQuestions <= 0) break;
 
+    const questionsInThisChunk = Math.min(QUESTIONS_PER_CHUNK, remainingQuestions);
     let chunkSuccess = false;
-    let lastError: Error | null = null;
 
     for (let retry = 1; retry <= MAX_CHUNK_RETRIES; retry++) {
       try {
-        const { questions, topics } = await generateChunk(
-          processedText,
+        const { questions, tokens } = await generateChunk(
+          segment,
           chunkNum,
           totalChunks,
           questionsInThisChunk,
           difficulty,
           targetLanguage,
           claudeApiKey,
-          usedTopics
+          allQuestions,      // Pass full question list for duplicate checking
+          topicFocus
         );
+
+        tokensUsedTotal += tokens.total;
 
         if (questions.length > 0) {
           allQuestions.push(...questions);
-          usedTopics.push(...topics);
-          console.log(`✅ Chunk ${chunkNum}/${totalChunks} completed: ${allQuestions.length}/${totalQuestions} questions generated`);
+          console.log(`Chunk ${chunkNum}/${totalChunks} complete: ${allQuestions.length}/${totalQuestions} total`);
           chunkSuccess = true;
           break;
         } else {
-          throw new Error(`Chunk ${chunkNum}: No valid questions generated`);
+          throw new Error(`Chunk ${chunkNum}: No valid non-duplicate questions generated`);
         }
       } catch (error) {
-        lastError = error instanceof Error ? error : new Error('Unknown error');
-        console.error(`❌ Chunk ${chunkNum} attempt ${retry}/${MAX_CHUNK_RETRIES} failed:`, lastError.message);
+        const msg = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`Chunk ${chunkNum} attempt ${retry}/${MAX_CHUNK_RETRIES} failed: ${msg}`);
 
         try {
           await supabase.from('quiz_generation_errors').insert({
             user_id: userId,
             error_type: 'chunk_generation_failed',
-            error_message: lastError.message,
+            error_message: msg,
             error_details: {
               chunkNumber: chunkNum,
               totalChunks,
@@ -827,138 +699,105 @@ async function generateQuizInChunks(
             file_type: null,
             ai_response: null,
             question_count: totalQuestions,
-            difficulty: difficulty
+            difficulty,
           });
         } catch (logError) {
-          console.error('⚠️ Failed to log chunk error:', logError);
+          console.error('Failed to log chunk error:', logError);
         }
 
         if (retry === MAX_CHUNK_RETRIES) {
-          throw new Error(`Chunk ${chunkNum} failed after ${MAX_CHUNK_RETRIES} attempts: ${lastError.message}`);
+          throw new Error(`Chunk ${chunkNum} failed after ${MAX_CHUNK_RETRIES} attempts: ${msg}`);
         }
 
-        await new Promise(resolve => setTimeout(resolve, 1000 * retry));
+        await new Promise((resolve) => setTimeout(resolve, 1000 * retry));
       }
     }
 
     if (!chunkSuccess) {
       throw new Error(`Failed to generate chunk ${chunkNum}/${totalChunks}`);
     }
-
-    if (allQuestions.length >= totalQuestions) {
-      break;
-    }
   }
 
-  const finalQuestions = allQuestions.slice(0, totalQuestions).map((q, idx) => ({
-    ...q,
-    index: idx
-  }));
+  const finalQuestions = allQuestions.slice(0, totalQuestions).map((q, idx) => ({ ...q, index: idx }));
 
-  console.log('🎉 Chunked generation complete!');
-  console.log(`📊 Final count: ${finalQuestions.length} questions`);
+  console.log(`Generation complete: ${finalQuestions.length} questions, ${tokensUsedTotal} tokens`);
 
-  return finalQuestions;
+  return { questions: finalQuestions, tokensUsed: tokensUsedTotal };
 }
 
+// ─── HTTP handler ─────────────────────────────────────────────────────────────
+
 Deno.serve(async (req: Request) => {
-  console.log('🚀 Generate Quiz function started');
-  console.log('📅 Timestamp:', new Date().toISOString());
+  console.log('Generate Quiz function started:', new Date().toISOString());
 
   if (req.method === 'OPTIONS') {
-    return handleCorsPreflight();
-  }
-
-  const methodError = validateMethod(req, ['POST']);
-  if (methodError) {
-    return methodError;
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   try {
-    console.log('🔐 Step 1: Authorization check');
-    const authResult = await authenticateUser(req, true);
-    if (authResult.error || !authResult.user) {
-      return errorResponse(authResult.error || 'Unauthorized', 401);
-    }
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) throw new Error('Missing authorization header');
 
-    const supabase = getSupabaseClient();
-    console.log('✅ User authenticated:', authResult.user.id);
+    const token = authHeader.replace('Bearer ', '');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Check if user is admin
-    let isAdmin = false;
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !user) throw new Error('Unauthorized: Invalid or expired token');
+
     const { data: profile } = await supabase
       .from('user_profiles')
       .select('role')
-      .eq('id', authResult.user.id)
+      .eq('id', user.id)
       .maybeSingle();
 
-    isAdmin = profile?.role === 'admin';
+    const isAdmin = profile?.role === 'admin';
 
-    // Check credit balance for non-admin users before processing
-    if (!isAdmin) {
-      console.log('🔍 Step 2.5: Check credit balance');
-      const { data: creditCheck, error: creditError } = await supabase
-        .rpc('check_sufficient_credits', {
-          p_user_id: authResult.user.id,
-          p_estimated_credits: 10 // Estimate minimum credits needed for quiz
-        });
+    const requestData: QuizRequest = await req.json();
+    const { text, questionCount, difficulty, sourceType, sourceId, quizTitle, targetLanguage = 'en' } = requestData;
 
-      if (creditError) {
-        console.error('Failed to check credits:', creditError);
-      } else if (creditCheck && !creditCheck.sufficient) {
-        const cycleEnd = creditCheck.cycle_end;
-        throw new Error(`You don't have enough credits to complete this action. Your credits will refresh on ${new Date(cycleEnd).toLocaleDateString()}.`);
-      }
+    if (!text || text.length < 300) throw new Error('Text content must be at least 300 characters');
+    if (questionCount < 5 || questionCount > 50) throw new Error('Question count must be between 5 and 50');
 
-      console.log(`📊 Current balance: ${creditCheck?.credits_remaining || 0} credits`);
-    }
-
-    console.log('📥 Step 3: Parse request data');
-    const bodyResult = await parseJsonBody<QuizRequest>(req);
-    if (bodyResult.error) {
-      return bodyResult.error;
-    }
-
-    const { text, questionCount, difficulty, sourceType, sourceId, quizTitle, targetLanguage = 'en' } = bodyResult.data;
-
-    console.log('📊 Request parameters:');
-    console.log('   - Text length:', text?.length || 0, 'characters');
-    console.log('   - Question count:', questionCount);
-    console.log('   - Difficulty:', difficulty);
-    console.log('   - Target language:', targetLanguage);
-
-    if (!text || text.length < 300) {
-      return errorResponse('Text content must be at least 300 characters', 400);
-    }
-
-    const questionCountError = validateNumberRange(questionCount, 5, 50, 'questionCount');
-    if (questionCountError) {
-      return errorResponse(questionCountError, 400);
-    }
-
-    console.log('🔑 Step 4: API key validation');
     const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
-    if (!claudeApiKey) {
-      throw new Error('ANTHROPIC_API_KEY is not configured');
+    if (!claudeApiKey) throw new Error('ANTHROPIC_API_KEY is not configured');
+
+    if (!isAdmin) {
+      const languageMultipliers: Record<string, number> = { en: 1.0, ar: 2.0, fr: 1.5, tr: 1.5 };
+      const langMult = languageMultipliers[targetLanguage] || 1.0;
+      const estimatedTokens = Math.ceil(questionCount * 900 * langMult);
+      const estimatedCredits = Math.ceil(estimatedTokens / 1000);
+
+      const { data: creditCheck, error: creditError } = await supabase.rpc('check_sufficient_credits', {
+        p_user_id: user.id,
+        p_estimated_credits: Math.max(10, estimatedCredits),
+      });
+
+      if (creditError) console.error('Failed to check credits:', creditError);
+      else if (creditCheck && !creditCheck.sufficient) {
+        const cycleEnd = creditCheck.cycle_end;
+        throw new Error(
+          `You don't have enough credits to complete this action. Your credits will refresh on ${new Date(cycleEnd).toLocaleDateString()}.`
+        );
+      }
     }
 
-    console.log('🤖 Step 5: Generate quiz using chunked approach');
-    const questions = await generateQuizInChunks(
+    const { questions, tokensUsed } = await generateQuizInChunks(
       text,
       questionCount,
       difficulty,
       targetLanguage,
       claudeApiKey,
-      authResult.user.id,
+      user.id,
       sourceType,
       supabase
     );
 
-    console.log('💾 Step 6: Save to database');
     const { data: quizSession, error: insertError } = await supabase
       .from('quiz_sessions')
       .insert({
-        user_id: authResult.user.id,
+        user_id: user.id,
         quiz_title: quizTitle,
         source_type: sourceType,
         source_id: sourceId || null,
@@ -972,64 +811,46 @@ Deno.serve(async (req: Request) => {
       .select()
       .single();
 
-    if (insertError) {
-      console.error('❌ Database error:', insertError);
-      return errorResponse(`Failed to save quiz: ${insertError.message}`, 500);
-    }
+    if (insertError) throw new Error(`Failed to save quiz: ${insertError.message}`);
 
-    console.log('✅ Quiz saved successfully, ID:', quizSession.id);
-
-    console.log('📊 Step 7: Deduct credits');
     if (!isAdmin) {
       try {
-        const textLength = text.length;
-        const estimatedTokens = Math.ceil(textLength / 4);
-
-        console.log(`📊 Usage calculation: ${textLength} chars ≈ ${estimatedTokens} tokens`);
-
-        const { data: deductResult, error: deductError } = await supabase
-          .rpc('deduct_credits_atomic', {
-            p_user_id: authResult.user.id,
-            p_tokens_used: estimatedTokens,
-            p_operation_type: 'deduction'
-          });
+        const { data: deductResult, error: deductError } = await supabase.rpc('deduct_credits_atomic', {
+          p_user_id: user.id,
+          p_tokens_used: tokensUsed,
+          p_operation_type: 'deduction',
+        });
 
         if (deductError) {
-          console.error('⚠️ Failed to deduct credits:', deductError);
-        } else if (deductResult && deductResult.success) {
-          console.log(`✅ Credits deducted: ${deductResult.credits_deducted}, remaining: ${deductResult.credits_remaining}`);
+          console.error('Failed to deduct credits:', deductError);
+        } else if (deductResult?.success) {
+          console.log(`Credits deducted: ${deductResult.credits_deducted}, remaining: ${deductResult.credits_remaining}`);
 
-          // Handle notifications
           if (deductResult.notify_30_percent || deductResult.notify_10_percent) {
             const percentage = deductResult.notify_10_percent ? 10 : 30;
             const message = `You have ${deductResult.credits_remaining} credits remaining (${percentage}% left). They will refresh on ${new Date(deductResult.cycle_end).toLocaleDateString()}.`;
-
             await supabase.from('notifications').insert({
-              user_id: authResult.user.id,
+              user_id: user.id,
               notification_type: 'admin_notification',
-              message: message,
-              is_read: false
+              message,
+              is_read: false,
             });
           }
         }
       } catch (usageError) {
-        console.error('⚠️ Failed to deduct credits, but quiz was saved:', usageError);
+        console.error('Failed to deduct credits, but quiz was saved:', usageError);
       }
     }
 
-    console.log('🎉 Quiz generation complete!');
-
-    return successResponse({
-      quizSessionId: quizSession.id,
-      questionCount: questions.length,
-      questions: questions,
-    });
-  } catch (error) {
-    console.error('💥 Fatal error in generate-quiz:', error);
-
-    return errorResponse(
-      error instanceof Error ? error.message : 'Failed to generate quiz',
-      500
+    return new Response(
+      JSON.stringify({ success: true, quizSessionId: quizSession.id, questionCount: questions.length, questions }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error: any) {
+    console.error('Fatal error in generate-quiz:', error);
+    return new Response(
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Failed to generate quiz' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

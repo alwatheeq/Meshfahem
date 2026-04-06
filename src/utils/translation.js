@@ -15,6 +15,60 @@ export const AVAILABLE_LANGUAGES = [
 ];
 
 /**
+ * Detect the language of text content
+ * @param {string} text - Text to detect language from
+ * @returns {Promise<string>} - Detected language code ('en', 'ar', 'fr', 'tr', or 'original')
+ */
+export const detectLanguage = async (text) => {
+  if (!text || typeof text !== 'string' || text.trim().length < 50) {
+    // Too short for reliable detection
+    return 'original';
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke('detect-language', {
+      body: { text: text.substring(0, 1000) } // Use first 1000 chars for efficiency
+    });
+
+    if (error || !data?.language) {
+      ErrorLogger.warn('Language detection failed or returned no result', { 
+        component: 'translation', 
+        action: 'detectLanguage',
+        error: error?.message,
+        hasData: !!data
+      });
+      return 'original';
+    }
+
+    // Map detected language to our codes
+    const languageMap = {
+      'en': 'en',
+      'ar': 'ar',
+      'fr': 'fr',
+      'tr': 'tr'
+    };
+
+    const detectedLang = data.language;
+    const mappedLanguage = languageMap[detectedLang] || 'original';
+
+    ErrorLogger.debug('Language detected', { 
+      component: 'translation', 
+      action: 'detectLanguage',
+      detectedLanguage: detectedLang,
+      mappedLanguage: mappedLanguage
+    });
+
+    return mappedLanguage;
+  } catch (error) {
+    ErrorLogger.error(error instanceof Error ? error : new Error(String(error)), { 
+      component: 'translation', 
+      action: 'detectLanguage' 
+    });
+    return 'original';
+  }
+};
+
+/**
  * Get language info by code
  * @param {string} languageCode - The language code
  * @returns {object} - The language object
@@ -176,20 +230,27 @@ export const translateContent = async (content, targetLanguage, onProgress) => {
   const { summaryChunks, flashcards } = content;
   
   try {
-    // Translate summary (50% of progress)
+    // Translate all summary chunks (40% of progress)
     if (onProgress) {
       onProgress(10, 'Starting translation...');
     }
 
-    const translatedSummary = summaryChunks.length > 0 
-      ? await translateSummary(summaryChunks[0], targetLanguage, (progress, message) => {
-          if (onProgress) {
-            onProgress(Math.round(progress * 0.4), message); // 0-40% for summary
-          }
-        })
-      : '';
+    const translatedSummaryChunks = [];
+    if (summaryChunks.length > 0) {
+      // Combine all chunks into one for translation (maintains context)
+      const combinedSummary = summaryChunks.join('\n\n');
+      const translatedSummary = await translateSummary(combinedSummary, targetLanguage, (progress, message) => {
+        if (onProgress) {
+          onProgress(10 + Math.round(progress * 0.3), message); // 10-40% for summary
+        }
+      });
+      
+      // Split back into chunks if needed (preserve structure)
+      // For now, return as single chunk to maintain simplicity
+      translatedSummaryChunks.push(translatedSummary);
+    }
 
-    // Translate flashcards (remaining 50% of progress)
+    // Translate flashcards (remaining 60% of progress)
     const translatedFlashcards = flashcards.length > 0
       ? await translateFlashcards(flashcards, targetLanguage, (progress, message) => {
           if (onProgress) {
@@ -203,7 +264,7 @@ export const translateContent = async (content, targetLanguage, onProgress) => {
     }
 
     return {
-      summaryChunks: translatedSummary ? [translatedSummary] : [],
+      summaryChunks: translatedSummaryChunks,
       flashcards: translatedFlashcards
     };
   } catch (error) {

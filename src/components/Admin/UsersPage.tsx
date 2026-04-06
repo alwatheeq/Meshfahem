@@ -9,7 +9,7 @@ import { useConfirm } from '../../hooks/useConfirm';
 import { usePrompt } from '../../hooks/usePrompt';
 import { getTierDisplayInfo, getStatusDisplayInfo } from '../../utils/subscriptionHelpers';
 import { PerformanceMonitor } from '../../utils/performanceMonitor';
-import { Search, Calendar, TrendingUp, Eye, X, Download, CheckCircle, XCircle, CreditCard, MoreVertical, UserPlus, UserX, Crown, Ban, CheckSquare, Square, Tag, FileText } from 'lucide-react';
+import { Search, Calendar, TrendingUp, Eye, X, Download, CheckCircle, XCircle, UserPlus, UserX, Ban, CheckSquare, Square, Tag, FileText } from 'lucide-react';
 import { BlockUserModal } from './BlockUserModal';
 
 interface UserProfile {
@@ -59,7 +59,6 @@ export const UsersPage: React.FC = React.memo(() => {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [selectMultipleMode, setSelectMultipleMode] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
-  const [showTagsModal, setShowTagsModal] = useState(false);
   const [userNotes, setUserNotes] = useState<any[]>([]);
   const [userTags, setUserTags] = useState<any[]>([]);
 
@@ -88,10 +87,11 @@ export const UsersPage: React.FC = React.memo(() => {
           .eq('status', 'active');
 
         if (subsError) {
-          ErrorLogger.warn(subsError instanceof Error ? subsError : new Error(String(subsError)), { 
+          const error = subsError instanceof Error ? subsError : new Error(String(subsError));
+          ErrorLogger.warn('Failed to fetch subscriptions', { 
             component: 'UsersPage', 
             action: 'fetchUsers', 
-            step: 'fetchSubscriptions' 
+            metadata: { step: 'fetchSubscriptions', error: error.message } 
           });
         }
 
@@ -199,7 +199,7 @@ export const UsersPage: React.FC = React.memo(() => {
         } else {
           successCount++;
         }
-      } catch (error) {
+      } catch {
         failCount++;
       }
     }
@@ -236,7 +236,7 @@ export const UsersPage: React.FC = React.memo(() => {
         } else {
           successCount++;
         }
-      } catch (error) {
+      } catch {
         failCount++;
       }
     }
@@ -284,7 +284,7 @@ export const UsersPage: React.FC = React.memo(() => {
         } else {
           successCount++;
         }
-      } catch (error) {
+      } catch {
         failCount++;
       }
     }
@@ -321,7 +321,7 @@ export const UsersPage: React.FC = React.memo(() => {
         } else {
           successCount++;
         }
-      } catch (error) {
+      } catch {
         failCount++;
       }
     }
@@ -357,20 +357,33 @@ export const UsersPage: React.FC = React.memo(() => {
       if (error) throw error;
 
       // Log the action
-      await supabase.rpc('log_admin_action', {
-        p_action_type: 'UPDATE',
-        p_table_name: 'user_profiles',
-        p_record_id: userId,
-        p_old_values: { has_paid: currentStatus },
-        p_new_values: { has_paid: !currentStatus },
-        p_description: `${!currentStatus ? 'Marked' : 'Unmarked'} user as paid: ${userEmail}`
-      }).catch(err => ErrorLogger.warn('Failed to log action', { component: 'UsersPage', action: 'togglePaymentStatus', userId, userEmail, error: err instanceof Error ? err : new Error(String(err)) }));
+      try {
+        await supabase.rpc('log_admin_action', {
+          p_action_type: 'UPDATE',
+          p_table_name: 'user_profiles',
+          p_record_id: userId,
+          p_old_values: { has_paid: currentStatus },
+          p_new_values: { has_paid: !currentStatus },
+          p_description: `${!currentStatus ? 'Marked' : 'Unmarked'} user as paid: ${userEmail}`
+        });
+      } catch (logErr: unknown) {
+        const logError = logErr instanceof Error ? logErr : new Error(String(logErr));
+        ErrorLogger.warn('Failed to log action', { 
+          component: 'UsersPage', 
+          action: 'togglePaymentStatus', 
+          metadata: { userId, userEmail, error: logError.message } 
+        });
+      }
 
       toast.success(`Payment status updated successfully`);
       await fetchUsers();
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Unknown error');
-      ErrorLogger.error(err, { component: 'UsersPage', action: 'togglePaymentStatus', userId });
+      ErrorLogger.error(err, { 
+        component: 'UsersPage', 
+        action: 'togglePaymentStatus', 
+        metadata: { userId } 
+      });
       toast.error('Failed to update payment status');
     }
   };
@@ -514,11 +527,20 @@ export const UsersPage: React.FC = React.memo(() => {
     window.URL.revokeObjectURL(url);
 
     // Log the export action
-    await supabase.rpc('log_admin_action', {
-      p_action_type: 'EXPORT',
-      p_table_name: 'user_profiles',
-      p_description: `Exported ${filteredUsers.length} user records to CSV`
-    }).catch(err => ErrorLogger.warn('Failed to log action', { component: 'UsersPage', action: 'exportToCSV', userCount: filteredUsers.length, error: err instanceof Error ? err : new Error(String(err)) }));
+    try {
+      await supabase.rpc('log_admin_action', {
+        p_action_type: 'EXPORT',
+        p_table_name: 'user_profiles',
+        p_description: `Exported ${filteredUsers.length} user records to CSV`
+      });
+    } catch (logErr: unknown) {
+      const logError = logErr instanceof Error ? logErr : new Error(String(logErr));
+      ErrorLogger.warn('Failed to log action', { 
+        component: 'UsersPage', 
+        action: 'exportToCSV', 
+        metadata: { userCount: filteredUsers.length, error: logError.message } 
+      });
+    }
 
     toast.success(`Exported ${filteredUsers.length} users to CSV`);
   };
@@ -531,7 +553,7 @@ export const UsersPage: React.FC = React.memo(() => {
   );
 
   if (loading) {
-    return <LoadingSkeleton type="table" count={10} className="mt-6" />;
+    return <LoadingSkeleton type="table" count={10} className="mt-8" />;
   }
 
   return (
@@ -549,7 +571,7 @@ export const UsersPage: React.FC = React.memo(() => {
               </span>
               <button
                 onClick={handleBulkSubscribe}
-                className="flex items-center space-x-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm"
+                className="flex items-center space-x-2 px-3 py-2 bg-green-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-white rounded-lg hover:bg-green-700 transition text-sm"
               >
                 <UserPlus className="h-4 w-4" />
                 <span>Subscribe</span>
@@ -563,14 +585,14 @@ export const UsersPage: React.FC = React.memo(() => {
               </button>
               <button
                 onClick={handleBulkBlock}
-                className="flex items-center space-x-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm"
+                className="flex items-center space-x-2 px-3 py-2 bg-red-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-white rounded-lg hover:bg-red-700 transition text-sm"
               >
                 <Ban className="h-4 w-4" />
                 <span>Block</span>
               </button>
               <button
                 onClick={handleBulkUnblock}
-                className="flex items-center space-x-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm"
+                className="flex items-center space-x-2 px-3 py-2 bg-green-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-white rounded-lg hover:bg-green-700 transition text-sm"
               >
                 <Ban className="h-4 w-4" />
                 <span>Unblock</span>
@@ -580,7 +602,7 @@ export const UsersPage: React.FC = React.memo(() => {
                   setSelectedItems(new Set());
                   setSelectMultipleMode(false);
                 }}
-                className="px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition text-sm"
+                className="px-3 py-2 bg-gray-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-white rounded-lg hover:bg-gray-700 transition text-sm"
               >
                 Cancel
               </button>
@@ -590,14 +612,14 @@ export const UsersPage: React.FC = React.memo(() => {
             <>
               <button
                 onClick={() => setSelectMultipleMode(true)}
-                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                className="flex items-center space-x-2 px-5 py-2.5 bg-blue-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-white rounded-lg hover:bg-blue-700 transition"
               >
                 <CheckSquare className="h-4 w-4" />
                 <span>Select Multiple</span>
               </button>
               <button
                 onClick={exportUsersToCSV}
-                className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                className="flex items-center space-x-2 px-5 py-2.5 bg-green-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-white rounded-lg hover:bg-green-700 transition"
               >
                 <Download className="h-4 w-4" />
                 <span>Export CSV</span>
@@ -607,8 +629,8 @@ export const UsersPage: React.FC = React.memo(() => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
-        <div className="mb-6">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow border border-gray-200 dark:border-gray-700 p-6">
+        <div className="mb-8">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
@@ -616,7 +638,7 @@ export const UsersPage: React.FC = React.memo(() => {
               placeholder="Search users by email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 dark:text-white"
+              className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
             />
           </div>
         </div>
@@ -628,7 +650,7 @@ export const UsersPage: React.FC = React.memo(() => {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 dark:bg-slate-700">
+              <thead className="bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-slate-700">
                 <tr>
                   {selectMultipleMode && (
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider w-12">
@@ -673,11 +695,11 @@ export const UsersPage: React.FC = React.memo(() => {
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-gray-700">
+              <tbody className="bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] divide-y divide-gray-200 dark:divide-gray-700">
                 {filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
+                  <tr key={user.id} className="hover:bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:hover:bg-slate-700/50">
                     {selectMultipleMode && (
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-6 py-6 whitespace-nowrap">
                         <button
                           onClick={() => {
                             const newSelected = new Set(selectedItems);
@@ -698,12 +720,12 @@ export const UsersPage: React.FC = React.memo(() => {
                         </button>
                       </td>
                     )}
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900 dark:text-white">
                         {user.email}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
                         user.user_role === 'admin'
                           ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
@@ -712,10 +734,10 @@ export const UsersPage: React.FC = React.memo(() => {
                         {user.user_role}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <div className="flex flex-col space-y-1">
                         {user.is_blocked && (
-                          <span className="px-2 py-1 inline-flex text-xs leading-4 font-semibold rounded bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
+                          <span className="px-2 py-1 inline-flex text-xs leading-4 font-semibold rounded bg-red-100 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-red-800 dark:bg-red-900/30 dark:text-red-300">
                             Blocked
                           </span>
                         )}
@@ -733,13 +755,13 @@ export const UsersPage: React.FC = React.memo(() => {
                             </span>
                           </>
                         ) : (
-                          <span className="px-2 py-1 inline-flex text-xs leading-4 font-semibold rounded bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                          <span className="px-2 py-1 inline-flex text-xs leading-4 font-semibold rounded bg-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-gray-600 dark:bg-gray-700 dark:text-gray-400">
                             No Subscription
                           </span>
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <button
                         onClick={() => handleTogglePaymentStatus(user.id, user.has_paid || false)}
                         className={`flex items-center space-x-2 px-3 py-1 rounded-lg transition ${
@@ -759,13 +781,13 @@ export const UsersPage: React.FC = React.memo(() => {
                         </span>
                       </button>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <div className="flex items-center space-x-2">
                         <TrendingUp className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                         <span className="text-sm text-gray-900 dark:text-white">{user.monthly_usage}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <div className="flex items-center space-x-2">
                         <Calendar className="h-4 w-4 text-gray-400" />
                         <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -773,7 +795,7 @@ export const UsersPage: React.FC = React.memo(() => {
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <td className="px-6 py-6 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center space-x-2">
                         <button
                           onClick={() => handleViewUser(user)}
@@ -860,20 +882,20 @@ export const UsersPage: React.FC = React.memo(() => {
       </div>
 
       {selectedUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] border-b border-gray-200 dark:border-gray-700 px-6 py-6 flex items-center justify-between">
               <h3 className="text-xl font-bold text-gray-900 dark:text-white">User Details</h3>
               <button
                 onClick={handleCloseModal}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+                className="p-2 hover:bg-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:hover:bg-gray-700 rounded-lg transition"
               >
                 <X className="h-5 w-5 text-gray-500 dark:text-gray-400" />
               </button>
             </div>
 
             <div className="p-6 space-y-6">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
                     Email Address
@@ -894,19 +916,19 @@ export const UsersPage: React.FC = React.memo(() => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
                     Payment Status
                   </label>
                   <div className="flex items-center space-x-2">
                     {selectedUser.has_paid ? (
-                      <span className="flex items-center space-x-2 px-3 py-1 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 rounded-full text-sm font-semibold">
+                      <span className="flex items-center space-x-2 px-3 py-1 bg-green-100 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-green-800 dark:bg-green-900/30 dark:text-green-300 rounded-full text-sm font-semibold">
                         <CheckCircle className="h-4 w-4" />
                         <span>Paid</span>
                       </span>
                     ) : (
-                      <span className="flex items-center space-x-2 px-3 py-1 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 rounded-full text-sm font-semibold">
+                      <span className="flex items-center space-x-2 px-3 py-1 bg-red-100 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-red-800 dark:bg-red-900/30 dark:text-red-300 rounded-full text-sm font-semibold">
                         <XCircle className="h-4 w-4" />
                         <span>Unpaid</span>
                       </span>
@@ -923,7 +945,7 @@ export const UsersPage: React.FC = React.memo(() => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
                     Monthly Usage
@@ -940,7 +962,7 @@ export const UsersPage: React.FC = React.memo(() => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
                     Account Created
@@ -966,16 +988,16 @@ export const UsersPage: React.FC = React.memo(() => {
               ) : userStats && (
                 <div>
                   <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Activity Statistics</h4>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+                  <div className="grid grid-cols-3 gap-6">
+                    <div className="bg-blue-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-blue-900/30 rounded-lg p-6 border border-blue-200 dark:border-blue-800">
                       <p className="text-sm text-blue-600 dark:text-blue-400 font-medium">History Items</p>
                       <p className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">{userStats.historyCount}</p>
                     </div>
-                    <div className="bg-green-50 dark:bg-green-900/30 rounded-lg p-4 border border-green-200 dark:border-green-800">
+                    <div className="bg-green-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-green-900/30 rounded-lg p-6 border border-green-200 dark:border-green-800">
                       <p className="text-sm text-green-600 dark:text-green-400 font-medium">Library Items</p>
                       <p className="text-2xl font-bold text-green-900 dark:text-green-100 mt-1">{userStats.libraryCount}</p>
                     </div>
-                    <div className="bg-orange-50 dark:bg-orange-900/30 rounded-lg p-4 border border-orange-200 dark:border-orange-800">
+                    <div className="bg-orange-50 dark:bg-orange-900/30 rounded-lg p-6 border border-orange-200 dark:border-orange-800">
                       <p className="text-sm text-orange-600 dark:text-orange-400 font-medium">Feedback</p>
                       <p className="text-2xl font-bold text-orange-900 dark:text-orange-100 mt-1">{userStats.feedbackCount}</p>
                     </div>
@@ -1006,9 +1028,9 @@ export const UsersPage: React.FC = React.memo(() => {
 
       {/* Notes and Tags Modal */}
       {selectedUser && showNotesModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] border-b border-gray-200 dark:border-gray-700 px-6 py-6 flex items-center justify-between">
               <h3 className="text-xl font-bold text-gray-900 dark:text-white">
                 Notes & Tags: {selectedUser.email}
               </h3>
@@ -1019,7 +1041,7 @@ export const UsersPage: React.FC = React.memo(() => {
                   setUserNotes([]);
                   setUserTags([]);
                 }}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+                className="p-2 hover:bg-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:hover:bg-gray-700 rounded-lg transition"
               >
                 <X className="h-5 w-5 text-gray-500 dark:text-gray-400" />
               </button>
@@ -1060,7 +1082,7 @@ export const UsersPage: React.FC = React.memo(() => {
                         toast.error('Failed to add tag');
                       }
                     }}
-                    className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
+                    className="px-3 py-1 bg-blue-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-white rounded-lg hover:bg-blue-700 transition text-sm"
                   >
                     Add Tag
                   </button>
@@ -1069,7 +1091,7 @@ export const UsersPage: React.FC = React.memo(() => {
                   {userTags.map((tag: any) => (
                     <span
                       key={tag.id}
-                      className="px-3 py-1 bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 rounded-full text-sm flex items-center space-x-2"
+                      className="px-3 py-1 bg-blue-100 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 rounded-full text-sm flex items-center space-x-2"
                     >
                       <span>{tag.tag_name}</span>
                       <button
@@ -1085,7 +1107,11 @@ export const UsersPage: React.FC = React.memo(() => {
                             await fetchUserNotesAndTags(selectedUser.id);
                           } catch (error) {
                             const err = error instanceof Error ? error : new Error(String(error));
-                            ErrorLogger.error(err, { component: 'UsersPage', action: 'removeTag', tagId: tag.id });
+                            ErrorLogger.error(err, { 
+                              component: 'UsersPage', 
+                              action: 'removeTag', 
+                              metadata: { tagId: tag.id } 
+                            });
                             toast.error('Failed to remove tag');
                           }
                         }}
@@ -1135,7 +1161,7 @@ export const UsersPage: React.FC = React.memo(() => {
                         toast.error('Failed to add note');
                       }
                     }}
-                    className="px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm"
+                    className="px-3 py-1 bg-green-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-white rounded-lg hover:bg-green-700 transition text-sm"
                   >
                     Add Note
                   </button>
@@ -1144,12 +1170,12 @@ export const UsersPage: React.FC = React.memo(() => {
                   {userNotes.map((note: any) => (
                     <div
                       key={note.id}
-                      className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-600"
+                      className="bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-gray-700 rounded-lg p-6 border border-gray-200 dark:border-gray-600"
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <p className="text-sm text-gray-900 dark:text-white">{note.note}</p>
-                          <div className="mt-2 flex items-center space-x-4 text-xs text-gray-500 dark:text-gray-400">
+                          <div className="mt-2 flex items-center space-x-6 text-xs text-gray-500 dark:text-gray-400">
                             <span>By: {note.admin_email}</span>
                             <span>{new Date(note.created_at).toLocaleString()}</span>
                           </div>
@@ -1168,7 +1194,11 @@ export const UsersPage: React.FC = React.memo(() => {
                                 await fetchUserNotesAndTags(selectedUser.id);
                               } catch (error) {
                                 const err = error instanceof Error ? error : new Error(String(error));
-                                ErrorLogger.error(err, { component: 'UsersPage', action: 'deleteNote', noteId: note.id });
+                                ErrorLogger.error(err, { 
+                                  component: 'UsersPage', 
+                                  action: 'deleteNote', 
+                                  metadata: { noteId: note.id } 
+                                });
                                 toast.error('Failed to delete note');
                               }
                             }}
@@ -1190,8 +1220,8 @@ export const UsersPage: React.FC = React.memo(() => {
         </div>
       )}
 
-      <ConfirmModal />
-      <PromptModal />
+      {ConfirmModal}
+      {PromptModal}
     </div>
   );
 });

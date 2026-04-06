@@ -1,5 +1,6 @@
 import React from 'react';
-import { FileText, RefreshCw, Copy, Check, BookOpen, FileSearch, X, Download, Folder, Tag, Plus, AlertCircle, CheckCircle2, Stethoscope, GraduationCap, Heart, Activity, Globe, Lock } from 'lucide-react';
+import { FileText, RefreshCw, Copy, Check, BookOpen, FileSearch, X, Download, Folder, Tag, Plus, AlertCircle, Stethoscope, GraduationCap, Activity, Globe, Lock } from 'lucide-react';
+import { parseBlocks } from '../../utils/summaryFormatter';
 import html2pdf from 'html2pdf.js'; // Ensure html2pdf.js is correctly imported
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
@@ -10,6 +11,11 @@ import { useToast } from '../Toast/Toast';
 import { handleApiError, handleSupabaseError, isOffline, handleOfflineError } from '../../utils/errorHandler';
 import { ErrorLogger } from '../../utils/errorLogger';
 import { useChatContext } from '../../contexts/ChatContext';
+import { FreeFormToggle } from './BookMode/FreeFormToggle';
+import { BookModeViewer } from './BookMode/BookModeViewer';
+import { useUserPreferences } from '../../contexts/UserPreferencesContext';
+import { ReadAloudButton } from './ReadAloud/ReadAloudButton';
+import { sanitizeForTts } from './ReadAloud/readAloudUtils';
 
 interface SummaryDisplayProps {
   summaryChunks: string[];
@@ -21,6 +27,21 @@ interface SummaryDisplayProps {
   onPublishToLibrary: (summary: string, flashcards: Array<{ front: string; back: string }>, originalText: string) => Promise<boolean>;
   onReset: () => void;
   isSharedView?: boolean;
+  hideNewDocumentButton?: boolean;
+  onActionBarData?: (data: {
+    freeFormMode: boolean;
+    onFreeFormToggle: (enabled: boolean) => void;
+    combinedSummary: string;
+    copiedIndex: number | null;
+    publishing: boolean;
+    published: boolean;
+    onCopyAll: () => void;
+    onDualMode: () => void;
+    onExportTxt: () => void;
+    onExportPdf: () => void;
+    onPublish: () => void;
+    onNewDocument: () => void;
+  }) => void;
 }
 
 interface UserFolder {
@@ -41,15 +62,19 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
   topics = [],
   medicalMode = false,
   medicalScore,
-  onPublishToLibrary, 
+  onPublishToLibrary: _onPublishToLibrary,
   onReset,
-  isSharedView = false
+  isSharedView = false,
+  hideNewDocumentButton = false,
+  onActionBarData
 }) => {
   const { user } = useAuth();
   const { t } = useI18n();
-  const { getThemeGradient, getThemeText } = useTheme();
+  const { getThemeGradient, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
   const { error: showErrorToast, success: showSuccessToast } = useToast();
   const { setChatContext, clearChatContext } = useChatContext();
+  const { preferences: _preferences, loading: preferencesLoading, updateFreeFormMode } = useUserPreferences();
+  const [freeFormMode, setFreeFormMode] = React.useState(false);
   const [copiedIndex, setCopiedIndex] = React.useState<number | null>(null);
   const [publishing, setPublishing] = React.useState(false);
   const [published, setPublished] = React.useState(false);
@@ -66,15 +91,30 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
   const [newFolderNameInput, setNewFolderNameInput] = React.useState('');
   const [creatingFolder, setCreatingFolder] = React.useState(false);
 
-  React.useEffect(() => {
-    if (showPublishModal && user) {
-      fetchFolders();
-      fetchTags();
+  // Always start with book mode (freeFormMode = false) for new summaries
+  // User preference only affects toggle availability, not initial state
+  // This ensures new summaries always start in book mode regardless of user preference
+
+  // Save free-form mode preference
+  const handleFreeFormToggle = React.useCallback(async (enabled: boolean) => {
+    setFreeFormMode(enabled);
+    if (user) {
+      try {
+        await updateFreeFormMode(enabled);
+      } catch (error) {
+        // Silently fail - preference will be saved on next successful update
+        ErrorLogger.error(error instanceof Error ? error : new Error(String(error)), {
+          component: 'SummaryDisplay',
+          action: 'handleFreeFormToggle',
+          userId: user.id,
+          metadata: { enabled }
+        });
+      }
     }
-  }, [showPublishModal, user]);
+  }, [user, updateFreeFormMode]);
 
   // Calculate combined summary
-  const combinedSummary = summaryChunks.join('\n\n');
+  const combinedSummary = React.useMemo(() => summaryChunks.join('\n\n'), [summaryChunks]);
 
   // Set chat context when summary is displayed
   React.useEffect(() => {
@@ -95,9 +135,9 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
     return () => {
       clearChatContext();
     };
-  }, [summaryChunks, originalText, topics, medicalMode, isSharedView, combinedSummary, setChatContext, clearChatContext]);
+  }, [summaryChunks.length, combinedSummary, originalText, topics, medicalMode, isSharedView, setChatContext, clearChatContext]);
 
-  const fetchFolders = async () => {
+  const fetchFolders = React.useCallback(async () => {
     if (!user) return;
 
     if (isOffline()) {
@@ -138,9 +178,9 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
       });
       showErrorToast(message);
     }
-  };
+  }, [user, showErrorToast]);
 
-  const fetchTags = async () => {
+  const fetchTags = React.useCallback(async () => {
     if (!user) return;
 
     if (isOffline()) {
@@ -183,7 +223,14 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
       });
       showErrorToast(message);
     }
-  };
+  }, [user, showErrorToast]);
+
+  React.useEffect(() => {
+    if (showPublishModal && user) {
+      void fetchFolders();
+      void fetchTags();
+    }
+  }, [showPublishModal, user, fetchFolders, fetchTags]);
 
   const createTag = async () => {
     if (!user || !newTagName.trim()) return;
@@ -239,7 +286,7 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
     }
   };
 
-  const copyToClipboard = async (text: string, index: number) => {
+  const copyToClipboard = React.useCallback(async (text: string, index: number) => {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedIndex(index);
@@ -252,7 +299,7 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
       });
       showErrorToast('Failed to copy to clipboard');
     }
-  };
+  }, [showErrorToast]);
 
   const handlePublishToLibrary = async (folderId?: string, tagIds?: string[]) => {
     if (isOffline()) {
@@ -267,7 +314,7 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
       
       for (const topicName of selectedPredefinedTopics) {
         // Check if tag already exists
-        let existingTag = tags.find(tag => tag.name.toLowerCase() === topicName.toLowerCase());
+        const existingTag = tags.find(tag => tag.name.toLowerCase() === topicName.toLowerCase());
         
         if (existingTag) {
           if (!finalTagIds.includes(existingTag.id)) {
@@ -346,6 +393,89 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
     }
   };
 
+  // Hash function to create unique key for summary text (matches NotesWidget)
+  const hashSummaryText = (text: string): string => {
+    const preview = text.substring(0, 50).replace(/\s+/g, '');
+    const length = text.length;
+    const firstWord = text.split(/\s+/)[0] || '';
+    return `${preview}_${length}_${firstWord}`.substring(0, 50);
+  };
+
+  // Get localStorage key for temporary notes
+  const getTempNotesKey = (summaryText: string): string => {
+    return `temp_notes_${hashSummaryText(summaryText)}`;
+  };
+
+  // Migrate temporary notes from localStorage to database
+  const migrateTempNotesToDatabase = async (summaryText: string, newSummaryId: string) => {
+    if (!user) return;
+
+    try {
+      const tempNotesKey = getTempNotesKey(summaryText);
+      const storedNotes = localStorage.getItem(tempNotesKey);
+      
+      if (!storedNotes) {
+        // No temporary notes to migrate
+        return;
+      }
+
+      const tempNotes: Array<{
+        id: string;
+        content: string;
+        note_type: 'page' | 'book';
+        page_index: number | null;
+        created_at: string;
+        updated_at: string;
+      }> = JSON.parse(storedNotes);
+
+      if (tempNotes.length === 0) {
+        // No notes to migrate
+        return;
+      }
+
+      // Insert all temporary notes into database
+      const notesToInsert = tempNotes.map(note => ({
+        user_id: user.id,
+        summary_id: newSummaryId,
+        content: note.content,
+        note_type: note.note_type,
+        page_index: note.page_index,
+        created_at: note.created_at,
+        updated_at: note.updated_at
+      }));
+
+      const { error } = await supabase
+        .from('summary_notes')
+        .insert(notesToInsert);
+
+      if (error) {
+        ErrorLogger.error(error, {
+          component: 'SummaryDisplay',
+          action: 'migrateTempNotesToDatabase',
+          userId: user.id,
+          metadata: { summaryId: newSummaryId, noteCount: tempNotes.length }
+        });
+        // Don't fail the entire operation if migration fails
+        // Notes will remain in localStorage and can be migrated later
+      } else {
+        // Clear temporary notes from localStorage after successful migration
+        localStorage.removeItem(tempNotesKey);
+        if (tempNotes.length > 0) {
+          showSuccessToast(`Migrated ${tempNotes.length} note${tempNotes.length > 1 ? 's' : ''} to library`);
+        }
+      }
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      ErrorLogger.error(err, {
+        component: 'SummaryDisplay',
+        action: 'migrateTempNotesToDatabase',
+        userId: user?.id,
+        metadata: { summaryId: newSummaryId }
+      });
+      // Don't fail the entire operation if migration fails
+    }
+  };
+
   const publishToLibraryWithMetadata = async (
     summary: string,
     flashcards: Array<{ front: string; back: string }>,
@@ -377,7 +507,7 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
         if (translatedTitle && translatedTitle !== 'common.generated_content') {
           title = translatedTitle;
         }
-      } catch (e) {
+      } catch {
         // Translation key not found, using fallback - non-critical
       }
 
@@ -528,6 +658,9 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
         }
       }
 
+      // Migrate temporary notes from localStorage to database
+      await migrateTempNotesToDatabase(combinedSummary, libraryItem.id);
+
       return { success: true, itemId: libraryItem.id };
     } catch (error) {
       const message = handleApiError(error, { 
@@ -604,13 +737,14 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
     }
   };
 
-  const handleShowPublishModal = () => {
+  const handleShowPublishModal = React.useCallback(() => {
     setShowPublishModal(true);
     setSelectedFolderId('');
     setSelectedTagIds([]);
     setSelectedPredefinedTopics([]);
-  };
-  const exportAsTxt = () => {
+  }, []);
+
+  const exportAsTxt = React.useCallback(() => {
     const content = `${t('summary.document_summary').toUpperCase()}\n${'='.repeat(50)}\n\n${combinedSummary}\n\n\n${t('common.flashcards').toUpperCase()}\n${'='.repeat(50)}\n\n${flashcards.map((card, index) => `${index + 1}. Q: ${card.front}\n   A: ${card.back}`).join('\n\n')}`;
     
     const blob = new Blob([content], { type: 'text/plain' });
@@ -622,9 +756,9 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  };
+  }, [t, combinedSummary, flashcards]);
 
-  const exportAsPdf = () => {
+  const exportAsPdf = React.useCallback(() => {
     const questionLabel = t('flashcards.question');
     const answerLabel = t('flashcards.answer');
     
@@ -657,20 +791,44 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
     };
 
     html2pdf().set(opt).from(element).save();
-  };
+  }, [t, combinedSummary, flashcards]);
+
+  // Always show BookModeViewer (notebook style) when summary exists, unless shared view
+  // Must be before early return so hooks run on every render
+  const shouldShowBookMode = !preferencesLoading && !isSharedView && summaryChunks.length > 0;
+
+  // Expose action bar data to parent component (Dashboard)
+  React.useEffect(() => {
+    if (onActionBarData && shouldShowBookMode) {
+      onActionBarData({
+        freeFormMode,
+        onFreeFormToggle: handleFreeFormToggle,
+        combinedSummary,
+        copiedIndex,
+        publishing,
+        published,
+        onCopyAll: () => copyToClipboard(combinedSummary, -1),
+        onDualMode: () => setShowOriginalText(true),
+        onExportTxt: exportAsTxt,
+        onExportPdf: exportAsPdf,
+        onPublish: handleShowPublishModal,
+        onNewDocument: onReset
+      });
+    }
+  }, [onActionBarData, shouldShowBookMode, freeFormMode, combinedSummary, copiedIndex, publishing, published, handleFreeFormToggle, exportAsTxt, exportAsPdf, handleShowPublishModal, onReset, copyToClipboard, setShowOriginalText]);
 
   if (showOriginalText) {
     return (
-      <div className="bg-white rounded-2xl shadow-xl">
-        <div className="p-6 border-b border-gray-200">
+      <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm`}>
+        <div className={`p-6 border-b ${getThemeCardBorder()}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="bg-gradient-to-r from-orange-500 to-amber-600 p-2 rounded-lg">
+              <div className={`${getThemeSubtle('ui')} p-2 rounded-md ${getThemeCardBorder()}`}>
                 <FileSearch className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">{t('summary.original_text')}</h3>
-                <p className="text-sm text-gray-500">
+                <h3 className={`text-lg font-semibold ${getThemeTextPrimary()}`}>{t('summary.original_text')}</h3>
+                <p className={`text-sm ${getThemeTextMuted()}`}>
                   {t('summary.full_extracted')}
                 </p>
               </div>
@@ -679,7 +837,7 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => copyToClipboard(originalText, -2)}
-                className="flex items-center space-x-2 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition duration-150"
+                className={`flex items-center space-x-2 px-3 py-1.5 text-sm ${getThemeTextSecondary()} hover:opacity-80 ${getThemeCardBorder()} rounded-lg hover:opacity-60 transition duration-150`}
               >
                 {copiedIndex === -2 ? (
                   <Check className="h-4 w-4 text-green-600" />
@@ -701,8 +859,8 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
         </div>
 
         <div className="p-6 max-h-96 overflow-y-auto">
-          <div className="bg-gray-50 rounded-lg p-4">
-            <p className="text-gray-700 leading-relaxed whitespace-pre-wrap text-sm">
+          <div className={`${getThemeSubtle('bg')} rounded-lg p-4`}>
+            <p className={`${getThemeTextSecondary()} leading-relaxed whitespace-pre-wrap text-sm`}>
               {originalText && originalText.trim() ? originalText : t('summary.no_original_text')}
             </p>
           </div>
@@ -713,26 +871,41 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
 
   return (
     <>
-    <div className="bg-white rounded-2xl shadow-xl dark:bg-gray-800 dark:shadow-none">
-      <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+    {shouldShowBookMode ? (
+      <div className="relative">
+        {/* Action Bar removed - now rendered in Dashboard */}
+        <BookModeViewer
+          summaryId={null} // New summary, not yet saved
+          summaryText={combinedSummary}
+          flashcards={flashcards}
+          originalText={originalText}
+          topics={topics}
+          source="dashboard"
+          medicalMode={medicalMode}
+          freeFormMode={freeFormMode}
+        />
+      </div>
+    ) : (
+      <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm ${getThemeCardBorder()}`}>
+      <div className={`p-6 border-b ${getThemeCardBorder()}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className={`p-2 rounded-lg ${
+            <div className={`p-2 rounded-md border ${
               medicalMode
-                ? 'bg-gradient-to-r from-red-500 to-pink-600 dark:from-red-600 dark:to-pink-700'
-                : 'bg-gradient-to-r from-emerald-500 to-teal-600 dark:from-emerald-600 dark:to-teal-700'
+                ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                : `${getThemeSubtle('ui')} ${getThemeCardBorder()}`
             }`}>
               {medicalMode ? (
-                <Stethoscope className="h-5 w-5 text-white" />
+                <Stethoscope className="h-5 w-5 text-red-700 dark:text-red-400" />
               ) : (
-                <FileText className="h-5 w-5 text-white" />
+                <FileText className={`h-5 w-5 ${getThemeTextPrimary()}`} />
               )}
             </div>
             <div> {/* Apply dark mode classes to summary header text */}
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              <h3 className={`text-lg font-semibold ${getThemeTextPrimary()}`}>
                 {medicalMode ? '🏥 Medical Content Summary' : t('summary.document_summary')}
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className={`text-sm ${getThemeTextMuted()}`}>
                 {medicalMode ? (
                   <>
                     {summaryChunks.length} clinical section{summaryChunks.length === 1 ? '' : 's'} processed
@@ -748,7 +921,7 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
               {/* Topics Display */}
               {topics.length > 0 && (
                 <div className="flex items-center space-x-2 mt-2">
-                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  <span className={`text-xs font-medium ${getThemeTextMuted()}`}>
                     {medicalMode ? '🩺 Medical Specialties:' : t('summary.topics')}
                   </span>
                   <div className="flex flex-wrap gap-1">
@@ -771,9 +944,21 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
           </div>
 
           <div className="flex items-center space-x-2">
+            {/* Free-Form Mode Toggle - hidden until optimized */}
+            {(() => {
+              const showFreeFormToggle = false;
+              return showFreeFormToggle && !isSharedView && (
+                <FreeFormToggle
+                  enabled={freeFormMode}
+                  onToggle={handleFreeFormToggle}
+                  compact={false}
+                />
+              );
+            })()}
+            
             <button
               onClick={() => copyToClipboard(combinedSummary, -1)}
-              className="flex items-center space-x-2 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition duration-150 dark:border-gray-700 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-gray-700"
+              className={`flex items-center space-x-2 px-3 py-1.5 text-sm ${getThemeTextSecondary()} hover:opacity-80 ${getThemeCardBorder()} rounded-lg hover:opacity-60 transition duration-150`}
             >
               {copiedIndex === -1 ? (
                 <Check className="h-4 w-4 text-green-600" />
@@ -782,6 +967,11 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
               )}
               <span>{t('summary.copy_all')}</span>
             </button>
+
+            <ReadAloudButton
+              text={sanitizeForTts(combinedSummary)}
+              ariaLabel={t('read_aloud.read_aloud') || 'Read summary aloud'}
+            />
             
             <button
               onClick={() => setShowOriginalText(true)}
@@ -792,30 +982,23 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
               <span>{t('summary.dual_mode')}</span>
             </button>
             
-            <div className="flex items-center space-x-2">
-              {/* Export Dropdown */}
-              <div className="relative group">
-                <button className="flex items-center space-x-2 px-3 py-1.5 text-sm text-purple-600 hover:text-purple-800 border border-purple-300 rounded-lg hover:bg-purple-50 transition duration-150 dark:border-purple-600 dark:hover:bg-purple-900 dark:text-purple-400 dark:hover:text-purple-200">
-                  <Download className="h-4 w-4" />
-                  <span>{t('summary.export')}</span>
-                </button>
-                
-                {/* Dropdown Menu */}
-                <div className="absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10 dark:bg-gray-700 dark:border-gray-600 dark:shadow-none">
-                  <button
-                    onClick={exportAsTxt}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-t-lg dark:text-gray-200 dark:hover:bg-gray-600"
-                  >
-                    {t('summary.export_txt')}
-                  </button>
-                  <button
-                    onClick={exportAsPdf}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-b-lg dark:text-gray-200 dark:hover:bg-gray-600"
-                  >
-                    {t('summary.export_pdf')}
-                  </button>
-                </div>
-              </div>
+            <div className="flex items-center flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={exportAsTxt}
+                className="flex items-center space-x-2 px-3 py-1.5 text-sm text-purple-600 hover:text-purple-800 border border-purple-300 rounded-lg hover:bg-purple-50 transition duration-150 dark:border-purple-600 dark:hover:bg-purple-900 dark:text-purple-400 dark:hover:text-purple-200"
+              >
+                <Download className="h-4 w-4" />
+                <span>{t('summary.export_txt')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={exportAsPdf}
+                className="flex items-center space-x-2 px-3 py-1.5 text-sm text-purple-600 hover:text-purple-800 border border-purple-300 rounded-lg hover:bg-purple-50 transition duration-150 dark:border-purple-600 dark:hover:bg-purple-900 dark:text-purple-400 dark:hover:text-purple-200"
+              >
+                <Download className="h-4 w-4" />
+                <span>{t('summary.export_pdf')}</span>
+              </button>
 
               {!isSharedView && (
                 <button
@@ -825,8 +1008,8 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
                     published 
                       ? 'text-green-600 bg-green-50 border border-green-200'
                       : medicalMode
-                        ? 'text-white bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 disabled:opacity-50 dark:from-red-500 dark:to-pink-500 dark:hover:from-red-600 dark:hover:to-pink-600'
-                        : `text-white ${getThemeGradient('ui')} hover:opacity-90 disabled:opacity-50`
+                        ? 'text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 dark:bg-red-500 dark:hover:bg-red-600'
+                        : `${getThemeGradient('ui')} text-white hover:opacity-90 disabled:opacity-50`
                   }`}
                 >
                   {publishing ? (
@@ -845,10 +1028,10 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
               )}
             </div>
             
-            {!isSharedView && (
+            {!isSharedView && !hideNewDocumentButton && (
               <button
                 onClick={onReset}
-                className="flex items-center space-x-2 px-3 py-1.5 text-sm text-blue-600 hover:text-blue-800 transition duration-150 dark:text-blue-400 dark:hover:text-blue-200"
+                className={`flex items-center space-x-2 px-3 py-1.5 text-sm ${getThemeTextPrimary()} hover:opacity-80 transition duration-150`}
               >
                 <RefreshCw className="h-4 w-4" />
                 <span>{t('summary.new_document')}</span>
@@ -857,7 +1040,7 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
           </div>
         </div>
       </div> {/* Apply dark mode classes to summary content */}
-      <div className="p-6 max-h-96 overflow-y-auto dark:text-gray-200">
+      <div className={`p-6 max-h-96 overflow-y-auto ${getThemeTextSecondary()}`}>
         {/* Medical Mode Enhanced Summary Display */}
         {medicalMode && (
           <div className="mb-4 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-lg dark:bg-red-900 dark:border-red-600">
@@ -871,104 +1054,115 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
             </p>
           </div>
         )}
-        <div className="text-gray-700 leading-relaxed dark:text-gray-200">
-          {combinedSummary.split('\n').map((line, index) => {
-            // Skip empty lines (they're handled by spacing in the section headers)
-            if (line.trim().length === 0) {
-              return null;
-            }
-            
-            // Check if line is a section header (starts with === and ends with ===)
-            const isSectionHeader = /^=== .+ ===$/.test(line.trim());
-            if (isSectionHeader) {
-              const sectionName = line.trim().replace(/^=== | ===$/g, '');
+        <div className="leading-relaxed">
+          {parseBlocks(combinedSummary).map((block, index) => {
+            if (block.type === 'heading') {
               return (
-                <h3
-                  key={index}
-                  className={`text-xl font-bold mt-6 mb-3 ${getThemeText()}`}
-                >
-                  {sectionName}
+                <h3 key={index} className={`text-sm font-semibold tracking-tight mt-5 mb-2 ${getThemeTextPrimary()}`}>
+                  {block.text}
                 </h3>
               );
             }
-            // Regular bullet point or content line
+            if (block.type === 'bullets') {
+              return (
+                <ul key={index} className="my-3 space-y-1.5 pl-1">
+                  {block.items.map((item, j) => (
+                    <li key={j} className={`flex items-start gap-2.5 text-sm leading-relaxed ${getThemeTextSecondary()}`}>
+                      <span className="mt-2 w-1.5 h-1.5 rounded-full bg-current flex-shrink-0 opacity-40" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              );
+            }
             return (
-              <p key={index} className="mb-2 whitespace-pre-wrap">
-                {line}
+              <p key={index} className={`text-sm leading-relaxed mb-2 ${getThemeTextSecondary()}`}>
+                {block.text}
               </p>
             );
           })}
         </div>
       </div>
       
-    </div>
+      </div>
+    )}
 
     {/* Publish to Library Modal */}
     {showPublishModal && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 dark:bg-gray-950 dark:bg-opacity-75">
-        <div className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[85vh] flex flex-col dark:bg-gray-800 dark:shadow-none">
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className={`${getThemeCardBg()} rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] flex flex-col border ${getThemeCardBorder()}`}>
 
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('publish_modal.publish_to_library')}</h3>
-            <p className="text-sm text-gray-500 mt-1 dark:text-gray-400">{t('publish_modal.choose_folder_tags')}</p>
-            <div className="mt-2 p-2 rounded-lg text-xs flex items-center space-x-2 bg-green-50 text-green-800 dark:bg-green-900 dark:text-green-200">
-              <Globe className="h-4 w-4 flex-shrink-0" />
-              <span className="font-medium">All published items are PUBLIC and visible to all subscribed users in the community library.</span>
+          <div className={`px-5 pt-5 pb-4 border-b ${getThemeCardBorder()} flex-shrink-0`}>
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className={`text-base font-semibold ${getThemeTextPrimary()}`}>{t('publish_modal.publish_to_library')}</h3>
+                <p className={`text-xs ${getThemeTextMuted()} mt-0.5`}>{t('publish_modal.choose_folder_tags')}</p>
+                <p className={`text-xs ${getThemeTextMuted()} mt-1 flex items-center gap-1`}>
+                  <Globe className="h-3 w-3 flex-shrink-0" />
+                  Published items are visible to all subscribed users.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowPublishModal(false)}
+                className={`p-1.5 rounded-full ${getThemeTextMuted()} hover:bg-black/5 dark:hover:bg-white/5 transition-colors flex-shrink-0`}
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           </div>
 
-          <div className="p-4 space-y-4 overflow-y-auto flex-1">
+          <div className="px-5 py-4 space-y-5 overflow-y-auto flex-1">
+
             {/* Folder Selection */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-                  <Folder className="h-4 w-4 inline mr-1" />
+              <div className="flex items-center justify-between mb-2">
+                <label className={`text-xs font-medium uppercase tracking-widest opacity-50 ${getThemeTextPrimary()}`}>
+                  <Folder className="h-3 w-3 inline mr-1" />
                   {t('publish_modal.folder_optional')}
                 </label>
-                <button
-                  onClick={() => setShowCreateFolderInput(true)}
-                  className="text-xs text-blue-600 hover:text-blue-800 flex items-center dark:text-blue-400 dark:hover:text-blue-200"
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  {t('publish_modal.create_new_folder')}
-                </button>
+                {!showCreateFolderInput && (
+                  <button
+                    onClick={() => setShowCreateFolderInput(true)}
+                    className={`text-xs flex items-center gap-1 ${getThemeTextMuted()} hover:opacity-80`}
+                  >
+                    <Plus className="h-3 w-3" />
+                    {t('publish_modal.create_new_folder')}
+                  </button>
+                )}
               </div>
-              
+
               {showCreateFolderInput && (
-                <div className="mb-2 p-2 bg-blue-50 rounded-lg dark:bg-blue-900">
-                  <div className="flex items-center space-x-2">
+                <div className={`mb-2 p-2 rounded-xl border ${getThemeCardBorder()} ${getThemeSubtle('bg')}`}>
+                  <div className="flex items-center gap-2">
                     <input
                       type="text"
                       value={newFolderNameInput}
                       onChange={(e) => setNewFolderNameInput(e.target.value)}
                       placeholder={t('publish_modal.new_folder_name')}
-                      className="flex-1 px-2.5 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-700 dark:text-gray-100"
+                      className={`flex-1 px-2.5 py-1.5 text-sm border ${getThemeCardBorder()} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${getThemeCardBg()} ${getThemeTextPrimary()}`}
                       onKeyPress={(e) => e.key === 'Enter' && createFolderInPublishModal()}
                     />
                     <button
                       onClick={createFolderInPublishModal}
                       disabled={creatingFolder}
-                      className="p-1 text-green-600 hover:text-green-800 disabled:opacity-50 dark:text-green-400 dark:hover:text-green-200"
+                      className="p-1.5 rounded-full text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 disabled:opacity-50 transition-colors"
                     >
-                      {creatingFolder ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      {creatingFolder ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                     </button>
                     <button
-                      onClick={() => {
-                        setShowCreateFolderInput(false);
-                        setNewFolderNameInput('');
-                      }}
-                      className="p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-200"
+                      onClick={() => { setShowCreateFolderInput(false); setNewFolderNameInput(''); }}
+                      className="p-1.5 rounded-full text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
                     >
-                      <X className="h-4 w-4" />
+                      <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>
               )}
-              
+
               <select
                 value={selectedFolderId}
                 onChange={(e) => setSelectedFolderId(e.target.value)}
-                className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-700 dark:text-gray-100"
+                className={`w-full px-3 py-2 text-sm border ${getThemeCardBorder()} rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 ${getThemeCardBg()} ${getThemeTextPrimary()}`}
               >
                 <option value="">{t('publish_modal.no_folder')}</option>
                 {folders.map(folder => (
@@ -977,164 +1171,157 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
               </select>
             </div>
 
-            {/* Predefined Topics Selection */}
+            {/* Predefined Topics — pill chips */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5 dark:text-gray-200">
-                <Tag className="h-4 w-4 inline mr-1" />
+              <label className={`text-xs font-medium uppercase tracking-widest opacity-50 ${getThemeTextPrimary()} mb-2 block`}>
+                <Tag className="h-3 w-3 inline mr-1" />
                 {t('publish_modal.suggested_topics')}
               </label>
-              <div className="grid grid-cols-2 gap-1.5 max-h-28 overflow-y-auto p-2 bg-gray-50 rounded-lg dark:bg-gray-900">
-                {PREDEFINED_TOPICS.map(topic => (
-                  <label key={topic} className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={selectedPredefinedTopics.includes(topic)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedPredefinedTopics(prev => [...prev, topic]);
-                        } else {
-                          setSelectedPredefinedTopics(prev => prev.filter(t => t !== topic));
-                        }
+              <div className="flex flex-wrap gap-1.5">
+                {PREDEFINED_TOPICS.map(topic => {
+                  const isSelected = selectedPredefinedTopics.includes(topic);
+                  return (
+                    <button
+                      key={topic}
+                      type="button"
+                      onClick={() => {
+                        setSelectedPredefinedTopics(prev =>
+                          isSelected ? prev.filter(t => t !== topic) : [...prev, topic]
+                        );
                       }}
-                      className="h-3.5 w-3.5 text-green-600 focus:ring-green-500 border-gray-300 rounded mr-2 flex-shrink-0"
-                    />
-                    <span className="text-xs text-gray-700 dark:text-gray-200">{topic}</span>
-                  </label>
-                ))}
+                      className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                        isSelected
+                          ? 'bg-emerald-500 border-emerald-500 text-white'
+                          : `border-gray-200 dark:border-gray-700 ${getThemeTextSecondary()} hover:bg-black/5 dark:hover:bg-white/5`
+                      }`}
+                    >
+                      {topic}
+                    </button>
+                  );
+                })}
               </div>
-              <p className="text-xs text-gray-500 mt-1 dark:text-gray-400">
-                {t('publish_modal.selected_topics_note')}
-              </p>
             </div>
-            {/* Tag Selection - Required */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-                  <Tag className="h-4 w-4 inline mr-1" />
-                  Tags (for organization) <span className="text-red-600">*</span>
-                </label>
-                <button
-                  onClick={() => setShowCreateTag(true)}
-                  className="text-xs text-blue-600 hover:text-blue-800 flex items-center dark:text-blue-400 dark:hover:text-blue-200"
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Create Private Tag
-                </button>
-              </div>
 
-              {/* Tag purpose explanation */}
-              <div className="mb-2 p-2 rounded-lg text-xs flex items-center space-x-2 bg-blue-50 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                <span>
-                  Tags help organize and filter your library items. Select at least one tag to categorize your content.
-                </span>
+            {/* Tags — pill chips */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className={`text-xs font-medium uppercase tracking-widest opacity-50 ${getThemeTextPrimary()}`}>
+                  <Tag className="h-3 w-3 inline mr-1" />
+                  Tags <span className="normal-case tracking-normal opacity-100 text-red-500">*</span>
+                </label>
+                {!showCreateTag && (
+                  <button
+                    onClick={() => setShowCreateTag(true)}
+                    className={`text-xs flex items-center gap-1 ${getThemeTextMuted()} hover:opacity-80`}
+                  >
+                    <Plus className="h-3 w-3" />
+                    New private tag
+                  </button>
+                )}
               </div>
 
               {showCreateTag && (
-                <div className="mb-2 p-2 bg-blue-50 rounded-lg dark:bg-blue-900">
-                  <div className="flex items-center space-x-2">
+                <div className={`mb-3 p-2 rounded-xl border ${getThemeCardBorder()} ${getThemeSubtle('bg')}`}>
+                  <div className="flex items-center gap-2">
                     <input
                       type="text"
                       value={newTagName}
                       onChange={(e) => setNewTagName(e.target.value)}
                       placeholder="New private tag name"
-                      className="flex-1 px-2.5 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-700 dark:text-gray-100"
+                      className={`flex-1 px-2.5 py-1.5 text-sm border ${getThemeCardBorder()} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${getThemeCardBg()} ${getThemeTextPrimary()}`}
                       onKeyPress={(e) => e.key === 'Enter' && createTag()}
                     />
-                    <button
-                      onClick={createTag}
-                      className="p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-200"
-                    >
-                      <Check className="h-4 w-4" />
+                    <button onClick={createTag} className="p-1.5 rounded-full text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors">
+                      <Check className="h-3.5 w-3.5" />
                     </button>
                     <button
-                      onClick={() => {
-                        setShowCreateTag(false);
-                        setNewTagName('');
-                      }}
-                      className="p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-200"
+                      onClick={() => { setShowCreateTag(false); setNewTagName(''); }}
+                      className="p-1.5 rounded-full text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
                     >
-                      <X className="h-4 w-4" />
+                      <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1 dark:text-gray-400">Private tags are for your personal organization only</p>
                 </div>
               )}
 
-              {/* Public Tags Section */}
+              {/* Public tags */}
               {tags.filter(t => t.is_public).length > 0 && (
                 <div className="mb-3">
-                  <div className="flex items-center space-x-2 mb-1.5">
-                    <Globe className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
-                    <span className="text-xs font-semibold text-green-700 dark:text-green-300">Public Tags (Available to All)</span>
-                  </div>
-                  <div className="space-y-1 max-h-28 overflow-y-auto p-2 bg-green-50 rounded-lg dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-                    {tags.filter(t => t.is_public).map(tag => (
-                      <label key={tag.id} className="flex items-center justify-between hover:bg-green-100 dark:hover:bg-green-900/30 p-1 rounded">
-                        <div className="flex items-center flex-1">
-                          <input
-                            type="checkbox"
-                            checked={selectedTagIds.includes(tag.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedTagIds(prev => [...prev, tag.id]);
-                              } else {
-                                setSelectedTagIds(prev => prev.filter(id => id !== tag.id));
-                              }
-                            }}
-                            className="h-3.5 w-3.5 text-green-600 focus:ring-green-500 border-gray-300 rounded mr-2 flex-shrink-0"
-                          />
-                          <span className="text-xs text-gray-700 dark:text-gray-200">{tag.name}</span>
-                        </div>
-                        <Globe className="h-3 w-3 text-green-600 dark:text-green-400 flex-shrink-0" />
-                      </label>
-                    ))}
+                  <p className={`text-[10px] uppercase tracking-widest ${getThemeTextMuted()} mb-1.5 flex items-center gap-1`}>
+                    <Globe className="h-2.5 w-2.5" /> Public
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {tags.filter(t => t.is_public).map(tag => {
+                      const isSelected = selectedTagIds.includes(tag.id);
+                      return (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          onClick={() => setSelectedTagIds(prev =>
+                            isSelected ? prev.filter(id => id !== tag.id) : [...prev, tag.id]
+                          )}
+                          className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                            isSelected
+                              ? 'bg-emerald-500 border-emerald-500 text-white'
+                              : `border-gray-200 dark:border-gray-700 ${getThemeTextSecondary()} hover:bg-black/5 dark:hover:bg-white/5`
+                          }`}
+                        >
+                          {tag.name}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
-              {/* Private Tags Section */}
+              {/* Private tags */}
               {tags.filter(t => !t.is_public && t.user_id).length > 0 && (
                 <div>
-                  <div className="flex items-center space-x-2 mb-1.5">
-                    <Lock className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
-                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Your Private Tags</span>
-                  </div>
-                  <div className="space-y-1 max-h-28 overflow-y-auto p-2 bg-gray-50 rounded-lg dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
-                    {tags.filter(t => !t.is_public && t.user_id).map(tag => (
-                      <label key={tag.id} className="flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-800 p-1 rounded">
-                        <div className="flex items-center flex-1">
-                          <input
-                            type="checkbox"
-                            checked={selectedTagIds.includes(tag.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedTagIds(prev => [...prev, tag.id]);
-                              } else {
-                                setSelectedTagIds(prev => prev.filter(id => id !== tag.id));
-                              }
-                            }}
-                            className="h-3.5 w-3.5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-2 flex-shrink-0"
-                          />
-                          <span className="text-xs text-gray-700 dark:text-gray-200">{tag.name}</span>
-                        </div>
-                        <Lock className="h-3 w-3 text-gray-400 dark:text-gray-600 flex-shrink-0" />
-                      </label>
-                    ))}
+                  <p className={`text-[10px] uppercase tracking-widest ${getThemeTextMuted()} mb-1.5 flex items-center gap-1`}>
+                    <Lock className="h-2.5 w-2.5" /> Private
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {tags.filter(t => !t.is_public && t.user_id).map(tag => {
+                      const isSelected = selectedTagIds.includes(tag.id);
+                      return (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          onClick={() => setSelectedTagIds(prev =>
+                            isSelected ? prev.filter(id => id !== tag.id) : [...prev, tag.id]
+                          )}
+                          className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                            isSelected
+                              ? 'bg-gray-700 border-gray-700 text-white dark:bg-gray-200 dark:border-gray-200 dark:text-gray-900'
+                              : `border-gray-200 dark:border-gray-700 ${getThemeTextSecondary()} hover:bg-black/5 dark:hover:bg-white/5`
+                          }`}
+                        >
+                          {tag.name}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
               {tags.length === 0 && (
-                <p className="text-xs text-gray-500 italic p-2 dark:text-gray-400">No tags available. Create a private tag or select a predefined topic above.</p>
+                <p className={`text-xs italic ${getThemeTextMuted()}`}>No tags yet. Create a private tag or select a topic above.</p>
+              )}
+
+              {(selectedTagIds.length === 0 && selectedPredefinedTopics.length === 0) && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3 flex-shrink-0" />
+                  Select at least one tag or topic to publish.
+                </p>
               )}
             </div>
+
           </div>
 
-          <div className="p-4 border-t border-gray-200 flex justify-end space-x-3 flex-shrink-0 dark:border-gray-700">
+          <div className={`px-5 py-4 border-t ${getThemeCardBorder()} flex items-center justify-end gap-3 flex-shrink-0`}>
             <button
               onClick={() => setShowPublishModal(false)}
-              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition duration-150 dark:border-gray-700 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-gray-700"
+              className={`px-4 py-2 text-sm ${getThemeTextSecondary()} hover:opacity-80 transition-opacity`}
             >
               {t('common.cancel')}
             </button>
@@ -1148,8 +1335,13 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
                 handlePublishToLibrary(selectedFolderId || undefined, selectedTagIds);
               }}
               disabled={publishing || (selectedTagIds.length === 0 && selectedPredefinedTopics.length === 0)}
-              className="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 transition duration-150 dark:bg-blue-500 dark:hover:bg-blue-600"
+              className="btn-soft-primary flex items-center gap-2 disabled:opacity-50"
             >
+              {publishing ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <BookOpen className="h-4 w-4" />
+              )}
               {publishing ? t('summary.publishing') : t('summary.publish_library')}
             </button>
           </div>

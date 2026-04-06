@@ -49,7 +49,7 @@ export default function MultiplayerLobby({ lobbyId: initialLobbyId, onExit }: Mu
   const [lobby, setLobby] = useState<GameLobby | null>(null);
   const [players, setPlayers] = useState<LobbyPlayer[]>([]);
   const [isHost, setIsHost] = useState(false);
-  const [isReady, setIsReady] = useState(false);
+  const [_isReady, setIsReady] = useState(false);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -346,7 +346,7 @@ export default function MultiplayerLobby({ lobbyId: initialLobbyId, onExit }: Mu
 
   return (
     <div className="max-w-4xl mx-auto p-6">
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+      <div className="bg-white rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow overflow-hidden">
         <div className={`${getThemeGradient('ui')} p-6 text-white`}>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold">{lobby.game_name}</h2>

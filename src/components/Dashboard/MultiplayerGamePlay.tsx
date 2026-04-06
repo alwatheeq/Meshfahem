@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Zap, Trophy, Users } from 'lucide-react';
+import { Clock, Zap, Trophy } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -41,7 +41,7 @@ export default function MultiplayerGamePlay({ lobbyId }: MultiplayerGamePlayProp
   const { user } = useAuth();
   const navigate = useNavigate();
   const { error: showErrorToast } = useToast();
-  const { getThemeGradient } = useTheme();
+  const { getThemeGradient, getBackgroundGradient, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -51,7 +51,7 @@ export default function MultiplayerGamePlay({ lobbyId }: MultiplayerGamePlayProp
   const [playerScores, setPlayerScores] = useState<PlayerScore[]>([]);
   const [hasAnswered, setHasAnswered] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [gameEnded, setGameEnded] = useState(false);
+  const [_gameEnded, setGameEnded] = useState(false);
   const [timePerQuestion, setTimePerQuestion] = useState(30);
 
   useEffect(() => {
@@ -482,7 +482,7 @@ export default function MultiplayerGamePlay({ lobbyId }: MultiplayerGamePlayProp
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading game...</p>
+          <p className={getThemeTextSecondary()}>Loading game...</p>
         </div>
       </div>
     );
@@ -492,7 +492,7 @@ export default function MultiplayerGamePlay({ lobbyId }: MultiplayerGamePlayProp
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <p className="text-gray-600">No questions available</p>
+          <p className={getThemeTextSecondary()}>No questions available</p>
         </div>
       </div>
     );
@@ -502,36 +502,36 @@ export default function MultiplayerGamePlay({ lobbyId }: MultiplayerGamePlayProp
   const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
 
   return (
-    <div className={`min-h-screen ${getThemeGradient('bg')} p-6`}>
+    <div className={`min-h-screen ${getBackgroundGradient()} p-6`}>
       <div className="max-w-6xl mx-auto">
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="bg-white rounded-lg px-4 py-2 shadow flex items-center gap-2">
+            <div className={`${getThemeCardBg()} rounded-lg px-4 py-2 shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow flex items-center gap-2`}>
               <Clock className="w-5 h-5 text-blue-600" />
-              <span className={`text-2xl font-bold ${timeLeft <= 5 ? 'text-red-600 animate-pulse' : 'text-gray-800'}`}>
+              <span className={`text-2xl font-bold ${timeLeft <= 5 ? 'text-red-600 animate-pulse' : getThemeTextPrimary()}`}>
                 {timeLeft}s
               </span>
             </div>
 
-            <div className="bg-white rounded-lg px-4 py-2 shadow">
-              <span className="text-sm text-gray-600">Question {currentQuestionIndex + 1} / {questions.length}</span>
+            <div className="bg-white rounded-lg px-4 py-2 shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow">
+              <span className={`text-sm ${getThemeTextSecondary()}`}>Question {currentQuestionIndex + 1} / {questions.length}</span>
             </div>
           </div>
         </div>
 
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl shadow-lg p-8">
+            <div className={`${getThemeCardBg()} rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow p-8`}>
               <div className="mb-6">
-                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div className={`h-2 ${getThemeSubtle('ui')} rounded-full overflow-hidden`}>
                   <div
-                    className={`h-full ${getThemeGradient('ui')} transition-all duration-300`}
+                    className={`h-full ${getThemeGradient('ui')} transition-colors duration-150`}
                     style={{ width: `${progress}%` }}
                   ></div>
                 </div>
               </div>
 
-              <h2 className="text-2xl font-bold mb-8 text-gray-800">
+              <h2 className={`text-2xl font-bold mb-8 ${getThemeTextPrimary()}`}>
                 {currentQuestion.question}
               </h2>
 
@@ -549,10 +549,10 @@ export default function MultiplayerGamePlay({ lobbyId }: MultiplayerGamePlayProp
                     } else if (isSelected && !isCorrect) {
                       buttonClass += 'bg-red-100 border-red-500 text-red-800';
                     } else {
-                      buttonClass += 'bg-gray-100 border-gray-300 text-gray-600';
+                      buttonClass += `${getThemeSubtle('ui')} ${getThemeCardBorder()} ${getThemeTextSecondary()}`;
                     }
                   } else {
-                    buttonClass += 'bg-white border-gray-300 hover:border-blue-500 hover:bg-blue-50 cursor-pointer';
+                    buttonClass += `${getThemeCardBg()} ${getThemeCardBorder()} hover:border-blue-500 hover:bg-blue-50 cursor-pointer`;
                   }
 
                   return (
@@ -576,7 +576,7 @@ export default function MultiplayerGamePlay({ lobbyId }: MultiplayerGamePlayProp
           </div>
 
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-xl shadow-lg p-6 sticky top-6">
+            <div className="bg-white rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow p-6 sticky top-6">
               <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-yellow-500" />
                 Live Leaderboard
@@ -589,11 +589,11 @@ export default function MultiplayerGamePlay({ lobbyId }: MultiplayerGamePlayProp
                     className={`p-3 rounded-lg flex items-center justify-between ${
                       player.user_id === user?.id
                         ? 'bg-blue-50 border-2 border-blue-300'
-                        : 'bg-gray-50'
+                        : getThemeSubtle('bg')
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <span className="font-bold text-lg text-gray-600">
+                      <span className={`font-bold text-lg ${getThemeTextSecondary()}`}>
                         #{index + 1}
                       </span>
                       <div>
@@ -603,7 +603,7 @@ export default function MultiplayerGamePlay({ lobbyId }: MultiplayerGamePlayProp
                             <span className="text-xs text-blue-600 ml-1">(You)</span>
                           )}
                         </div>
-                        <div className="text-xs text-gray-500">
+                        <div className={`text-xs ${getThemeTextMuted()}`}>
                           {player.correct} correct
                         </div>
                       </div>

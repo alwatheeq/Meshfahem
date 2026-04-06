@@ -1,3 +1,4 @@
+/// <reference path="../_shared/deno.d.ts" />
 import { handleCorsPreflight } from '../_shared/cors.ts';
 import { jsonResponse, errorResponse } from '../_shared/response.ts';
 import { validateMethod, parseJsonBody, validateRequiredFields, validateNonEmptyString } from '../_shared/validation.ts';

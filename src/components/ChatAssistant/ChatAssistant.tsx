@@ -225,11 +225,12 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
         action: 'sendMessage'
       });
       
-      // Fix: Get error message from handleApiError and display it
-      const errorMessage = handleApiError(error, {
-        component: 'ChatAssistant',
-        action: 'sendMessage'
-      });
+      const errorMessage = error instanceof TypeError && error.message.includes('fetch')
+        ? "Cannot reach the AI assistant. Check your connection and that the app's Supabase URL is correct."
+        : handleApiError(error, {
+            component: 'ChatAssistant',
+            action: 'sendMessage'
+          });
       showErrorToast(errorMessage);
       
       // Remove temp message on error
@@ -255,7 +256,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className={`fixed bottom-6 right-6 z-50 ${getThemeGradient('ui')} text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110 flex items-center justify-center`}
+        className={`fixed bottom-6 right-6 z-50 ${getThemeGradient('ui')} text-white dark:text-gray-900 p-6 rounded-full shadow hover:shadow-sm transition-colors duration-150  flex items-center justify-center`}
         aria-label={t('chat.open_assistant')}
       >
         <MessageCircle className="h-6 w-6" />
@@ -264,9 +265,9 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
   }
 
   return (
-    <div className={`fixed bottom-6 right-6 z-50 w-96 ${isMinimized ? 'h-16' : 'h-[600px]'} flex flex-col bg-white dark:bg-gray-800 rounded-lg shadow-2xl border ${getThemeBorder()} transition-all duration-300`}>
+    <div className={`fixed bottom-6 right-6 z-50 w-96 ${isMinimized ? 'h-16' : 'h-[600px]'} flex flex-col bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-lg border ${getThemeBorder()} transition-colors duration-150`}>
       {/* Header */}
-      <div className={`flex items-center justify-between p-4 ${getThemeGradient('ui')} text-white rounded-t-lg`}>
+      <div className={`flex items-center justify-between p-6 ${getThemeGradient('ui')} text-white dark:text-gray-900 rounded-t-lg`}>
         <div className="flex items-center space-x-2">
           <MessageCircle className="h-5 w-5" />
           <span className="font-semibold">{t('chat.assistant_title')}</span>
@@ -295,7 +296,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
       {!isMinimized && (
         <>
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 dark:bg-gray-900">
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-100 dark:bg-gray-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
             {messages.length === 0 ? (
               <div className="text-center py-8">
                 <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-400" />
@@ -305,7 +306,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
                     <button
                       key={index}
                       onClick={() => handleSuggestionClick(question)}
-                      className={`w-full text-left px-4 py-2 text-sm rounded-lg border ${getThemeBorder()} bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors`}
+                      className={`w-full text-left px-5 py-2.5 text-sm rounded-lg border ${getThemeBorder()} bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors`}
                     >
                       {question}
                     </button>
@@ -320,9 +321,9 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
                     className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
-                      className={`max-w-[80%] rounded-lg px-4 py-2 ${
+                      className={`max-w-[80%] rounded-lg px-5 py-2.5 ${
                         message.role === 'user'
-                          ? `${getThemeGradient('ui')} text-white`
+                          ? `${getThemeGradient('ui')} text-white dark:text-gray-900`
                           : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-600'
                       }`}
                     >
@@ -332,7 +333,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
                 ))}
                 {loading && (
                   <div className="flex justify-start">
-                    <div className="bg-white dark:bg-gray-700 rounded-lg px-4 py-2 border border-gray-200 dark:border-gray-600">
+                    <div className="bg-white dark:bg-gray-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-lg px-5 py-2.5 border border-gray-200 dark:border-gray-600">
                       <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
                     </div>
                   </div>
@@ -343,7 +344,7 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
           </div>
 
           {/* Input */}
-          <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+          <div className="p-6 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
             <div className="flex items-end space-x-2">
               <textarea
                 ref={inputRef}
@@ -351,14 +352,14 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder={t('chat.input_placeholder')}
-                className="flex-1 resize-none px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                className="flex-1 resize-none px-5 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
                 rows={1}
                 style={{ minHeight: '40px', maxHeight: '120px' }}
               />
               <button
                 onClick={sendMessage}
                 disabled={!inputValue.trim() || loading}
-                className={`p-2 rounded-lg ${getThemeGradient('ui')} text-white disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity`}
+                className={`p-2 rounded-lg ${getThemeGradient('ui')} text-white dark:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity`}
                 aria-label={t('chat.send')}
               >
                 {loading ? (

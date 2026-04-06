@@ -1,12 +1,14 @@
-import React from 'react';
-import { Info, FileText, Upload, Brain, BookOpen, History, Share2, Globe, Tag, Folder, Eye, Download, RotateCcw, CreditCard as Edit3, List, HelpCircle, User, BarChart3, ChevronRight, Stethoscope } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { Info, FileText, Upload, Brain, BookOpen, History, Share2, Globe, Tag, Folder, Eye, Download, RotateCcw, CreditCard as Edit3, List, HelpCircle, User, BarChart3, Stethoscope } from 'lucide-react';
 import { useI18n } from '../../contexts/I18nContext';
 import { AVAILABLE_LANGUAGES } from '../../utils/translation';
 import { useTheme } from '../../contexts/ThemeContext';
+import { usePageTutorial } from '../../hooks/usePageTutorial';
+import { PageTutorial } from '../Onboarding/PageTutorial';
 
 export const InformationalPage: React.FC = React.memo(() => {
   const { t } = useI18n();
-  const { getThemeGradient } = useTheme();
+  const { getThemeGradient, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
   const { shouldShowTutorial, showTutorial, isTutorialOpen, completeTutorial, skipTutorial, config: tutorialConfig } = usePageTutorial('informational');
 
   // Show tutorial on first visit
@@ -22,65 +24,85 @@ export const InformationalPage: React.FC = React.memo(() => {
   return (
     <div className="max-w-6xl mx-auto">
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2 dark:text-gray-100">{t('informational.how_to_use')}</h2>
-        <p className="text-lg text-gray-600 dark:text-gray-300">
+        <h2 className={`text-3xl font-bold ${getThemeTextPrimary()} mb-2`}>{t('informational.how_to_use')}</h2>
+        <p className={`text-lg ${getThemeTextSecondary()}`}>
           {t('informational.complete_guide')}
         </p>
       </div>
 
       <div className="space-y-8">
         {/* Overview Section */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 dark:bg-gray-800 dark:shadow-none">
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8 dark:shadow-none`}>
           <div className="flex items-center space-x-3 mb-6">
             <div className={`${getThemeGradient('ui')} p-2 rounded-lg`}>
               <Info className="h-6 w-6 text-white" />
             </div>
-            <h3 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{t('informational.overview')}</h3>
+            <h3 className={`text-2xl font-semibold ${getThemeTextPrimary()}`}>{t('informational.overview')}</h3>
           </div>
           
           <div className="prose prose-lg max-w-none dark:prose-invert">
-            <p className="text-gray-700 leading-relaxed mb-4 dark:text-gray-200">
+            <p className={`${getThemeTextSecondary()} leading-relaxed mb-4`}>
               {t('informational.overview_text')}
             </p>
             
             <div className="grid md:grid-cols-3 gap-6 mt-6">
               <div className="bg-blue-50 rounded-lg p-4 dark:bg-blue-900">
                 <FileText className="h-8 w-8 text-blue-600 mb-2 dark:text-blue-300" />
-                <h4 className="font-semibold text-gray-900 mb-2 dark:text-gray-100">{t('informational.smart_summaries')}</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-300">{t('informational.smart_summaries_desc')}</p>
+                <h4 className={`font-semibold ${getThemeTextPrimary()} mb-2`}>{t('informational.smart_summaries')}</h4>
+                <p className={`text-sm ${getThemeTextSecondary()}`}>{t('informational.smart_summaries_desc')}</p>
               </div>
               <div className="bg-green-50 rounded-lg p-4 dark:bg-green-900">
                 <Brain className="h-8 w-8 text-green-600 mb-2 dark:text-green-300" />
-                <h4 className="font-semibold text-gray-900 mb-2 dark:text-gray-100">{t('informational.interactive_flashcards')}</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-300">{t('informational.interactive_flashcards_desc')}</p>
+                <h4 className={`font-semibold ${getThemeTextPrimary()} mb-2`}>{t('informational.interactive_flashcards')}</h4>
+                <p className={`text-sm ${getThemeTextSecondary()}`}>{t('informational.interactive_flashcards_desc')}</p>
               </div>
               <div className="bg-purple-50 rounded-lg p-4 dark:bg-purple-900">
                 <Globe className="h-8 w-8 text-purple-600 mb-2 dark:text-purple-300" />
-                <h4 className="font-semibold text-gray-900 mb-2 dark:text-gray-100">{t('informational.multi_language')}</h4>
-                <p className="text-sm text-gray-600 dark:text-gray-300">{t('informational.multi_language_desc')}</p>
+                <h4 className={`font-semibold ${getThemeTextPrimary()} mb-2`}>{t('informational.multi_language')}</h4>
+                <p className={`text-sm ${getThemeTextSecondary()}`}>{t('informational.multi_language_desc')}</p>
               </div>
             </div>
           </div>
         </div>
 
+        {/* What&apos;s new */}
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8 dark:shadow-none`}>
+          <div className="flex items-center space-x-3 mb-4">
+            <div className={`${getThemeGradient('ui')} p-2 rounded-lg`}>
+              <BarChart3 className="h-6 w-6 text-white" />
+            </div>
+            <h3 className={`text-2xl font-semibold ${getThemeTextPrimary()}`}>{t('informational.whats_new_title')}</h3>
+          </div>
+          <p className={`text-sm ${getThemeTextMuted()} mb-4`}>{t('informational.last_updated')}</p>
+          <ul className={`list-disc pl-5 space-y-2 ${getThemeTextSecondary()}`}>
+            <li>{t('informational.whats_new_book_mode')}</li>
+            <li>{t('informational.whats_new_academics')}</li>
+            <li>{t('informational.whats_new_study_rooms')}</li>
+            <li>{t('informational.whats_new_chat')}</li>
+            <li>{t('informational.whats_new_library')}</li>
+            <li>{t('informational.whats_new_themes')}</li>
+            <li>{t('informational.whats_new_standard')}</li>
+          </ul>
+        </div>
+
         {/* Getting Started Section */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 dark:bg-gray-800 dark:shadow-none">
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8 dark:shadow-none`}>
           <div className="flex items-center space-x-3 mb-6">
             <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-2 rounded-lg dark:from-green-600 dark:to-emerald-700">
               <Upload className="h-6 w-6 text-white" />
             </div>
-            <h3 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{t('informational.getting_started')}</h3>
+            <h3 className={`text-2xl font-semibold ${getThemeTextPrimary()}`}>{t('informational.getting_started')}</h3>
           </div>
           
           <div className="space-y-6">
             <div>
-              <h4 className="text-lg font-semibold text-gray-900 mb-3 dark:text-gray-100">1. {t('informational.upload_content')}</h4>
-              <div className="bg-gray-50 rounded-lg p-4 mb-4 dark:bg-gray-900">
-                <p className="text-gray-700 mb-3 dark:text-gray-200">{t('informational.upload_methods_intro')}</p>
+              <h4 className={`text-lg font-semibold ${getThemeTextPrimary()} mb-3`}>1. {t('informational.upload_content')}</h4>
+              <div className={`${getThemeSubtle('bg')} rounded-lg p-4 mb-4`}>
+                <p className={`${getThemeTextSecondary()} mb-3`}>{t('informational.upload_methods_intro')}</p>
                 <div className="grid md:grid-cols-2 gap-4">
-                  <div className="border border-gray-200 rounded-lg p-4 dark:border-gray-700">
-                    <h5 className="font-medium text-gray-900 mb-2 dark:text-gray-100">📁 {t('informational.file_upload_title')}</h5>
-                    <ul className="text-sm text-gray-600 space-y-1 dark:text-gray-300">
+                  <div className={`${getThemeCardBorder()} rounded-lg p-4`}>
+                    <h5 className={`font-medium ${getThemeTextPrimary()} mb-2`}>📁 {t('informational.file_upload_title')}</h5>
+                    <ul className={`text-sm ${getThemeTextSecondary()} space-y-1`}>
                       <li>• <strong>{t('informational.file_upload_formats')}</strong></li>
                       <li>• <strong>{t('informational.file_upload_max_size')}</strong></li>
                       <li>• <strong>{t('informational.file_upload_page_limit')}</strong></li>
@@ -101,17 +123,17 @@ export const InformationalPage: React.FC = React.memo(() => {
             </div>
 
             <div>
-              <h4 className="text-lg font-semibold text-gray-900 mb-3 dark:text-gray-100">2. {t('informational.configure_settings')}</h4>
+              <h4 className={`text-lg font-semibold ${getThemeTextPrimary()} mb-3`}>2. {t('informational.configure_settings')}</h4>
               <div className="bg-blue-50 rounded-lg p-4 dark:bg-blue-900">
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <h5 className="font-medium text-gray-900 mb-2 dark:text-gray-100">{t('informational.flashcard_count_title')}</h5>
-                    <p className="text-sm text-gray-600 mb-2 dark:text-gray-300">{t('informational.flashcard_count_desc')}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{t('informational.flashcard_count_tip')}</p>
+                    <h5 className={`font-medium ${getThemeTextPrimary()} mb-2`}>{t('informational.flashcard_count_title')}</h5>
+                    <p className={`text-sm ${getThemeTextSecondary()} mb-2`}>{t('informational.flashcard_count_desc')}</p>
+                    <p className={`text-xs ${getThemeTextMuted()}`}>{t('informational.flashcard_count_tip')}</p>
                   </div>
                   <div>
-                    <h5 className="font-medium text-gray-900 mb-2 dark:text-gray-100">{t('informational.generation_source_title')}</h5>
-                    <ul className="text-sm text-gray-600 space-y-1 dark:text-gray-300">
+                    <h5 className={`font-medium ${getThemeTextPrimary()} mb-2`}>{t('informational.generation_source_title')}</h5>
+                    <ul className={`text-sm ${getThemeTextSecondary()} space-y-1`}>
                       <li>• <strong>{t('informational.generation_source_full')}</strong></li>
                       <li>• <strong>{t('informational.generation_source_summary')}</strong></li>
                     </ul>
@@ -121,7 +143,7 @@ export const InformationalPage: React.FC = React.memo(() => {
             </div>
 
             <div>
-              <h4 className="text-lg font-semibold text-gray-900 mb-3 dark:text-gray-100">3. {t('informational.processing_modes_title')}</h4>
+              <h4 className={`text-lg font-semibold ${getThemeTextPrimary()} mb-3`}>3. {t('informational.processing_modes_title')}</h4>
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="border border-green-200 bg-green-50 rounded-lg p-4 dark:border-green-700 dark:bg-green-900">
                   <h5 className="font-medium text-green-800 mb-2 dark:text-green-300">⚡ {t('informational.fast_mode_title')}</h5>
@@ -135,21 +157,21 @@ export const InformationalPage: React.FC = React.memo(() => {
             </div>
 
             <div>
-              <h4 className="text-lg font-semibold text-gray-900 mb-3 dark:text-gray-100">4. Medical Student Mode</h4>
-              <div className="border border-red-200 bg-red-50 rounded-lg p-4 dark:border-red-700 dark:bg-red-900">
+              <h4 className={`text-lg font-semibold ${getThemeTextPrimary()} mb-3`}>{t('informational.medical_student_step_title')}</h4>
+              <div className={`${getThemeCardBg()} rounded-lg p-4 ${getThemeCardBorder()}`}>
                 <div className="flex items-center space-x-2 mb-3">
-                  <Stethoscope className="h-5 w-5 text-red-600 dark:text-red-300" />
-                  <h5 className="font-medium text-red-800 dark:text-red-300">🏥 Medical Content Processing</h5>
+                  <Stethoscope className={`h-5 w-5 ${getThemeTextSecondary()}`} />
+                  <h5 className={`font-medium ${getThemeTextPrimary()}`}>🏥 {t('informational.medical_student_card_heading')}</h5>
                 </div>
-                <p className="text-sm text-red-700 mb-3 dark:text-red-200">
-                  Enable this specialized mode when processing medical textbooks, clinical notes, or healthcare education materials for enhanced accuracy and medical terminology handling.
+                <p className={`text-sm mb-3 ${getThemeTextSecondary()}`}>
+                  {t('informational.medical_student_intro')}
                 </p>
-                <ul className="text-sm text-red-700 space-y-1 dark:text-red-200">
-                  <li>• <strong>Medical Content Validation:</strong> Automatically detects and validates medical terminology</li>
-                  <li>• <strong>Clinical Focus:</strong> Generates flashcards with emphasis on diagnoses, treatments, and clinical correlations</li>
-                  <li>• <strong>Enhanced Summaries:</strong> Creates comprehensive summaries with medical context and key concepts</li>
-                  <li>• <strong>Topic Detection:</strong> Automatically identifies medical specialties (Cardiology, Neurology, etc.)</li>
-                  <li>• <strong>Medical Scoring:</strong> Content is analyzed for medical relevance with a confidence score</li>
+                <ul className={`text-sm space-y-1 ${getThemeTextSecondary()}`}>
+                  <li>• {t('informational.medical_student_bullet_1')}</li>
+                  <li>• {t('informational.medical_student_bullet_2')}</li>
+                  <li>• {t('informational.medical_student_bullet_3')}</li>
+                  <li>• {t('informational.medical_student_bullet_4')}</li>
+                  <li>• {t('informational.medical_student_bullet_5')}</li>
                 </ul>
               </div>
             </div>
@@ -157,22 +179,22 @@ export const InformationalPage: React.FC = React.memo(() => {
         </div>
 
         {/* Understanding Results Section */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 dark:bg-gray-800 dark:shadow-none">
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8 dark:shadow-none`}>
           <div className="flex items-center space-x-3 mb-6">
             <div className={`${getThemeGradient('ui')} p-2 rounded-lg`}>
               <Brain className="h-6 w-6 text-white" />
             </div>
-            <h3 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{t('informational.understanding_results')}</h3>
+            <h3 className={`text-2xl font-semibold ${getThemeTextPrimary()}`}>{t('informational.understanding_results')}</h3>
           </div>
           
           <div className="space-y-6">
             <div>
-              <h4 className="text-lg font-semibold text-gray-900 mb-3 dark:text-gray-100">📄 {t('informational.summary_display_title')}</h4>
-              <div className="bg-gray-50 rounded-lg p-4 dark:bg-gray-900">
+              <h4 className={`text-lg font-semibold ${getThemeTextPrimary()} mb-3`}>📄 {t('informational.summary_display_title')}</h4>
+              <div className={`${getThemeSubtle('bg')} rounded-lg p-4`}>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <h5 className="font-medium text-gray-900 mb-2 dark:text-gray-100">{t('informational.summary_features')}</h5>
-                    <ul className="text-sm text-gray-600 space-y-1 dark:text-gray-300">
+                    <h5 className={`font-medium ${getThemeTextPrimary()} mb-2`}>{t('informational.summary_features')}</h5>
+                    <ul className={`text-sm ${getThemeTextSecondary()} space-y-1`}>
                       <li>• {t('informational.summary_copy_all')}</li>
                       <li>• {t('informational.summary_dual_mode')}</li>
                       <li>• {t('informational.summary_export')}</li>
@@ -192,47 +214,47 @@ export const InformationalPage: React.FC = React.memo(() => {
             </div>
 
             <div>
-              <h4 className="text-lg font-semibold text-gray-900 mb-3 dark:text-gray-100">🎯 {t('informational.flashcard_viewer_title')}</h4>
+              <h4 className={`text-lg font-semibold ${getThemeTextPrimary()} mb-3`}>🎯 {t('informational.flashcard_viewer_title')}</h4>
               <div className="space-y-4">
                 <div className="bg-blue-50 rounded-lg p-4 dark:bg-blue-900">
                   <h5 className="font-medium text-blue-900 mb-3 dark:text-blue-300">{t('informational.study_modes')}</h5>
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    <div className="bg-white rounded p-3 dark:bg-gray-700">
+                    <div className={`${getThemeCardBg()} rounded p-3`}>
                       <div className="flex items-center space-x-2 mb-1">
                         <RotateCcw className="h-4 w-4 text-blue-600 dark:text-blue-300" />
-                        <span className="font-medium text-sm dark:text-gray-100">{t('informational.flip_cards_mode')}</span>
+                        <span className={`font-medium text-sm ${getThemeTextPrimary()}`}>{t('informational.flip_cards_mode')}</span>
                       </div>
-                      <p className="text-xs text-gray-600 dark:text-gray-300">{t('informational.flip_cards_desc')}</p>
+                      <p className={`text-xs ${getThemeTextSecondary()}`}>{t('informational.flip_cards_desc')}</p>
                     </div>
-                    <div className="bg-white rounded p-3 dark:bg-gray-700">
+                    <div className={`${getThemeCardBg()} rounded p-3`}>
                       <div className="flex items-center space-x-2 mb-1">
                         <Edit3 className="h-4 w-4 text-purple-600 dark:text-purple-300" />
-                        <span className="font-medium text-sm dark:text-gray-100">{t('informational.type_answer_mode')}</span>
+                        <span className={`font-medium text-sm ${getThemeTextPrimary()}`}>{t('informational.type_answer_mode')}</span>
                       </div>
-                      <p className="text-xs text-gray-600 dark:text-gray-300">{t('informational.type_answer_desc')}</p>
+                      <p className={`text-xs ${getThemeTextSecondary()}`}>{t('informational.type_answer_desc')}</p>
                     </div>
-                    <div className="bg-white rounded p-3 dark:bg-gray-700">
+                    <div className={`${getThemeCardBg()} rounded p-3`}>
                       <div className="flex items-center space-x-2 mb-1">
                         <List className="h-4 w-4 text-green-600 dark:text-green-300" />
                         <span className="font-medium text-sm dark:text-gray-100">{t('informational.multiple_choice_mode')}</span>
                       </div>
                       <p className="text-xs text-gray-600 dark:text-gray-300">{t('informational.multiple_choice_desc')}</p>
                     </div>
-                    <div className="bg-white rounded p-3 dark:bg-gray-700">
+                    <div className={`${getThemeCardBg()} rounded p-3`}>
                       <div className="flex items-center space-x-2 mb-1">
                         <FileText className="h-4 w-4 text-orange-600 dark:text-orange-300" />
                         <span className="font-medium text-sm dark:text-gray-100">{t('informational.fill_blanks_mode')}</span>
                       </div>
                       <p className="text-xs text-gray-600 dark:text-gray-300">{t('informational.fill_blanks_desc')}</p>
                     </div>
-                    <div className="bg-white rounded p-3 dark:bg-gray-700">
+                    <div className={`${getThemeCardBg()} rounded p-3`}>
                       <div className="flex items-center space-x-2 mb-1">
                         <HelpCircle className="h-4 w-4 text-red-600 dark:text-red-300" />
                         <span className="font-medium text-sm dark:text-gray-100">{t('informational.true_false_mode')}</span>
                       </div>
                       <p className="text-xs text-gray-600 dark:text-gray-300">{t('informational.true_false_desc')}</p>
                     </div>
-                    <div className="bg-white rounded p-3 dark:bg-gray-700">
+                    <div className={`${getThemeCardBg()} rounded p-3`}>
                       <div className="flex items-center space-x-2 mb-1">
                         <Eye className="h-4 w-4 text-gray-600 dark:text-gray-300" />
                         <span className="font-medium text-sm dark:text-gray-100">{t('informational.view_all_mode')}</span>
@@ -255,12 +277,12 @@ export const InformationalPage: React.FC = React.memo(() => {
         </div>
 
         {/* Smart Features Section */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 dark:bg-gray-800 dark:shadow-none">
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8 dark:shadow-none`}>
           <div className="flex items-center space-x-3 mb-6">
             <div className={`${getThemeGradient('ui')} p-2 rounded-lg`}>
               <Brain className="h-6 w-6 text-white" />
             </div>
-            <h3 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">Smart Features & Performance</h3>
+            <h3 className={`text-2xl font-semibold ${getThemeTextPrimary()}`}>Smart Features & Performance</h3>
           </div>
 
           <div className="space-y-4">
@@ -277,12 +299,12 @@ export const InformationalPage: React.FC = React.memo(() => {
               </ul>
             </div>
 
-            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 dark:bg-gray-900 dark:border-gray-700">
-              <h4 className="font-medium text-gray-900 mb-2 dark:text-gray-100">🌙 Dark Mode Support</h4>
-              <p className="text-sm text-gray-700 mb-2 dark:text-gray-300">
+            <div className={`${getThemeSubtle('bg')} rounded-lg p-4 ${getThemeCardBorder()}`}>
+              <h4 className={`font-medium ${getThemeTextPrimary()} mb-2`}>🌙 Dark Mode Support</h4>
+              <p className={`text-sm ${getThemeTextSecondary()} mb-2`}>
                 The application automatically detects your system's theme preference and applies dark mode for comfortable studying at night.
               </p>
-              <ul className="text-sm text-gray-600 space-y-1 dark:text-gray-400">
+              <ul className={`text-sm ${getThemeTextMuted()} space-y-1`}>
                 <li>• Reduces eye strain during extended study sessions</li>
                 <li>• Follows your device's system preferences</li>
                 <li>• Applies consistently across all pages and components</li>
@@ -299,12 +321,12 @@ export const InformationalPage: React.FC = React.memo(() => {
         </div>
 
         {/* Language & Translation Section */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 dark:bg-gray-800 dark:shadow-none">
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8 dark:shadow-none`}>
           <div className="flex items-center space-x-3 mb-6">
             <div className={`${getThemeGradient('ui')} p-2 rounded-lg`}>
               <Globe className="h-6 w-6 text-white" />
             </div>
-            <h3 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{t('informational.language_translation')}</h3>
+            <h3 className={`text-2xl font-semibold ${getThemeTextPrimary()}`}>{t('informational.language_translation')}</h3>
           </div>
           
           <div className="space-y-4">
@@ -312,9 +334,9 @@ export const InformationalPage: React.FC = React.memo(() => {
               <h4 className="font-medium text-purple-900 mb-2 dark:text-purple-300">{t('informational.available_languages')}</h4>
               <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
                 {AVAILABLE_LANGUAGES.map((language) => (
-                  <div key={language.code} className="bg-white rounded p-3 text-center dark:bg-gray-700">
-                    <span className="text-2xl mb-1 block dark:text-gray-100">{language.flag}</span>
-                    <span className="font-medium text-sm dark:text-gray-100">{language.name}</span>
+                  <div key={language.code} className={`${getThemeCardBg()} rounded p-3 text-center`}>
+                    <span className={`text-2xl mb-1 block ${getThemeTextPrimary()}`}>{language.flag}</span>
+                    <span className={`font-medium text-sm ${getThemeTextPrimary()}`}>{language.name}</span>
                   </div>
                 ))}
               </div>
@@ -333,23 +355,23 @@ export const InformationalPage: React.FC = React.memo(() => {
         </div>
 
         {/* Managing Content Section */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 dark:bg-gray-800 dark:shadow-none">
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8 dark:shadow-none`}>
           <div className="flex items-center space-x-3 mb-6">
             <div className="bg-gradient-to-r from-orange-500 to-red-600 p-2 rounded-lg dark:from-orange-600 dark:to-red-700">
               <BookOpen className="h-6 w-6 text-white" />
             </div>
-            <h3 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{t('informational.managing_content')}</h3>
+            <h3 className={`text-2xl font-semibold ${getThemeTextPrimary()}`}>{t('informational.managing_content')}</h3>
           </div>
           
           <div className="space-y-6">
             <div>
-              <h4 className="text-lg font-semibold text-gray-900 mb-3 dark:text-gray-100">📚 {t('informational.my_library_title')}</h4>
+              <h4 className={`text-lg font-semibold ${getThemeTextPrimary()} mb-3`}>📚 {t('informational.my_library_title')}</h4>
               <div className="bg-orange-50 rounded-lg p-4 mb-4 dark:bg-orange-900">
                 <p className="text-orange-800 mb-3 dark:text-orange-300">{t('informational.my_library_desc')}</p>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <h5 className="font-medium text-gray-900 mb-2 dark:text-gray-100">{t('informational.library_org_features')}</h5>
-                    <ul className="text-sm text-gray-600 space-y-1 dark:text-gray-300">
+                    <h5 className={`font-medium ${getThemeTextPrimary()} mb-2`}>{t('informational.library_org_features')}</h5>
+                    <ul className={`text-sm ${getThemeTextSecondary()} space-y-1`}>
                       <li>• <Folder className="h-3 w-3 inline mr-1" />{t('informational.library_org_1')}</li>
                       <li>• <Tag className="h-3 w-3 inline mr-1" />{t('informational.library_org_2')}</li>
                       <li>• <Eye className="h-3 w-3 inline mr-1" />{t('informational.library_org_3')}</li>
@@ -379,7 +401,7 @@ export const InformationalPage: React.FC = React.memo(() => {
                 </p>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <h6 className="font-medium text-gray-900 text-sm mb-2 dark:text-gray-100">View Options:</h6>
+                    <h6 className={`font-medium ${getThemeTextPrimary()} text-sm mb-2`}>View Options:</h6>
                     <ul className="text-sm text-blue-700 space-y-1 dark:text-blue-200">
                       <li>• <strong>All Items:</strong> See both your content and community contributions</li>
                       <li>• <strong>My Items:</strong> View only your personal study materials</li>
@@ -400,13 +422,13 @@ export const InformationalPage: React.FC = React.memo(() => {
             </div>
 
             <div>
-              <h4 className="text-lg font-semibold text-gray-900 mb-3 dark:text-gray-100">📜 {t('informational.history_title')}</h4>
+              <h4 className={`text-lg font-semibold ${getThemeTextPrimary()} mb-3`}>📜 {t('informational.history_title')}</h4>
               <div className="bg-blue-50 rounded-lg p-4 dark:bg-blue-900">
                 <p className="text-blue-800 mb-3 dark:text-blue-300">{t('informational.history_desc_long')}</p>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <h5 className="font-medium text-gray-900 mb-2 dark:text-gray-100">{t('informational.history_stored_what')}</h5>
-                    <ul className="text-sm text-gray-600 space-y-1 dark:text-gray-300">
+                    <h5 className={`font-medium ${getThemeTextPrimary()} mb-2`}>{t('informational.history_stored_what')}</h5>
+                    <ul className={`text-sm ${getThemeTextSecondary()} space-y-1`}>
                       <li>• {t('informational.history_stored_1')}</li>
                       <li>• {t('informational.history_stored_2')}</li>
                       <li>• {t('informational.history_stored_3')}</li>
@@ -428,44 +450,44 @@ export const InformationalPage: React.FC = React.memo(() => {
         </div>
 
         {/* Navigation & Account Section */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 dark:bg-gray-800 dark:shadow-none">
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8 dark:shadow-none`}>
           <div className="flex items-center space-x-3 mb-6">
             <div className={`${getThemeGradient('ui')} p-2 rounded-lg`}>
               <User className="h-6 w-6 text-white" />
             </div>
-            <h3 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{t('informational.navigation_account')}</h3>
+            <h3 className={`text-2xl font-semibold ${getThemeTextPrimary()}`}>{t('informational.navigation_account')}</h3>
           </div>
           
           <div className="space-y-6">
             <div>
-              <h4 className="text-lg font-semibold text-gray-900 mb-3 dark:text-gray-100">🧭 {t('informational.sidebar_nav_title')}</h4>
+              <h4 className={`text-lg font-semibold ${getThemeTextPrimary()} mb-3`}>🧭 {t('informational.sidebar_nav_title')}</h4>
               <div className="bg-teal-50 rounded-lg p-4 dark:bg-teal-900">
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-3">
-                    <div className="flex items-center space-x-3 p-2 bg-white rounded dark:bg-gray-700">
+                    <div className={`flex items-center space-x-3 p-2 ${getThemeCardBg()} rounded`}>
                       <FileText className="h-5 w-5 text-blue-600 dark:text-blue-300" />
                       <div>
-                        <span className="font-medium text-sm dark:text-gray-100">{t('sidebar.dashboard')}</span>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{t('sidebar.dashboard_desc')}</p>
+                        <span className={`font-medium text-sm ${getThemeTextPrimary()}`}>{t('sidebar.dashboard')}</span>
+                        <p className={`text-xs ${getThemeTextMuted()}`}>{t('sidebar.dashboard_desc')}</p>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-3 p-2 bg-white rounded dark:bg-gray-700">
+                    <div className={`flex items-center space-x-3 p-2 ${getThemeCardBg()} rounded`}>
                       <BookOpen className="h-5 w-5 text-green-600 dark:text-green-300" />
                       <div>
-                        <span className="font-medium text-sm dark:text-gray-100">{t('sidebar.my_library')}</span>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{t('sidebar.library_desc')}</p>
+                        <span className={`font-medium text-sm ${getThemeTextPrimary()}`}>{t('sidebar.my_library')}</span>
+                        <p className={`text-xs ${getThemeTextMuted()}`}>{t('sidebar.library_desc')}</p>
                       </div>
                     </div>
                   </div>
                   <div className="space-y-3">
-                    <div className="flex items-center space-x-3 p-2 bg-white rounded dark:bg-gray-700">
+                    <div className={`flex items-center space-x-3 p-2 ${getThemeCardBg()} rounded`}>
                       <History className="h-5 w-5 text-orange-600 dark:text-orange-300" />
                       <div>
                         <span className="font-medium text-sm dark:text-gray-100">{t('sidebar.history')}</span>
                         <p className="text-xs text-gray-500 dark:text-gray-400">{t('sidebar.history_desc')}</p>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-3 p-2 bg-white rounded dark:bg-gray-700">
+                    <div className={`flex items-center space-x-3 p-2 ${getThemeCardBg()} rounded`}>
                       <Info className="h-5 w-5 text-purple-600 dark:text-purple-300" />
                       <div>
                         <span className="font-medium text-sm dark:text-gray-100">{t('sidebar.informational')}</span>
@@ -478,20 +500,20 @@ export const InformationalPage: React.FC = React.memo(() => {
             </div>
 
             <div>
-              <h4 className="text-lg font-semibold text-gray-900 mb-3 dark:text-gray-100">📊 {t('informational.header_info_title')}</h4>
-              <div className="bg-gray-50 rounded-lg p-4 dark:bg-gray-900">
+              <h4 className={`text-lg font-semibold ${getThemeTextPrimary()} mb-3`}>📊 {t('informational.header_info_title')}</h4>
+              <div className={`${getThemeSubtle('bg')} rounded-lg p-4`}>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <h5 className="font-medium text-gray-900 mb-2 dark:text-gray-100">{t('informational.usage_tracking')}</h5>
+                    <h5 className={`font-medium ${getThemeTextPrimary()} mb-2`}>{t('informational.usage_tracking')}</h5>
                     <div className="flex items-center space-x-2 mb-2">
-                      <BarChart3 className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-                      <span className="text-sm text-gray-600 dark:text-gray-300">{t('informational.usage_limit')}</span>
+                      <BarChart3 className={`h-4 w-4 ${getThemeTextMuted()}`} />
+                      <span className={`text-sm ${getThemeTextSecondary()}`}>{t('informational.usage_limit')}</span>
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{t('informational.usage_reset')}</p>
+                    <p className={`text-xs ${getThemeTextMuted()}`}>{t('informational.usage_reset')}</p>
                   </div>
                   <div>
-                    <h5 className="font-medium text-gray-900 mb-2 dark:text-gray-100">{t('informational.account_info')}</h5>
-                    <ul className="text-sm text-gray-600 space-y-1 dark:text-gray-300">
+                    <h5 className={`font-medium ${getThemeTextPrimary()} mb-2`}>{t('informational.account_info')}</h5>
+                    <ul className={`text-sm ${getThemeTextSecondary()} space-y-1`}>
                       <li>• {t('informational.account_info_1')}</li>
                       <li>• {t('informational.account_info_2')}</li>
                       <li>• {t('informational.account_info_3')}</li>
@@ -504,50 +526,50 @@ export const InformationalPage: React.FC = React.memo(() => {
         </div>
 
         {/* Tips & Best Practices */}
-        <div className={`${getThemeGradient('ui')} rounded-2xl shadow-xl p-8 text-white`}>
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-sm p-8 dark:shadow-none`}>
           <div className="flex items-center space-x-3 mb-6">
-            <div className="bg-white bg-opacity-20 p-2 rounded-lg">
+            <div className={`${getThemeGradient('ui')} p-2 rounded-lg`}>
               <Brain className="h-6 w-6 text-white" />
             </div>
-            <h3 className="text-2xl font-semibold">{t('informational.tips_practices')}</h3>
+            <h3 className={`text-2xl font-semibold ${getThemeTextPrimary()}`}>{t('informational.tips_practices')}</h3>
           </div>
           
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div>
-              <h4 className="font-semibold mb-3 dark:text-gray-100">📝 {t('informational.better_summaries_title')}</h4>
-              <ul className="space-y-2 text-blue-100">
+            <div className={`${getThemeSubtle('bg')} rounded-lg p-4 ${getThemeCardBorder()}`}>
+              <h4 className={`font-semibold mb-3 ${getThemeTextPrimary()}`}>📝 {t('informational.better_summaries_title')}</h4>
+              <ul className={`space-y-2 text-sm ${getThemeTextSecondary()}`}>
                 <li>• {t('informational.better_summaries_1')}</li>
                 <li>• {t('informational.better_summaries_2')}</li>
                 <li>• {t('informational.better_summaries_3')}</li>
                 <li>• {t('informational.better_summaries_4')}</li>
               </ul>
             </div>
-            <div>
-              <h4 className="font-semibold mb-3 dark:text-gray-100">🎯 {t('informational.effective_study_title')}</h4>
-              <ul className="space-y-2 text-blue-100">
+            <div className={`${getThemeSubtle('bg')} rounded-lg p-4 ${getThemeCardBorder()}`}>
+              <h4 className={`font-semibold mb-3 ${getThemeTextPrimary()}`}>🎯 {t('informational.effective_study_title')}</h4>
+              <ul className={`space-y-2 text-sm ${getThemeTextSecondary()}`}>
                 <li>• {t('informational.effective_study_1')}</li>
                 <li>• {t('informational.effective_study_2')}</li>
                 <li>• {t('informational.effective_study_3')}</li>
                 <li>• {t('informational.effective_study_4')}</li>
               </ul>
             </div>
-            <div>
-              <h4 className="font-semibold mb-3 dark:text-gray-100">🏥 Medical Mode Tips</h4>
-              <ul className="space-y-2 text-blue-100">
-                <li>• Enable Medical Mode for healthcare content</li>
-                <li>• Best for textbooks, clinical notes, and research papers</li>
-                <li>• Medical terminology is automatically validated</li>
-                <li>• Browse community medical content for peer learning</li>
+            <div className={`${getThemeSubtle('bg')} rounded-lg p-4 ${getThemeCardBorder()}`}>
+              <h4 className={`font-semibold mb-3 ${getThemeTextPrimary()}`}>🏥 {t('informational.tips_medical_title')}</h4>
+              <ul className={`space-y-2 text-sm ${getThemeTextSecondary()}`}>
+                <li>• {t('informational.tips_medical_1')}</li>
+                <li>• {t('informational.tips_medical_2')}</li>
+                <li>• {t('informational.tips_medical_3')}</li>
+                <li>• {t('informational.tips_medical_4')}</li>
               </ul>
             </div>
           </div>
         </div>
 
         {/* Support Section */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 border-2 border-gray-100 dark:bg-gray-800 dark:shadow-none dark:border-gray-700">
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8 border-2 ${getThemeCardBorder()} dark:shadow-none`}>
           <div className="text-center">
-            <h3 className="text-xl font-semibold text-gray-900 mb-4 dark:text-gray-100">{t('informational.need_help')}</h3>
-            <p className="text-gray-600 mb-6 dark:text-gray-300">
+            <h3 className={`text-xl font-semibold ${getThemeTextPrimary()} mb-4`}>{t('informational.need_help')}</h3>
+            <p className={`${getThemeTextSecondary()} mb-6`}>
               {t('informational.contact_support')}
             </p>
             <div className="flex justify-center space-x-4">

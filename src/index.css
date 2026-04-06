@@ -1,7 +1,3 @@
-/* Import Arabic font - Janna LT Bold */
-@import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Scheherazade+New:wght@400;700&display=swap');
-
-/* Import Turkish font support */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 @tailwind base;
@@ -23,10 +19,9 @@
   animation: fadeIn 0.2s ease-out;
 }
 
-/* Arabic font styling */
+/* RTL: same base font stack as LTR (Arabic parity with other languages) */
 html[dir="rtl"] {
-  font-family: 'Janna LT Bold', 'Amiri', 'Scheherazade New', 'Noto Sans Arabic', Arial, sans-serif;
-  font-weight: bold;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   text-align: right;
   direction: rtl;
 }
@@ -44,6 +39,31 @@ html[dir="ltr"] {
 
 html[dir="ltr"] * {
   font-family: inherit;
+}
+
+/* Typography Improvements - Softer, More Elegant */
+body {
+  line-height: 1.7; /* Increased from default 1.5 */
+  letter-spacing: 0.01em; /* Slightly increased for elegance */
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600; /* font-semibold instead of font-bold */
+  letter-spacing: -0.01em; /* Tighter for headings */
+  line-height: 1.4; /* Better line height for headings */
+}
+
+/* Button Base Styles - Soft, Rounded */
+button {
+  border-radius: 0.75rem; /* rounded-xl by default */
+  font-weight: 500; /* font-medium */
+  transition: all 200ms ease;
+}
+
+/* Input Fields - Softer */
+input, textarea, select {
+  border-radius: 0.5rem; /* rounded-lg */
+  transition: all 200ms ease;
 }
 
 /* Global RTL/LTR layout rules */
@@ -137,14 +157,14 @@ html[dir="rtl"] .rounded-br-lg { border-bottom-right-radius: 0; border-bottom-le
   }
 }
 
-/* Smooth transitions for all interactive elements */
+/* Smooth transitions for all interactive elements - NO transform */
 * {
-  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, filter, backdrop-filter;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
 }
 
-/* Custom scrollbar styling */
+/* Custom scrollbar styling - Subtle */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -156,12 +176,12 @@ html[dir="rtl"] .rounded-br-lg { border-bottom-right-radius: 0; border-bottom-le
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(to bottom, #06b6d4, #22d3ee);
+  background: #cbd5e1;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(to bottom, #0891b2, #06b6d4);
+  background: #94a3b8;
 }
 
 /* Dark mode scrollbar styling */
@@ -170,11 +190,11 @@ html[dir="rtl"] .rounded-br-lg { border-bottom-right-radius: 0; border-bottom-le
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: linear-gradient(to bottom, #0891b2, #06b6d4);
+  background: #4b5563;
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(to bottom, #0e7490, #0891b2);
+  background: #6b7280;
 }
 
 /* Focus states for accessibility */
@@ -183,32 +203,12 @@ html[dir="rtl"] .rounded-br-lg { border-bottom-right-radius: 0; border-bottom-le
   outline-offset: 2px;
 }
 
-/* Enhanced button hover states */
-.hover\:scale-105:hover {
-  transform: scale(1.05);
-}
-
+/* Enhanced button hover states - Shadow only, no transform */
 .hover\:shadow-lg:hover {
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
-/* Gradient background animation */
-@keyframes gradient {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
-.animate-gradient {
-  background-size: 200% 200%;
-  animation: gradient 15s ease infinite;
-}
+/* Removed gradient background animation - using solid colors instead */
 
 /* Loading spinner enhancement */
 @keyframes spin {
@@ -290,13 +290,21 @@ html[dir="rtl"] .rounded-br-lg { border-bottom-right-radius: 0; border-bottom-le
   line-height: 1.5;
 }
 
-/* Card shadow variations */
+/* Card shadow variations - Enhanced for light mode visibility */
 .shadow-card {
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+
+.dark .shadow-card {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .shadow-card-lg {
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.1), 0 1px 3px 0 rgba(0, 0, 0, 0.08);
+}
+
+.dark .shadow-card-lg {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
 /* Responsive text utilities */

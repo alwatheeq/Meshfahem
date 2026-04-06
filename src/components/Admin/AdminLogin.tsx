@@ -11,6 +11,7 @@ import { ErrorLogger } from '../../utils/errorLogger';
 export const AdminLogin: React.FC = () => {
   const navigate = useNavigate();
   const { signIn, signOut, user } = useAuth();
+  const { getThemeGradient } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -25,7 +26,12 @@ export const AdminLogin: React.FC = () => {
       setCheckedExistingSession(true);
 
       if (user) {
-        ErrorLogger.debug('Existing session detected on page load', { component: 'AdminLogin', action: 'checkExistingSession', userRole: user.role, userId: user.id });
+        ErrorLogger.debug('Existing session detected on page load', { 
+          component: 'AdminLogin', 
+          action: 'checkExistingSession', 
+          userId: user.id,
+          metadata: { userRole: user.role }
+        });
 
         // If already an admin, redirect to dashboard
         if (user.role === 'admin') {
@@ -54,7 +60,12 @@ export const AdminLogin: React.FC = () => {
       // Only run if we've checked existing session and this is from a login attempt
       if (!user || !checkedExistingSession || !loginAttempted) return;
 
-      ErrorLogger.debug('Verifying admin access after login attempt', { component: 'AdminLogin', action: 'checkAdminAccess', userEmail: user.email, userId: user.id, userRole: user.role });
+      ErrorLogger.debug('Verifying admin access after login attempt', { 
+        component: 'AdminLogin', 
+        action: 'checkAdminAccess', 
+        userId: user.id,
+        metadata: { userEmail: user.email, userRole: user.role }
+      });
 
       if (user.role === 'admin') {
         ErrorLogger.info('Admin role confirmed from admin_users table', { component: 'AdminLogin', action: 'checkAdminAccess', userId: user.id });
@@ -83,9 +94,17 @@ export const AdminLogin: React.FC = () => {
         setLoginAttempted(false); // Reset for next attempt
         navigate('/admin/dashboard', { replace: true });
       } else {
-        ErrorLogger.warn('Non-admin user detected after login', { component: 'AdminLogin', action: 'checkAdminAccess', userId: user.id });
+        ErrorLogger.warn('Non-admin user detected after login', { 
+          component: 'AdminLogin', 
+          action: 'checkAdminAccess', 
+          userId: user.id 
+        });
         const accessError = new Error('User not found in admin_users table or inactive');
-        ErrorLogger.warn(accessError, { component: 'AdminLogin', action: 'checkAdminAccess', userId: user.id });
+        ErrorLogger.warn(accessError.message, { 
+          component: 'AdminLogin', 
+          action: 'checkAdminAccess', 
+          userId: user.id 
+        });
         setError('Access denied. This account is not registered as an admin. Only authorized administrators can access this portal.');
 
         // Log failed admin access attempt (authenticated but not admin)
@@ -128,16 +147,28 @@ export const AdminLogin: React.FC = () => {
 
     if (isOffline()) {
       const errorMessage = 'No internet connection. Please check your network and try again.';
-      ErrorLogger.warn('Offline detected', { component: 'AdminLogin', action: 'handleSubmit', email });
+      ErrorLogger.warn('Offline detected', { 
+        component: 'AdminLogin', 
+        action: 'handleSubmit', 
+        metadata: { email } 
+      });
       setError(errorMessage);
       setLoading(false);
       return;
     }
 
     try {
-      ErrorLogger.debug('Attempting to sign in', { component: 'AdminLogin', action: 'handleSubmit', email });
+      ErrorLogger.debug('Attempting to sign in', { 
+        component: 'AdminLogin', 
+        action: 'handleSubmit', 
+        metadata: { email } 
+      });
       await signIn(email, password);
-      ErrorLogger.debug('Sign in successful, waiting for auth state to update', { component: 'AdminLogin', action: 'handleSubmit', email });
+      ErrorLogger.debug('Sign in successful, waiting for auth state to update', { 
+        component: 'AdminLogin', 
+        action: 'handleSubmit', 
+        metadata: { email } 
+      });
 
       // Set flag to indicate this is from a login attempt
       setLoginAttempted(true);
@@ -145,17 +176,37 @@ export const AdminLogin: React.FC = () => {
       // The useEffect will handle admin verification and navigation once user state is updated
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      const errorMessage = handleApiError(error, { component: 'AdminLogin', action: 'handleSubmit', email });
-      ErrorLogger.error(error, { component: 'AdminLogin', action: 'handleSubmit', email });
+      const errorMessage = handleApiError(error, { 
+        component: 'AdminLogin', 
+        action: 'handleSubmit', 
+        metadata: { email } 
+      });
+      ErrorLogger.error(error, { 
+        component: 'AdminLogin', 
+        action: 'handleSubmit', 
+        metadata: { email } 
+      });
 
       // Log failed login attempt
       try {
         await adminHelpers.logLoginAttempt(email, false, undefined, errorMessage || error.message);
-        ErrorLogger.debug('Logged failed login attempt', { component: 'AdminLogin', action: 'handleSubmit', email });
+        ErrorLogger.debug('Logged failed login attempt', { 
+          component: 'AdminLogin', 
+          action: 'handleSubmit', 
+          metadata: { email } 
+        });
       } catch (logErr) {
         const logError = logErr instanceof Error ? logErr : new Error(String(logErr));
-        handleSupabaseError(logError, { component: 'AdminLogin', action: 'logLoginAttempt-error', email });
-        ErrorLogger.error(logError, { component: 'AdminLogin', action: 'logLoginAttempt-error', email });
+        handleSupabaseError(logError, { 
+          component: 'AdminLogin', 
+          action: 'logLoginAttempt-error', 
+          metadata: { email } 
+        });
+        ErrorLogger.error(logError, { 
+          component: 'AdminLogin', 
+          action: 'logLoginAttempt-error', 
+          metadata: { email } 
+        });
       }
 
       // Provide more specific error messages
@@ -172,11 +223,11 @@ export const AdminLogin: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-6">
       <div className="max-w-md w-full">
-        <div className="bg-slate-800 rounded-2xl shadow-2xl p-8 border border-slate-700">
+        <div className="bg-slate-800 rounded-lg s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow-lg p-8 border border-slate-700">
           <div className="flex justify-center mb-8">
-            <div className={`${getThemeGradient('ui')} p-4 rounded-2xl shadow-lg`}>
+            <div className={`${getThemeGradient('ui')} p-6 rounded-lg shadow`}>
               <Shield className="h-12 w-12 text-white" />
             </div>
           </div>
@@ -189,7 +240,7 @@ export const AdminLogin: React.FC = () => {
           </p>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-900/30 border border-red-800 rounded-lg flex items-start space-x-3">
+            <div className="mb-8 p-6 bg-red-900 shadow-[0_2px_8px_rgba(0,0,0,0.08)]/30 border border-red-800 rounded-lg flex items-start space-x-3">
               <AlertCircle className="h-5 w-5 text-red-400 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
                 <p className="text-sm text-red-200 mb-2">{error}</p>
@@ -215,7 +266,7 @@ export const AdminLogin: React.FC = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-slate-700 text-white placeholder-gray-400 transition"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-white placeholder-gray-400 transition"
                   placeholder="admin@example.com"
                 />
               </div>
@@ -233,7 +284,7 @@ export const AdminLogin: React.FC = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-slate-700 text-white placeholder-gray-400 transition"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-white placeholder-gray-400 transition"
                   placeholder="Enter your password"
                 />
               </div>
@@ -242,13 +293,13 @@ export const AdminLogin: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className={`w-full ${getThemeGradient('ui')} text-white py-3 px-4 rounded-lg font-semibold hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg`}
+              className={`w-full ${getThemeGradient('ui')} text-white py-3 px-6 rounded-lg font-semibold hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition shadow`}
             >
               {loading ? 'Signing in...' : 'Sign In to Admin Panel'}
             </button>
           </form>
 
-          <div className="mt-6 text-center">
+          <div className="mt-8 text-center">
             <button
               onClick={() => navigate('/')}
               className="text-sm text-blue-400 hover:text-blue-300 transition"
@@ -258,7 +309,7 @@ export const AdminLogin: React.FC = () => {
           </div>
         </div>
 
-        <p className="text-center text-sm text-gray-400 mt-6">
+        <p className="text-center text-sm text-gray-400 mt-8">
           Admin access only. Unauthorized access attempts are logged.
         </p>
       </div>

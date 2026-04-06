@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { useState, useEffect, ReactNode } from 'react';
+import { I18nContext } from './I18nContextDef';
 import { getLanguageInfo } from '../utils/translation';
 import { ErrorLogger } from '../utils/errorLogger';
 
@@ -7,17 +8,6 @@ import enTranslations from '../locales/en.json';
 import arTranslations from '../locales/ar.json';
 import frTranslations from '../locales/fr.json';
 import trTranslations from '../locales/tr.json';
-
-interface I18nContextType {
-  language: string;
-  setLanguage: (lang: string) => void;
-  t: (key: string, params?: Record<string, string | number>) => string;
-  dir: 'ltr' | 'rtl';
-  theme: 'light' | 'dark';
-  setTheme: (theme: 'light' | 'dark') => void;
-}
-
-const I18nContext = createContext<I18nContextType | undefined>(undefined);
 
 const translations: Record<string, any> = {
   en: enTranslations,
@@ -28,26 +18,32 @@ const translations: Record<string, any> = {
 
 export const I18nProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [language, setLanguageState] = useState<string>(() => {
-    // Get language from localStorage or default to English
     return localStorage.getItem('meshfahem_language') || 'en';
   });
   const [theme, setThemeState] = useState<'light' | 'dark'>(() => {
-    // Get theme from localStorage or default to 'light'
     const savedTheme = localStorage.getItem('meshfahem_theme');
     return (savedTheme === 'dark' || savedTheme === 'light') ? savedTheme : 'light';
   });
+  const [showRefreshPrompt, setShowRefreshPrompt] = useState(false);
 
-  const setLanguage = (lang: string) => {
+  const setLanguage = (lang: string, options?: { skipRefreshPrompt?: boolean }) => {
     ErrorLogger.debug('Setting language', { component: 'I18nContext', action: 'setLanguage', language: lang });
     setLanguageState(lang);
     localStorage.setItem('meshfahem_language', lang);
-    
-    // Update HTML dir attribute
+
     const languageInfo = getLanguageInfo(lang);
     document.documentElement.dir = languageInfo.dir;
     document.documentElement.lang = lang;
-    
+
     ErrorLogger.debug('Updated HTML dir', { component: 'I18nContext', action: 'setLanguage', dir: languageInfo.dir });
+
+    if (!options?.skipRefreshPrompt) {
+      setShowRefreshPrompt(true);
+    }
+  };
+
+  const dismissRefreshPrompt = () => {
+    setShowRefreshPrompt(false);
   };
 
   const setTheme = (newTheme: 'light' | 'dark') => {
@@ -60,36 +56,30 @@ export const I18nProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } else {
       document.documentElement.classList.remove('dark');
     }
-    
-    // Dispatch custom event for ThemeProvider to listen to
+
     window.dispatchEvent(new CustomEvent('themeChanged'));
-    
+
     ErrorLogger.debug('Updated HTML classList for theme', { component: 'I18nContext', action: 'setTheme', theme: newTheme });
   };
 
-  // Set initial direction on mount
   useEffect(() => {
     const languageInfo = getLanguageInfo(language);
     document.documentElement.dir = languageInfo.dir;
     document.documentElement.lang = language;
-    // Apply initial theme class
     if (theme === 'dark') document.documentElement.classList.add('dark');
     ErrorLogger.debug('Initial setup', { component: 'I18nContext', action: 'useEffect', language, dir: languageInfo.dir, theme });
   }, []);
 
-  // Translation function with nested key support and parameter interpolation
   const t = (key: string, params?: Record<string, string | number>): string => {
     const currentTranslations = translations[language] || translations.en;
-    
-    // Support nested keys like "auth.title"
+
     const keys = key.split('.');
     let value = currentTranslations;
-    
+
     for (const k of keys) {
       if (value && typeof value === 'object' && k in value) {
         value = value[k];
       } else {
-        // Fallback to English if key not found
         const fallbackTranslations = translations.en;
         let fallbackValue = fallbackTranslations;
         for (const fk of keys) {
@@ -97,24 +87,22 @@ export const I18nProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             fallbackValue = fallbackValue[fk];
           } else {
             ErrorLogger.warn('Translation key not found', { component: 'I18nContext', action: 'translate', key });
-            return key; // Return the key itself as fallback
+            return key;
           }
         }
         value = fallbackValue;
         break;
       }
     }
-    
+
     if (typeof value !== 'string') {
       ErrorLogger.warn('Translation value is not a string', { component: 'I18nContext', action: 'translate', key, valueType: typeof value });
       return key;
     }
-    
-    // Handle parameter interpolation
+
     if (params) {
       let result = value;
-      
-      // Handle basic pluralization patterns like {count, plural, one {} other {s}}
+
       const pluralRegex = /\{(\w+),\s*plural,\s*one\s*\{([^}]*)\}\s*other\s*\{([^}]*)\}\}/g;
       result = result.replace(pluralRegex, (match, countKey, oneForm, otherForm) => {
         const count = params[countKey];
@@ -123,36 +111,74 @@ export const I18nProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
         return match;
       });
-      
+
       Object.entries(params).forEach(([paramKey, paramValue]) => {
         result = result.replace(new RegExp(`\\{${paramKey}\\}`, 'g'), String(paramValue));
       });
       return result;
     }
-    
+
     return value;
   };
 
   const languageInfo = getLanguageInfo(language);
 
+  const getTutorialConfig = (pageName: string) => {
+    const tr = translations[language] || translations.en;
+    const enTr = translations.en;
+    const data = (tr?.tutorial?.[pageName] ?? enTr?.tutorial?.[pageName]) as { title: string; steps: Array<{ title: string; content: string }> } | undefined;
+    if (!data?.title || !Array.isArray(data.steps)) return null;
+    return { pageName, title: data.title, steps: data.steps };
+  };
+
   return (
-    <I18nContext.Provider value={{ 
-      language, 
-      setLanguage, 
-      t, 
-      dir: languageInfo.dir,
-      theme,
-      setTheme
-    }}>
+    <I18nContext.Provider
+      value={{
+        language,
+        setLanguage,
+        t,
+        dir: languageInfo.dir,
+        theme,
+        setTheme,
+        getTutorialConfig,
+        showRefreshPrompt,
+        dismissRefreshPrompt,
+      }}
+    >
       {children}
+      {showRefreshPrompt && (
+        <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6 space-y-4">
+            <p className="text-gray-700 dark:text-gray-200">
+              {t('language_refresh_prompt')}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  dismissRefreshPrompt();
+                }}
+                className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+              >
+                {t('language_refresh_ok')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  dismissRefreshPrompt();
+                  window.location.reload();
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                {t('language_refresh_now')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </I18nContext.Provider>
   );
 };
 
-export const useI18n = () => {
-  const context = useContext(I18nContext);
-  if (context === undefined) {
-    throw new Error('useI18n must be used within an I18nProvider');
-  }
-  return context;
-};
+export { I18nContext, useI18n } from './I18nContextDef';
+export type { TutorialConfigFromLocale, I18nContextType } from './I18nContextDef';

@@ -23,7 +23,7 @@ interface MultiplayerResultsProps {
 export default function MultiplayerResults({ lobbyId }: MultiplayerResultsProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { getThemeGradient } = useTheme();
+  const { getThemeGradient, getBackgroundGradient, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
 
   const [results, setResults] = useState<PlayerResult[]>([]);
   const [myResult, setMyResult] = useState<PlayerResult | null>(null);
@@ -93,11 +93,11 @@ export default function MultiplayerResults({ lobbyId }: MultiplayerResultsProps)
       case 1:
         return <Trophy className="w-8 h-8 text-yellow-500" />;
       case 2:
-        return <Medal className="w-8 h-8 text-gray-400" />;
+        return <Medal className={`w-8 h-8 ${getThemeTextMuted()}`} />;
       case 3:
         return <Medal className="w-8 h-8 text-orange-600" />;
       default:
-        return <Award className="w-8 h-8 text-gray-400" />;
+        return <Award className={`w-8 h-8 ${getThemeTextMuted()}`} />;
     }
   };
 
@@ -110,7 +110,7 @@ export default function MultiplayerResults({ lobbyId }: MultiplayerResultsProps)
       case 3:
         return 'bg-gradient-to-r from-orange-400 to-orange-600';
       default:
-        return 'bg-gray-100';
+        return getThemeSubtle('ui');
     }
   };
 
@@ -119,22 +119,22 @@ export default function MultiplayerResults({ lobbyId }: MultiplayerResultsProps)
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading results...</p>
+          <p className={getThemeTextSecondary()}>Loading results...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={`min-h-screen ${getThemeGradient('bg')} p-6`}>
+    <div className={`min-h-screen ${getBackgroundGradient()} p-6`}>
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-2">Game Over!</h1>
-          <p className="text-gray-600 text-lg">{gameName}</p>
+          <p className={`${getThemeTextSecondary()} text-lg`}>{gameName}</p>
         </div>
 
         {myResult && (
-          <div className="bg-white rounded-xl shadow-lg p-8 mb-8">
+          <div className={`${getThemeCardBg()} rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow p-8 mb-8`}>
             <h2 className="text-2xl font-bold mb-6 text-center">Your Performance</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
               <div className="text-center">
@@ -142,7 +142,7 @@ export default function MultiplayerResults({ lobbyId }: MultiplayerResultsProps)
                   {getRankIcon(myResult.rank)}
                 </div>
                 <div className="text-3xl font-bold text-blue-600">#{myResult.rank}</div>
-                <div className="text-sm text-gray-600">Rank</div>
+                <div className={`text-sm ${getThemeTextSecondary()}`}>Rank</div>
               </div>
 
               <div className="text-center">
@@ -176,7 +176,7 @@ export default function MultiplayerResults({ lobbyId }: MultiplayerResultsProps)
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+        <div className={`${getThemeCardBg()} rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow overflow-hidden`}>
           <div className={`${getThemeGradient('ui')} p-6 text-white`}>
             <h2 className="text-2xl font-bold flex items-center gap-2">
               <Trophy className="w-6 h-6" />
@@ -191,7 +191,7 @@ export default function MultiplayerResults({ lobbyId }: MultiplayerResultsProps)
                   key={result.user_id}
                   className={`rounded-lg overflow-hidden transition-all ${
                     result.user_id === user?.id
-                      ? 'ring-2 ring-blue-500 shadow-lg scale-[1.02]'
+                      ? 'ring-2 ring-blue-500 shadow scale-[1.02]'
                       : 'shadow'
                   }`}
                 >
@@ -199,7 +199,7 @@ export default function MultiplayerResults({ lobbyId }: MultiplayerResultsProps)
                     className={`${
                       result.rank <= 3
                         ? getRankBgColor(result.rank) + ' text-white'
-                        : 'bg-gray-50 text-gray-800'
+                        : `${getThemeSubtle('bg')} ${getThemeTextPrimary()}`
                     } p-4`}
                   >
                     <div className="flex items-center justify-between">
@@ -246,7 +246,7 @@ export default function MultiplayerResults({ lobbyId }: MultiplayerResultsProps)
 
         {results.length > 0 && results[0].user_id === user?.id && (
           <div className="mt-8 text-center">
-            <div className="inline-block bg-yellow-100 border-2 border-yellow-400 rounded-xl p-6">
+            <div className="inline-block bg-yellow-100 border-2 border-yellow-400 rounded-md p-6">
               <Trophy className="w-16 h-16 text-yellow-600 mx-auto mb-3" />
               <h3 className="text-2xl font-bold text-yellow-800 mb-2">
                 Congratulations!

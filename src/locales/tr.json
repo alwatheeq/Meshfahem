@@ -50,7 +50,7 @@
     "google_sign_in_failed": "Google girişi başarısız",
     "check_email_confirm": "Hesabınızı onaylamak için e-postanızı kontrol edin",
     "signup_success_message": "Hesap başarıyla oluşturuldu! Giriş yapmadan önce hesabınızı doğrulamak için lütfen e-postanızı kontrol edin.",
-    "pages_per_month": "2.000 sayfa/ay",
+    "pages_per_month": "1.500 araç ve hizmet kredisi/ay (Standart)",
     "supported_formats": "PDF, PPTX, DOCX"
   },
   "sidebar": {
@@ -80,6 +80,13 @@
     "copyright": "© 2025 MeshFahem"
   },
   "header": {
+    "credits_label": "Krediler",
+    "credits_tools_services": "Araçlar ve hizmetler",
+    "credits_study_room": "Çalışma odası",
+    "credits_ai_assistant": "Yapay zekâ sohbet asistanı",
+    "credits_ai_addon_hint": "Standard ile ek yapay zekâ kapasitesi satın aldığınızda eklenti kredileri geçerlidir.",
+    "credits_cycle_resets": "Döngü yenilenmesi:",
+    "credits_days_remaining": "{count} gün",
     "open_menu": "Menüyü aç",
     "pages_used": "Kullanılan sayfalar",
     "of": "/",
@@ -87,6 +94,8 @@
     "pages": "sayfa",
     "language": "Dil",
     "theme": "Tema",
+    "tagline": "Bu sadece başlangıç, daha iyisi geliyor",
+    "admin_portal": "Yönetici Portalı",
     "profile": "Profil",
     "light_mode": "Açık",
     "dark_mode": "Koyu",
@@ -112,7 +121,10 @@
     "process_text": "Metni İşle",
     "processing_settings": "İşleme Ayarları",
     "content_secure": "İçerik güvenli bir şekilde işlenir ve kalıcı olarak saklanmaz",
-    "flashcard_count": "Flash Kart Sayısı",
+    "flashcard_count": "Soru Sayısı",
+    "ocr_scan": "OCR Tarama",
+    "ocr_scan_title": "Resmi OCR ile Tara",
+    "ocr_upload_hint": "OCR ile metin çıkarmak için bir resim yükleyin",
     "cards": "kart",
     "generate_from": "Şundan Üret",
     "full_content": "Tam İçerik",
@@ -125,7 +137,17 @@
     "alert_file_too_large": "Dosya çok büyük. Lütfen 50MB'den küçük bir dosya yükleyin.",
     "alert_empty_text": "Boş metin. Lütfen işlemek için bir metin girin.",
     "alert_short_text": "Kısa metin. Lütfen en az 100 karakter girin.",
-    "alert_long_text": "Uzun metin. Lütfen metninizi 100.000 karakter veya daha az ile sınırlayın."
+    "alert_long_text": "Uzun metin. Lütfen metninizi 100.000 karakter veya daha az ile sınırlayın.",
+    "medical_student_mode_title": "Tıp öğrencisi modu",
+    "medical_student_mode_subtitle": "Tıbbi içerik için güçlü klinik odak ve sınav tarzı hazırlık.",
+    "medical_processing_tips_title": "Tıbbi işleme ipuçları",
+    "medical_processing_tip_1": "Ders kitapları, notlar, vaka ve araştırma metinleri için en uygun",
+    "medical_processing_tip_2": "Gerektiğinde patofizyoloji, farmakoloji ve klinik bağlantılar ekleyin",
+    "medical_processing_tip_3": "Daha iyi metin kalitesi, daha iyi sınav tarzı sorular verir",
+    "medical_processing_tip_4": "Tıbbi terminoloji korunur ve vurgulanır",
+    "process_medical_content": "Tıbbi içeriği işle",
+    "medical_content_score": "Tıbbi içerik puanı",
+    "med_student_mode_label": "Tıp öğrencisi modu"
   },
   "processing": {
     "fast_processing": "Hızlı İşleme",
@@ -194,6 +216,7 @@
     "cards_remaining": "kart kaldı",
     "reviewed": "incelendi",
     "card_of": "{total} kartın {current}. kartı",
+    "card": "Kart",
     "export": "Dışa Aktar",
     "export_csv": "CSV olarak dışa aktar",
     "export_txt": "TXT olarak dışa aktar",
@@ -295,6 +318,7 @@
     "clear_all_filters": "Tüm filtreleri temizle ({count})",
     "no_tags_yet": "Henüz etiket yok. Seçilen konularla öğeler yayınladığınızda etiketler burada görünecek.",
     "search_library_placeholder": "Kütüphanede ara...",
+    "search_close_aria": "Aramayı kapat",
     "topics_tags_modal": {
       "title": "Konular ve etiketlere göre filtrele",
       "subtitle": "Kütüphane içeriğinizi filtrelemek için konu ve etiket seçin",
@@ -406,9 +430,9 @@
     "text_input_perfect_for": "Makaleler, notlar ve web içeriği için mükemmel",
     "text_input_char_counter": "Gerçek zamanlı karakter sayacı",
     "configure_settings": "İşleme Ayarlarını Yapılandırın",
-    "flashcard_count_title": "Flash Kart Sayısı",
-    "flashcard_count_desc": "10, 20, 30, 40 veya 50 flash kart arasından seçin",
-    "flashcard_count_tip": "Daha fazla kart = daha kapsamlı kapsama",
+    "flashcard_count_title": "Soru Sayısı",
+    "flashcard_count_desc": "10, 20, 30, 40 veya 50 soru arasından seçin",
+    "flashcard_count_tip": "Daha fazla soru = daha kapsamlı kapsama",
     "generation_source_title": "Üretim Kaynağı",
     "generation_source_full": "Tam İçerik: Tüm belgeden flash kartlar üret",
     "generation_source_summary": "Özet: Yalnızca anahtar noktalardan flash kartlar üret",
@@ -480,7 +504,7 @@
     "sidebar_nav_title": "Kenar Çubuğu Gezinmesi",
     "header_info_title": "Başlık Bilgisi",
     "usage_tracking": "Kullanım Takibi:",
-    "usage_limit": "Aylık sayfa sınırı: 2.000 sayfa",
+    "usage_limit": "Standart plan: Faturalama dönemi başına 1.500 araç ve hizmet kredisi",
     "usage_reset": "Her ay otomatik olarak sıfırlanır",
     "account_info": "Hesap Bilgisi:",
     "account_info_1": "Profil bilgilerinizi ve ayarlarınızı görüntüleyin",
@@ -495,7 +519,29 @@
     "effective_study_1": "İçeriğe aşina olmak için flip kartlarla başlayın",
     "effective_study_2": "Aktif hatırlama pratiği için cevap yazma modunu kullanın",
     "effective_study_3": "Hızlı öz değerlendirme için çoktan seçmeliyi deneyin",
-    "effective_study_4": "Kütüphanenizdeki içeriği klasörler ve etiketlerle düzenleyin"
+    "effective_study_4": "Kütüphanenizdeki içeriği klasörler ve etiketlerle düzenleyin",
+    "medical_student_step_title": "4. Tıp öğrencisi modu",
+    "medical_student_card_heading": "Tıbbi içerik işleme",
+    "medical_student_intro": "Tıp ders kitapları, klinik notlar veya sağlık eğitimi materyalleri için terminoloji ve klinik vurguyu güçlendirmek üzere kullanın.",
+    "medical_student_bullet_1": "Tıbbi içerik doğrulama: terminolojiyi algılar ve kontrol eder",
+    "medical_student_bullet_2": "Klinik odak: tanı, tedavi ve korelasyonlara vurgulu kartlar",
+    "medical_student_bullet_3": "Tıbbi kavram ve bağlamı öne çıkaran özetler",
+    "medical_student_bullet_4": "Uzmanlık alanlarına göre konu algılama (ör. kardiyoloji, nöroloji)",
+    "medical_student_bullet_5": "Tıbbi içerik için ilgililik puanı",
+    "tips_medical_title": "Tıbbi mod ipuçları",
+    "tips_medical_1": "Sağlık içeriği için Tıbbi Modu açın",
+    "tips_medical_2": "Kitaplar, klinik notlar ve makalelerle en iyi sonuç",
+    "tips_medical_3": "Tıbbi terminoloji otomatik doğrulanır",
+    "tips_medical_4": "Varsa topluluk tıbbi içeriğine göz atın",
+    "whats_new_title": "Yenilikler",
+    "last_updated": "Son güncelleme: Mart 2026",
+    "whats_new_book_mode": "Kitap modu: özetleri taşınabilir bileşenlerle (kartlar, notlar) defter tarzı düzende okuyun.",
+    "whats_new_academics": "Akademik merkez: çalışma akışınıza uygun araçlar için merkezi bir yer.",
+    "whats_new_study_rooms": "Çalışma odaları: canlı işbirliği; çalışma odası paketini eklediğinizde dakika bazlı krediler.",
+    "whats_new_chat": "Genel sohbet asistanı: uygulama genelinde bağlama duyarlı yardım; Standard’da isteğe bağlı yapay zekâ jeton eklentileri.",
+    "whats_new_library": "Kütüphane: özel içerik görünümü, konu ve etiket filtreleri ve geliştirilmiş mobil düzen.",
+    "whats_new_themes": "Yeni renk temaları (Arduvaz sis, Erik kumu) ve yenilenen varsayılanlar—Cool Neutrals ve Soft Minimal kaldırıldı.",
+    "whats_new_standard": "Standard plan: döngü başına 1.500 araç ve hizmet kredisi (aşım örn. 2.700 / 1.500 olarak görünebilir)."
   },
   "share": {
     "shared_content": "Paylaşılan İçerik",
@@ -758,7 +804,38 @@
     "premium": "Premium",
     "days_remaining": "gün kaldı",
     "manage_subscription": "Aboneliği Yönet",
-    "xp": "XP"
+    "xp": "XP",
+    "theme_picker_title": "Renk teması",
+    "theme_picker_desc": "Uygulama için tercih ettiğiniz renk şemasını seçin.",
+    "theme_default_badge": "Varsayılan",
+    "theme_monochrome": "Monokrom",
+    "theme_warm_neutrals": "Sıcak nötrler",
+    "theme_sky_blue": "Gök mavisi",
+    "theme_rose_pink": "Gül pembesi",
+    "theme_slate_mist": "Arduvaz sis",
+    "theme_plum_sand": "Erik kumu",
+    "credits_summary_title": "Krediler",
+    "credits_summary_subtitle": "Araç ve hizmet bakiyesi; çalışma odası ve yapay zeka ekleri için genişletin.",
+    "credits_tools_label": "araçlar ve hizmetler (plan üst sınırı)",
+    "credits_refresh_on": "Krediler {date} tarihinde yenilenir",
+    "claim_free_credits": "300 ücretsiz kredi talep et",
+    "claiming": "Talep ediliyor...",
+    "tts_hover_label": "Navigasyon Sesi",
+    "tts_hover_desc": "Üzerine gelindiğinde navigasyon öğelerinin adını sesli okur",
+    "best": "En İyi",
+    "total_study_time": "Toplam Çalışma Süresi",
+    "no_achievements": "Henüz başarı yok",
+    "start_studying": "İlk başarınızı kazanmak için çalışmaya başlayın!"
+  },
+  "subscription_tiers": {
+    "monthly": "Aylık",
+    "quarterly": "Üç Aylık",
+    "biannual": "Altı Aylık",
+    "standard": "Standart",
+    "trial_1day": "Eski Deneme",
+    "trial_7day": "7 Günlük Deneme",
+    "none": "Abonelik Yok",
+    "unknown": "Bilinmiyor"
   },
   "study_rooms": {
     "title": "Çalışma Odaları",
@@ -766,6 +843,8 @@
     "page_description": "Gerçek zamanlı başkalarıyla işbirliği yapın",
     "browse": "Odalara Göz At",
     "browse_tab": "Odalara Göz At",
+    "browse_search_placeholder": "Ada, koda veya açıklamaya göre ara...",
+    "browse_no_matches": "Aramanızla eşleşen oda yok.",
     "my_rooms": "Odalarım",
     "my_rooms_tab": "Odalarım",
     "create": "Oda Oluştur",
@@ -841,6 +920,108 @@
     "next": "Sonraki",
     "close": "Kapat",
     "step_of": "Adım {current} / {total}",
+    "save_failed": "Öğretici ilerlemesi kaydedilemedi. Lütfen tekrar deneyin.",
+    "save_failed_offline": "Çevrimdışısınız. İlerlemeyi kaydetmek için internete bağlanın.",
+    "dashboard": {
+      "title": "Kontrol Paneline Genel Bakış",
+      "steps": [
+        { "title": "Kontrol Panelinize Hoş Geldiniz", "content": "Hoş geldiniz! Burası belgelerinizi işleyebileceğiniz, özetler ve flash kartlar oluşturabileceğiniz ana çalışma alanınızdır. Temel özellikleri keşfedelim." },
+        { "title": "Belge Yükleme", "content": "PDF, DOCX veya PPTX dosyalarını işlemek için «Dosya Yükle» butonuna tıklayın. 400 sayfaya kadar dosya desteklenir. Belgeniz özet ve kartlara dönüştürülür." },
+        { "title": "Metin Yapıştırma", "content": "Alternatif olarak metin alanına doğrudan metin yapıştırabilirsiniz. Notlar, makaleler veya herhangi bir metin içeriği için hızlı özetler oluşturmak için idealdir." },
+        { "title": "İşleme Seçenekleri", "content": "İşlemeden önce özelleştirin: Kart sayısı (5-50), tıbbi içerik için tıbbi mod ve çeviriler için dil seçimi." },
+        { "title": "Sonuçlarınızı Görüntüleyin", "content": "İşlemeden sonra özet ve kartlarınızı göreceksiniz. Kartları görüntüleyebilir, kitaplığınıza yayımlayabilir veya yeni içerikle yeniden başlayabilirsiniz." },
+        { "title": "Gezinme Kenar Çubuğu", "content": "Sayfalar arasında gezinmek için sol kenar çubuğunu kullanın: Kitaplık, Sınav, EduPlay, Çalışma Odaları, Geçmiş ve daha fazlası." },
+        { "title": "Yapay Zeka Sohbet Asistanı", "content": "Yüzen yapay zeka asistanı düğmesini bulun. Mevcut içeriğinize göre bağlam odaklı yardım sağlar. İstediğiniz yere sürükleyip boyutunu değiştirebilirsiniz." },
+        { "title": "Kredi Sistemi", "content": "Kredi bakiyeniz başlıkta gösterilir. Krediler, içerik işleme ve yapay zeka özellikleri için kullanılır. Aboneliğinize göre aylık yenilenir." },
+        { "title": "Hazırsınız!", "content": "Temel bilgileri öğrendiniz! İlk özetinizi ve kartlarınızı oluşturmak için bir belge yükleyin veya metin yapıştırın. İyi çalışmalar!" }
+      ]
+    },
+    "library": {
+      "title": "Kitaplığım",
+      "steps": [
+        { "title": "İçerik Kitaplığınız", "content": "Kitaplığınız tüm işlenmiş özetlerinizi ve kartlarınızı saklar. Kontrol panelinden yayımladığınız her şey kolay erişim için buraya kaydedilir." },
+        { "title": "Kitaplığınızda Arama", "content": "Belirli içerikleri bulmak için arama simgesini kullanın. Arama çubuğunu genişletmek için tıklayın, ardından kitaplık öğelerini filtrelemek için anahtar kelimeler yazın." },
+        { "title": "Filtreleme ve Sıralama", "content": "Sıralamak için filtre açılır menüsünü kullanın: Tarih, Başlık, En Beğenilen veya Konular. Bu, ihtiyacınız olan içeriği hızla bulmanıza yardımcı olur." },
+        { "title": "İçerik Ayrıntılarını Görüntüleme", "content": "Tam özeti, kartları, orijinal metni ve konuları görüntülemek için herhangi bir kitaplık öğesine tıklayın. Öğeleri düzenleyebilir, paylaşabilir veya silebilirsiniz." },
+        { "title": "İçeriğinizi Düzenleme", "content": "Kitaplığınızı düzenlemek için klasörler ve etiketler kullanın. Farklı konular için klasörler oluşturarak içeriğinizi iyi organize edin." },
+        { "title": "İçerik Paylaşımı", "content": "Paylaşılabilir bağlantılar oluşturarak özetlerinizi başkalarıyla paylaşın. Diğerleri hesap gerektirmeden içeriğinizi görüntüleyebilir." },
+        { "title": "Kitaplık İşlemleri", "content": "Her öğenin işlem düğmeleri vardır: Görüntüle, Düzenle, Paylaş, Sil. Kitaplık içeriğinizi verimli şekilde yönetmek için bunları kullanın." },
+        { "title": "Hazırsınız!", "content": "Kitaplığınız bilgi tabanınızdır. Organize tutun ve ihtiyacınız olanı hızla bulmak için aramayı kullanın. İyi çalışmalar!" }
+      ]
+    },
+    "quiz": {
+      "title": "Sınav Oluşturucu",
+      "steps": [
+        { "title": "İçeriğinizden Sınavlar Oluşturun", "content": "Sınav sayfası, işlenmiş içeriğinizden sınavlar oluşturmanıza ve almanıza olanak tanır. Bilgilerinizi test edin ve ilerlemenizi takip edin." },
+        { "title": "Soru Kaynağı Seçin", "content": "Soru kaynağını seçin: Kitaplığınız (kayıtlı içerik), Geçmişiniz (son işlemler) veya soruları manuel olarak oluşturun." },
+        { "title": "Yapay Zeka ile Soru Üretimi", "content": "İçeriğinizden yapay zeka destekli sorular oluşturmak için «Soru Oluştur» butonuna tıklayın. Zorluk seviyesini ve soru türlerini seçin." },
+        { "title": "Sınav Alın", "content": "Klasörlerinizden bir sınav seçin ve «Sınavı Başlat» butonuna tıklayın. Zaman sınırı içinde soruları yanıtlayın ve puanınızı gerçek zamanlı takip edin." },
+        { "title": "Sınav Sonuçlarını Görüntüleyin", "content": "Sınavı tamamladıktan sonra sonuçlarınızı inceleyin: doğru cevaplar, yanlış cevaplar, geçen süre ve genel puan. Hatalarınızdan öğrenin." },
+        { "title": "Sınav Klasörlerini Düzenleyin", "content": "Sınavlarınızı konuya veya derse göre düzenlemek için klasörler oluşturun. Bu, koleksiyonunuzu bulup yönetmeyi kolaylaştırır." },
+        { "title": "Sınav Ayarları", "content": "Sınav ayarlarını özelleştirin: zaman sınırları, soru sayısı, zorluk seviyesi ve daha fazlası. Çalışma tercihlerinize göre ayarlayın." },
+        { "title": "Hazırsınız!", "content": "Bilgilerinizi test etmek için içeriğinizden sınavlar oluşturmaya başlayın. Düzenli sınav pratiği öğrendiklerinizi pekiştirir!" }
+      ]
+    },
+    "eduplay": {
+      "title": "EduPlay Oyunları",
+      "steps": [
+        { "title": "Eğitsel Oyunlar", "content": "EduPlay, öğrenmeyi eğlenceli hale getirmek için etkileşimli eğitsel oyunlar sunar. Tek başınıza oynayın veya çok oyunculu oyunlarda rekabet edin." },
+        { "title": "Brain Rush Oyunu", "content": "Brain Rush hızlı tempolu bir sınav oyunudur. Puan kazanmak için soruları hızla yanıtlayın. Ne kadar hızlı doğru yanıtlarsanız puanınız o kadar yüksek olur." },
+        { "title": "Oyun Kurulumu", "content": "Başlamadan önce soru kaynağını (Kitaplık veya Geçmiş) seçin, zorluk seviyesini ayarlayın ve zaman sınırlarını yapılandırın." },
+        { "title": "Çok Oyunculu Oyunlar", "content": "Çok oyunculu oyun oturumlarına katılın veya oluşturun. Arkadaşlarınızla veya diğer kullanıcılarla gerçek zamanlı rekabet edin. Liderlik tablolarını görün." },
+        { "title": "Oyun Sonuçları", "content": "Her oyundan sonra sonuçlarınızı görüntüleyin: puan, doğruluk, geçen süre ve sıralama. Gelişmek için yanlış yanıtladığınız soruları inceleyin." },
+        { "title": "Hazırsınız!", "content": "Öğrenmeyi ilgi çekici ve rekabetçi hale getirmek için Brain Rush oynamaya başlayın. Bilgilerinizi geliştirmek için kendinize ve başkalarına meydan okuyun!" }
+      ]
+    },
+    "study-rooms": {
+      "title": "Çalışma Odaları",
+      "steps": [
+        { "title": "İşbirlikçi Çalışma Alanları", "content": "Çalışma Odaları, gerçek zamanlı olarak birlikte çalışmanıza olanak tanır. Öğrenme materyalleri üzerinde işbirliği yapmak için odalar oluşturun veya katılın." },
+        { "title": "Odalara Katılma", "content": "Mevcut genel odaları inceleyin veya oda kodu kullanarak özel odalara katılın. Odaları konuya, derse veya katılımcı sayısına göre filtreleyin." },
+        { "title": "Oda Oluşturma", "content": "Kendi çalışma odanızı başlatmak için «Oda Oluştur» butonuna tıklayın. Oda adını, açıklamasını, gizlilik ayarlarını ve çalışma materyallerini seçin." },
+        { "title": "İşbirliği Özellikleri", "content": "Çalışma odasında içerik paylaşabilir, konuları tartışabilir ve gerçek zamanlı güncellemelerle kartlar veya sınavlar üzerinde birlikte çalışabilirsiniz." },
+        { "title": "Oda Yönetimi", "content": "Oda yaratıcısı olarak katılımcıları yönetebilir, ayarları değiştirebilir ve oda içeriğini kontrol edebilirsiniz. İstediğiniz zaman odalardan ayrılabilir veya silim yapabilirsiniz." },
+        { "title": "Hazırsınız!", "content": "İşbirliğine başlayın! Çalışma grubunuz için bir oda oluşturun veya birlikte öğrenmek için mevcut odalara katılın." }
+      ]
+    },
+    "history": {
+      "title": "İşleme Geçmişi",
+      "steps": [
+        { "title": "İşleme Geçmişiniz", "content": "Geçmiş sayfası, tüm belge işleme ve içerik oluşturma geçmişinizi gösterir. İşlediğiniz her şey burada kaydedilir." },
+        { "title": "Geçmişi Görüntüleme", "content": "İşleme geçmişinize kronolojik olarak göz atın. Her giriş dosya adını, işleme tarihini ve içerik türünü gösterir." },
+        { "title": "İçeriği Yeniden İnceleme", "content": "Özeti, kartları ve orijinal metni görüntülemek için herhangi bir geçmiş öğesine tıklayın. Öğeleri kitaplığınıza yeniden yayımlayabilir veya yeniden işleyebilirsiniz." },
+        { "title": "Geçmiş İşlemleri", "content": "Geçmiş öğelerinden: tam içeriği görüntüle, kitaplığa yayımla, eski girişleri sil veya içeriği dışa aktar. Geçmişinizi verimli şekilde yönetin." },
+        { "title": "Hazırsınız!", "content": "Geçmiş işlemleri yeniden incelemek ve tüm öğrenme materyallerinizi takip etmek için Geçmişi kullanın. Hiçbir şey kaybolmaz!" }
+      ]
+    },
+    "informational": {
+      "title": "Yardım ve Bilgi",
+      "steps": [
+        { "title": "Yardım Kaynakları", "content": "Bu sayfa, uygulamayı kullanma hakkında faydalı bilgiler içerir. Kılavuzlar, ipuçları ve sık sorulan soruların cevaplarını bulun." },
+        { "title": "Bilgi Bulma", "content": "İhtiyacınız olan bilgiyi bulmak için farklı konuları ve kategorileri inceleyin. Belirli konuları hızla bulmak için arama işlevini kullanın." },
+        { "title": "Hazırsınız!", "content": "Yardıma ihtiyaç duyduğunuzda veya uygulama özellikleri hakkında daha fazla bilgi edinmek istediğinizde bu sayfaya başvurun. Yardımcı olmak için buradayız!" }
+      ]
+    },
+    "feedback": {
+      "title": "Geri Bildirim ve Öneriler",
+      "steps": [
+        { "title": "Düşüncelerinizi Paylaşın", "content": "Geri bildiriminiz gelişmemize yardımcı olur! Düşüncelerinizi paylaşın, sorunları bildirin veya yeni özellikler önerin. Katkınıza değer veriyoruz." },
+        { "title": "Geri Bildirim Gönderme", "content": "Geri bildirim formunu mesajınızla doldurun, geri bildirim türünü seçin (hata raporu, özellik isteği, genel geri bildirim) ve gönderin." },
+        { "title": "Özellik İstekleri", "content": "Yeni bir özellik için fikriniz mi var? Buraya gönderin! Diğer kullanıcıların mevcut özellik isteklerine de oy verebilirsiniz." },
+        { "title": "Hazırsınız!", "content": "Geri bildiriminizi takdirle karşılıyoruz! Önerileriniz uygulamayı herkes için daha iyi hale getirmeye yardımcı olur. Teşekkürler!" }
+      ]
+    },
+    "profile": {
+      "title": "Profil ve Ayarlar",
+      "steps": [
+        { "title": "Profiliniz", "content": "Profil sayfasından hesap ayarlarınızı, tercihlerinizi ve aboneliğinizi yönetin. Deneyiminizi burada özelleştirin." },
+        { "title": "Hesap Ayarları", "content": "Profil bilgilerinizi, e-posta adresinizi ve şifrenizi güncelleyin. Hesabınızı güvende ve güncel tutun." },
+        { "title": "Tercihler", "content": "Deneyiminizi özelleştirin: renk temaları seçin, dil tercihlerini ayarlayın ve kenar çubuğu davranışını yapılandırın (daraltılabilir veya sabitlenebilir)." },
+        { "title": "Abonelik Yönetimi", "content": "Abonelik durumunuzu, fatura bilgilerinizi ve yükseltme seçeneklerini görüntüleyin. Aboneliğinizi ve ödeme yöntemlerinizi buradan yönetin." },
+        { "title": "Krediler ve Kullanım", "content": "Kredi bakiyenizi, kullanım istatistiklerinizi ve kredi geçmişinizi izleyin. Kredilerinizin ne zaman yenileneceğini görün ve kullanımınızı takip edin." },
+        { "title": "Hazırsınız!", "content": "Profiliniz kontrol merkezinizdir. Tercihlerinize uygun ayarları özelleştirin ve hesabınızı kolayca yönetin." }
+      ]
+    },
     "academics": {
       "title": "Akademik",
       "steps": [
@@ -918,14 +1099,20 @@
     "base_price_label": "Standart",
     "addons_label": "Eklentiler",
     "total_per_month": "Aylık toplam",
-    "zegocloud_addon_label": "Zegocloud (Çalışma odası)",
-    "zegocloud_addon_description": "Saat başı 0,10 $. Standart plana dahil değildir.",
-    "ai_chat_addon_label": "AI Sohbet erişimi",
-    "ai_chat_addon_description": "100k token başına 0,10 $ (100k bloklar halinde seçin).",
-    "ai_min_hint": "AI eklerken minimum 500k token (+0,50 $).",
+    "zegocloud_addon_label": "Ekstra çalışma odası saatleri",
+    "zegocloud_addon_description": "Planınıza 10 saat dahildir. Ekstra saatler 0,10 $/saat.",
+    "ai_chat_addon_label": "Ekstra AI Sohbet tokenleri",
+    "ai_chat_addon_description": "Planınıza 500k token dahildir. Ekstra token 0,10 $ / 100k.",
+    "ai_min_hint": "Ekstra blok başına minimum 500k token (+0,50 $).",
     "optional_addons": "İsteğe bağlı eklentiler",
-    "core_features_hint": "Temel özellikler. Aşağıdaki eklentiler isteğe bağlıdır.",
+    "core_features_hint": "1.500 araç kredisi, 500 sohbet kredisi ve 10 saatlik çalışma odası dahildir.",
     "per_month": "/ ay",
+    "per_billing_period": "faturalama dönemi başına",
+    "billing_term_label": "Faturalama süresi",
+    "billing_every_1": "Her ay (3,49 $ / ay)",
+    "billing_every_3": "Her 3 ayda bir (toplam 9,99 $)",
+    "billing_every_6": "Her 6 ayda bir (toplam 18,99 $)",
+    "total_per_billing_period": "Faturalama dönemi toplamı",
     "subscribe": "Abone ol",
     "continue": "Devam",
     "back_to_dashboard": "Panele dön",
@@ -951,6 +1138,7 @@
     "tools_services": "Araçlar ve hizmetler",
     "current_billing_cycle": "Geçerli fatura dönemi",
     "of_credits": "{total} krediden",
+    "credits_plan_cap_suffix": "kredi (plan üst sınırı)",
     "percent_used": "%{pct} kullanıldı",
     "credits_remaining": "{n} kaldı",
     "study_room": "Çalışma odası",
@@ -988,5 +1176,15 @@
     "cancel_footer": "Yardıma mı ihtiyacınız var? İptal etmek yerine destekle iletişime geçin",
     "toast_cancel_success": "Abonelik başarıyla iptal edildi",
     "notification_canceled": "Aboneliğiniz iptal edildi. {date} tarihine kadar erişiminiz devam eder."
+  },
+  "onboarding": {
+    "step_language": "Dilinizi Seçin",
+    "step_language_sub": "Bunu profilinizden istediğiniz zaman değiştirebilirsiniz.",
+    "step_theme": "Temanızı Seçin",
+    "step_theme_sub": "Çalışma alanınız için bir renk paleti seçin.",
+    "next": "İleri",
+    "back": "Geri",
+    "get_started": "Başla",
+    "step_of": "Adım {current} / {total}"
   }
 }

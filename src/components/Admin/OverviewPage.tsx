@@ -106,7 +106,7 @@ export const OverviewPage: React.FC = React.memo(() => {
     iconColor: string;
     trend?: string;
   }> = ({ title, value, icon, bgColor, iconColor, trend }) => (
-    <div className={`${bgColor} rounded-xl p-6 border border-opacity-20`}>
+    <div className={`${bgColor} rounded-md p-6 border border-opacity-20`}>
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium opacity-80 mb-1">{title}</p>
@@ -186,17 +186,17 @@ export const OverviewPage: React.FC = React.memo(() => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+        <div className="bg-white dark:bg-slate-800 rounded-md shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
             <Calendar className="h-5 w-5 mr-2 text-blue-600 dark:text-blue-400" />
             Recent Activity
           </h3>
-          <div className="space-y-4">
+          <div className="space-y-6">
             {recentActivity.length > 0 ? (
               recentActivity.map((activity, index) => (
                 <div
                   key={index}
-                  className="flex items-start space-x-3 p-3 bg-gray-50 dark:bg-slate-700 rounded-lg border border-gray-200 dark:border-gray-600"
+                  className="flex items-start space-x-3 p-3 bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-slate-700 rounded-lg border border-gray-200 dark:border-gray-600"
                 >
                   <div className="flex-shrink-0">
                     <MessageSquare className="h-5 w-5 text-purple-600 dark:text-purple-400" />
@@ -218,10 +218,10 @@ export const OverviewPage: React.FC = React.memo(() => {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+        <div className="bg-white dark:bg-slate-800 rounded-md shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow-sm border border-gray-200 dark:border-gray-700 p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quick Actions</h3>
           <div className="space-y-3">
-            <div className="p-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
+            <div className="p-6 bg-blue-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
               <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-1">
                 {stats.pendingFeedback} Pending Feedback
               </h4>
@@ -230,7 +230,7 @@ export const OverviewPage: React.FC = React.memo(() => {
               </p>
             </div>
 
-            <div className="p-4 bg-green-50 dark:bg-green-900/30 rounded-lg border border-green-200 dark:border-green-800">
+            <div className="p-6 bg-green-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-green-900/30 rounded-lg border border-green-200 dark:border-green-800">
               <h4 className="text-sm font-semibold text-green-900 dark:text-green-100 mb-1">
                 {stats.activeUsersThisMonth} Active Users
               </h4>
@@ -239,7 +239,7 @@ export const OverviewPage: React.FC = React.memo(() => {
               </p>
             </div>
 
-            <div className="p-4 bg-purple-50 dark:bg-purple-900/30 rounded-lg border border-purple-200 dark:border-purple-800">
+            <div className="p-6 bg-purple-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-purple-900/30 rounded-lg border border-purple-200 dark:border-purple-800">
               <h4 className="text-sm font-semibold text-purple-900 dark:text-purple-100 mb-1">
                 {stats.totalSummaries} Total Summaries
               </h4>

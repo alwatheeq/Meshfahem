@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import {
-  Search, Filter, Download, Plus, Crown, Calendar,
-  DollarSign, TrendingUp, Users, CheckCircle, XCircle, AlertCircle, Clock, Edit, Trash2, Ban, RotateCw
+  Search, Download, Plus,
+  DollarSign, TrendingUp, Users, CheckCircle, XCircle, Clock, Edit, Trash2, Ban, RotateCw
 } from 'lucide-react';
 import { getTierDisplayInfo, getStatusDisplayInfo, formatCurrency } from '../../utils/subscriptionHelpers';
 import { SubscriptionModal } from './SubscriptionModal';
@@ -191,20 +191,33 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
       toast.success('Subscription canceled successfully! User will retain access until end of billing period.');
       
       // Log audit action
-      await supabase.rpc('log_admin_action', {
-        p_action_type: 'UPDATE',
-        p_table_name: 'subscriptions',
-        p_record_id: subscription.id,
-        p_old_values: { status: subscription.status },
-        p_new_values: { status: 'canceled' },
-        p_description: `Canceled subscription for ${subscription.user_profiles.email}${reason ? ` - Reason: ${reason}` : ''}`
-      }).catch(err => ErrorLogger.warn('Failed to log admin action', { component: 'SubscriptionsManagementPage', action: 'handleCancel', subscriptionId: subscription.id, error: err instanceof Error ? err : new Error(String(err)) }));
+      try {
+        await supabase.rpc('log_admin_action', {
+          p_action_type: 'UPDATE',
+          p_table_name: 'subscriptions',
+          p_record_id: subscription.id,
+          p_old_values: { status: subscription.status },
+          p_new_values: { status: 'canceled' },
+          p_description: `Canceled subscription for ${subscription.user_profiles.email}${reason ? ` - Reason: ${reason}` : ''}`
+        });
+      } catch (logErr: unknown) {
+        const logError = logErr instanceof Error ? logErr : new Error(String(logErr));
+        ErrorLogger.warn('Failed to log admin action', { 
+          component: 'SubscriptionsManagementPage', 
+          action: 'handleCancel', 
+          metadata: { subscriptionId: subscription.id, error: logError.message } 
+        });
+      }
       
       fetchSubscriptions();
       fetchStats();
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Unknown error');
-      ErrorLogger.error(error, { component: 'SubscriptionsManagementPage', action: 'cancelSubscription', subscriptionId: subscription.id });
+      ErrorLogger.error(error, { 
+        component: 'SubscriptionsManagementPage', 
+        action: 'cancelSubscription', 
+        metadata: { subscriptionId: subscription.id } 
+      });
       toast.error('Failed to cancel subscription. Please try again.');
     }
   };
@@ -256,20 +269,33 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
       toast.success('Subscription reactivated successfully!');
       
       // Log audit action
-      await supabase.rpc('log_admin_action', {
-        p_action_type: 'UPDATE',
-        p_table_name: 'subscriptions',
-        p_record_id: subscription.id,
-        p_old_values: { status: subscription.status },
-        p_new_values: { status: 'active' },
-        p_description: `Reactivated subscription for ${subscription.user_profiles.email}${extendDays ? ` - Extended by ${extendDays} days` : ''}`
-      }).catch(err => ErrorLogger.warn('Failed to log action', { component: 'SubscriptionsManagementPage', action: 'handleReactivate', subscriptionId: subscription.id, error: err instanceof Error ? err : new Error(String(err)) }));
+      try {
+        await supabase.rpc('log_admin_action', {
+          p_action_type: 'UPDATE',
+          p_table_name: 'subscriptions',
+          p_record_id: subscription.id,
+          p_old_values: { status: subscription.status },
+          p_new_values: { status: 'active' },
+          p_description: `Reactivated subscription for ${subscription.user_profiles.email}${extendDays ? ` - Extended by ${extendDays} days` : ''}`
+        });
+      } catch (logErr: unknown) {
+        const logError = logErr instanceof Error ? logErr : new Error(String(logErr));
+        ErrorLogger.warn('Failed to log action', { 
+          component: 'SubscriptionsManagementPage', 
+          action: 'handleReactivate', 
+          metadata: { subscriptionId: subscription.id, error: logError.message } 
+        });
+      }
       
       fetchSubscriptions();
       fetchStats();
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Unknown error');
-      ErrorLogger.error(error, { component: 'SubscriptionsManagementPage', action: 'reactivateSubscription', subscriptionId: subscription.id });
+      ErrorLogger.error(error, { 
+        component: 'SubscriptionsManagementPage', 
+        action: 'reactivateSubscription', 
+        metadata: { subscriptionId: subscription.id } 
+      });
       toast.error('Failed to reactivate subscription. Please try again.');
     }
   };
@@ -293,20 +319,33 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
       if (error) throw error;
 
       // Log audit action
-      await supabase.rpc('log_admin_action', {
-        p_action_type: 'DELETE',
-        p_table_name: 'subscriptions',
-        p_record_id: subscription.id,
-        p_old_values: { user_id: subscription.user_id, subscription_tier: subscription.subscription_tier, status: subscription.status },
-        p_description: `Deleted subscription for ${subscription.user_profiles.email}`
-      }).catch(err => ErrorLogger.warn('Failed to log admin action', { component: 'SubscriptionsManagementPage', action: 'handleDelete', subscriptionId: subscription.id, error: err instanceof Error ? err : new Error(String(err)) }));
+      try {
+        await supabase.rpc('log_admin_action', {
+          p_action_type: 'DELETE',
+          p_table_name: 'subscriptions',
+          p_record_id: subscription.id,
+          p_old_values: { user_id: subscription.user_id, subscription_tier: subscription.subscription_tier, status: subscription.status },
+          p_description: `Deleted subscription for ${subscription.user_profiles.email}`
+        });
+      } catch (logErr: unknown) {
+        const logError = logErr instanceof Error ? logErr : new Error(String(logErr));
+        ErrorLogger.warn('Failed to log admin action', { 
+          component: 'SubscriptionsManagementPage', 
+          action: 'handleDelete', 
+          metadata: { subscriptionId: subscription.id, error: logError.message } 
+        });
+      }
 
       toast.success('Subscription deleted successfully!');
       fetchSubscriptions();
       fetchStats();
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Unknown error');
-      ErrorLogger.error(error, { component: 'SubscriptionsManagementPage', action: 'deleteSubscription', subscriptionId: subscription.id });
+      ErrorLogger.error(error, { 
+        component: 'SubscriptionsManagementPage', 
+        action: 'deleteSubscription', 
+        metadata: { subscriptionId: subscription.id } 
+      });
       toast.error('Failed to delete subscription. Please try again.');
     }
   };
@@ -342,7 +381,7 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
   };
 
   if (loading) {
-    return <LoadingSkeleton type="table" count={10} className="mt-6" />;
+    return <LoadingSkeleton type="table" count={10} className="mt-8" />;
   }
 
   return (
@@ -355,7 +394,7 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
         </div>
         <button
           onClick={handleCreateNew}
-          className="flex items-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition"
+          className="flex items-center space-x-2 px-5 py-2.5 bg-green-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)] hover:bg-green-700 text-white rounded-lg transition"
         >
           <Plus className="h-5 w-5" />
           <span>New Subscription</span>
@@ -364,9 +403,9 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+        <div className="bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-md p-6 border border-slate-700">
           <div className="flex items-center justify-between mb-4">
-            <div className="bg-blue-500/20 p-3 rounded-lg">
+            <div className="bg-blue-500 shadow-[0_2px_8px_rgba(0,0,0,0.08)]/20 p-3 rounded-lg">
               <Users className="h-6 w-6 text-blue-400" />
             </div>
             <TrendingUp className="h-5 w-5 text-green-400" />
@@ -375,9 +414,9 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
           <p className="text-3xl font-bold text-white">{stats.total_subscriptions}</p>
         </div>
 
-        <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+        <div className="bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-md p-6 border border-slate-700">
           <div className="flex items-center justify-between mb-4">
-            <div className="bg-green-500/20 p-3 rounded-lg">
+            <div className="bg-green-500 shadow-[0_2px_8px_rgba(0,0,0,0.08)]/20 p-3 rounded-lg">
               <CheckCircle className="h-6 w-6 text-green-400" />
             </div>
           </div>
@@ -385,7 +424,7 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
           <p className="text-3xl font-bold text-white">{stats.active_subscriptions}</p>
         </div>
 
-        <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+        <div className="bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-md p-6 border border-slate-700">
           <div className="flex items-center justify-between mb-4">
             <div className="bg-orange-500/20 p-3 rounded-lg">
               <Clock className="h-6 w-6 text-orange-400" />
@@ -395,9 +434,9 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
           <p className="text-3xl font-bold text-white">{stats.trial_users}</p>
         </div>
 
-        <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
+        <div className="bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-md p-6 border border-slate-700">
           <div className="flex items-center justify-between mb-4">
-            <div className="bg-purple-500/20 p-3 rounded-lg">
+            <div className="bg-purple-500 shadow-[0_2px_8px_rgba(0,0,0,0.08)]/20 p-3 rounded-lg">
               <DollarSign className="h-6 w-6 text-purple-400" />
             </div>
           </div>
@@ -407,8 +446,8 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
       </div>
 
       {/* Filters and Search */}
-      <div className="bg-slate-800 rounded-xl p-6 border border-slate-700">
-        <div className="flex flex-col md:flex-row gap-4">
+      <div className="bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-md p-6 border border-slate-700">
+        <div className="flex flex-col md:flex-row gap-6">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
@@ -416,14 +455,14 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
               placeholder="Search by email or name..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-10 pr-4 py-2 bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-5 py-2.5 bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All Statuses</option>
             <option value="active">Active</option>
@@ -435,10 +474,10 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
           <select
             value={filterTier}
             onChange={(e) => setFilterTier(e.target.value)}
-            className="px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-5 py-2.5 bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All Tiers</option>
-            <option value="trial_1day">1-Day Trial</option>
+            <option value="trial_1day">Legacy 1-day</option>
             <option value="trial_7day">7-Day Trial</option>
             <option value="monthly">Monthly</option>
             <option value="quarterly">Quarterly</option>
@@ -447,7 +486,7 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
 
           <button
             onClick={exportToCSV}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
+            className="flex items-center space-x-2 px-5 py-2.5 bg-blue-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)] hover:bg-blue-700 text-white rounded-lg transition"
           >
             <Download className="h-5 w-5" />
             <span>Export CSV</span>
@@ -456,30 +495,30 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
       </div>
 
       {/* Subscriptions Table */}
-      <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+      <div className="bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-md border border-slate-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-slate-700">
+            <thead className="bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                   User
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                   Tier
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                   Start Date
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                   End Date
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                   Auto Renew
                 </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-6 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -490,8 +529,8 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
                 const statusInfo = getStatusDisplayInfo(subscription.status);
 
                 return (
-                  <tr key={subscription.id} className="hover:bg-slate-700/50">
-                    <td className="px-6 py-4 whitespace-nowrap">
+                  <tr key={subscription.id} className="hover:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)]/50">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <div>
                         <p className="text-sm font-medium text-white">
                           {subscription.user_profiles.name || 'No Name'}
@@ -499,34 +538,34 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
                         <p className="text-xs text-gray-400">{subscription.user_profiles.email}</p>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${tierInfo.bgColor} ${tierInfo.color}`}>
                         {tierInfo.name}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusInfo.bgColor} ${statusInfo.color}`}>
                         {statusInfo.name}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                    <td className="px-6 py-6 whitespace-nowrap text-sm text-gray-300">
                       {new Date(subscription.start_date).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                    <td className="px-6 py-6 whitespace-nowrap text-sm text-gray-300">
                       {new Date(subscription.end_date).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       {subscription.auto_renew ? (
                         <CheckCircle className="h-5 w-5 text-green-400" />
                       ) : (
                         <XCircle className="h-5 w-5 text-red-400" />
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <div className="flex items-center space-x-2">
                         <button
                           onClick={() => handleEdit(subscription)}
-                          className="p-2 hover:bg-blue-500/20 rounded-lg transition"
+                          className="p-2 hover:bg-blue-500 shadow-[0_2px_8px_rgba(0,0,0,0.08)]/20 rounded-lg transition"
                           title="Edit subscription"
                         >
                           <Edit className="h-4 w-4 text-blue-400" />
@@ -542,7 +581,7 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
                         ) : (
                           <button
                             onClick={() => handleReactivate(subscription)}
-                            className="p-2 hover:bg-green-500/20 rounded-lg transition"
+                            className="p-2 hover:bg-green-500 shadow-[0_2px_8px_rgba(0,0,0,0.08)]/20 rounded-lg transition"
                             title="Reactivate subscription"
                           >
                             <RotateCw className="h-4 w-4 text-green-400" />
@@ -550,7 +589,7 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
                         )}
                         <button
                           onClick={() => handleDelete(subscription)}
-                          className="p-2 hover:bg-red-500/20 rounded-lg transition"
+                          className="p-2 hover:bg-red-500 shadow-[0_2px_8px_rgba(0,0,0,0.08)]/20 rounded-lg transition"
                           title="Delete subscription"
                         >
                           <Trash2 className="h-4 w-4 text-red-400" />

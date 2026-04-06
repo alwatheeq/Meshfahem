@@ -114,7 +114,7 @@ export const TransactionsPage: React.FC = React.memo(() => {
     const styles = {
       succeeded: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
       failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-      pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
+      pending: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-white',
       refunded: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
       canceled: 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300'
     };
@@ -182,7 +182,7 @@ export const TransactionsPage: React.FC = React.memo(() => {
         </div>
         <button
           onClick={exportToCSV}
-          className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+          className="flex items-center space-x-2 px-5 py-2.5 bg-green-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-white rounded-lg hover:bg-green-700 transition"
         >
           <Download className="h-4 w-4" />
           <span>Export CSV</span>
@@ -190,8 +190,8 @@ export const TransactionsPage: React.FC = React.memo(() => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl p-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-md p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm opacity-80">Total Revenue</p>
@@ -203,7 +203,7 @@ export const TransactionsPage: React.FC = React.memo(() => {
           </div>
         </div>
 
-        <div className={`${getThemeGradient('ui')} text-white rounded-xl p-6`}>
+        <div className={`${getThemeGradient('ui')} text-white rounded-md p-6`}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm opacity-80">Successful</p>
@@ -213,7 +213,7 @@ export const TransactionsPage: React.FC = React.memo(() => {
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-xl p-6">
+        <div className="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-md p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm opacity-80">Failed</p>
@@ -223,7 +223,7 @@ export const TransactionsPage: React.FC = React.memo(() => {
           </div>
         </div>
 
-        <div className={`${getThemeGradient('ui')} text-white rounded-xl p-6`}>
+        <div className={`${getThemeGradient('ui')} text-white rounded-md p-6`}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm opacity-80">Avg Amount</p>
@@ -237,8 +237,8 @@ export const TransactionsPage: React.FC = React.memo(() => {
       </div>
 
       {/* Filters */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow border border-gray-200 dark:border-gray-700 p-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
@@ -246,7 +246,7 @@ export const TransactionsPage: React.FC = React.memo(() => {
               placeholder="Search transactions..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 dark:text-white"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
             />
           </div>
 
@@ -255,7 +255,7 @@ export const TransactionsPage: React.FC = React.memo(() => {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 dark:text-white appearance-none"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white appearance-none"
             >
               <option value="all">All Statuses</option>
               <option value="succeeded">Succeeded</option>
@@ -271,7 +271,7 @@ export const TransactionsPage: React.FC = React.memo(() => {
             <select
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 dark:text-white appearance-none"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white appearance-none"
             >
               <option value="7">Last 7 days</option>
               <option value="30">Last 30 days</option>
@@ -284,7 +284,7 @@ export const TransactionsPage: React.FC = React.memo(() => {
         {/* Transactions Table */}
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-slate-700">
+            <thead className="bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-slate-700">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Date
@@ -309,10 +309,10 @@ export const TransactionsPage: React.FC = React.memo(() => {
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] divide-y divide-gray-200 dark:divide-gray-700">
               {filteredTransactions.map((trans) => (
-                <tr key={trans.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                  <td className="px-6 py-4 whitespace-nowrap">
+                <tr key={trans.id} className="hover:bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:hover:bg-slate-700/50">
+                  <td className="px-6 py-6 whitespace-nowrap">
                     <div className="text-sm text-gray-900 dark:text-white">
                       {new Date(trans.created_at).toLocaleDateString()}
                     </div>
@@ -320,7 +320,7 @@ export const TransactionsPage: React.FC = React.memo(() => {
                       {new Date(trans.created_at).toLocaleTimeString()}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-6 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900 dark:text-white">
                       {trans.user_email}
                     </div>
@@ -328,23 +328,23 @@ export const TransactionsPage: React.FC = React.memo(() => {
                       ID: {trans.user_id.substring(0, 8)}...
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-6 whitespace-nowrap">
                     <div className="text-sm font-bold text-gray-900 dark:text-white">
                       {formatCurrency(trans.amount, trans.currency)}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-6 whitespace-nowrap">
                     <div className="text-sm text-gray-900 dark:text-white">
                       {trans.transaction_type.replace(/_/g, ' ')}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-6 whitespace-nowrap">
                     <span className={`px-3 py-1 inline-flex items-center space-x-1 text-xs leading-5 font-semibold rounded-full ${getStatusBadge(trans.status)}`}>
                       {getStatusIcon(trans.status)}
                       <span>{trans.status}</span>
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-6 whitespace-nowrap">
                     <div className="flex items-center space-x-2">
                       <CreditCard className="h-4 w-4 text-gray-400" />
                       <span className="text-sm text-gray-900 dark:text-white">
@@ -352,7 +352,7 @@ export const TransactionsPage: React.FC = React.memo(() => {
                       </span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-6 whitespace-nowrap">
                     {trans.receipt_url ? (
                       <a
                         href={trans.receipt_url}

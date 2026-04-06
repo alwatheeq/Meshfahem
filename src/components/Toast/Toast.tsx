@@ -110,7 +110,7 @@ interface ToastItemProps {
 
 const ToastItem: React.FC<ToastItemProps> = ({ toast, onClose }) => {
   const getToastStyles = () => {
-    const baseStyles = 'flex items-start space-x-3 p-4 rounded-lg shadow-lg border backdrop-blur-sm transition-all duration-300 animate-slide-in';
+    const baseStyles = 'flex items-start space-x-3 p-4 rounded-lg shadow border backdrop-blur-sm transition-colors duration-150 animate-slide-in';
 
     switch (toast.type) {
       case 'success':

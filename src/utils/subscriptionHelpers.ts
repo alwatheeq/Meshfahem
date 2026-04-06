@@ -1,6 +1,7 @@
 import type { Subscription } from '../hooks/useSubscription';
 
 export const SUBSCRIPTION_TIERS = {
+  /** @deprecated Legacy DB rows only; do not assign for new signups */
   TRIAL_1DAY: 'trial_1day',
   TRIAL_7DAY: 'trial_7day',
   MONTHLY: 'monthly',
@@ -21,15 +22,16 @@ export const PRICING = {
   monthly: 29.99,
   quarterly: 79.99,
   biannual: 149.99,
-  /** Standard plan base price (USD) per month */
-  standard: 3.2,
-  /** Zegocloud add-on: USD per hour */
+  /** Standard plan base price (USD) per month — includes 1500 tool credits, 500 chat credits, 600 Zego credits (10 hr) */
+  standard: 3.49,
+  /** Zegocloud add-on: USD per extra hour (beyond included 10 hr) */
   zegoPerHour: 0.1,
-  /** AI chat add-on: USD per 100k tokens (one block) */
+  /** AI chat add-on: USD per extra 100k tokens (beyond included 500k) */
   chatPer100kTokens: 0.1,
 };
 
 export const TOKEN_LIMITS = {
+  /** Legacy rows only */
   trial_1day: 10000,
   trial_7day: 121000,
   monthly: 520000,
@@ -42,10 +44,10 @@ export const TOKEN_LIMITS = {
 export const getTierDisplayInfo = (tier: string) => {
   const info: Record<string, { name: string; color: string; bgColor: string; description: string }> = {
     trial_1day: {
-      name: '1-Day Trial',
+      name: 'Legacy 1-day trial',
       color: 'text-gray-700 dark:text-gray-300',
       bgColor: 'bg-gray-100 dark:bg-gray-700',
-      description: '10K tokens - Try each feature once'
+      description: 'Deprecated tier (historical rows only)'
     },
     trial_7day: {
       name: '7-Day Trial',
@@ -75,7 +77,7 @@ export const getTierDisplayInfo = (tier: string) => {
       name: 'Standard',
       color: 'text-sky-700 dark:text-sky-300',
       bgColor: 'bg-sky-100 dark:bg-sky-900',
-      description: '1500 credits + optional add-ons'
+      description: '1500 tool credits + 500 chat credits + 600 Zego credits (10 hr) included'
     },
     none: {
       name: 'No Subscription',
@@ -225,3 +227,28 @@ export const calculateUsagePercentage = (tokensUsed: number, tokenLimit: number)
 export const getDaysRemainingInCycle = (cycleEndDate: string | null): number => {
   return calculateDaysDifference(cycleEndDate);
 };
+
+/** Standard (basic) plan: tools & services credits shown as remaining / this cap (overage allowed, e.g. 2700/1500). */
+export const STANDARD_TOOLS_CREDITS_PLAN_CAP = 1500;
+
+/** @deprecated Legacy UI cap; product now uses 1500 for all tiers in the app. */
+export const LEGACY_NON_STANDARD_TOOLS_CAP = 2000;
+
+/** Standard prepay base amounts (USD) for 1 / 3 / 6 month billing. Includes 1500 tool + 500 chat + 600 Zego credits. */
+export const STANDARD_BASE_USD_BY_MONTHS: Record<1 | 3 | 6, number> = {
+  1: 3.49,
+  3: 9.99,
+  6: 18.99,
+};
+
+export function normalizeStandardBillingMonths(n: number): 1 | 3 | 6 {
+  if (n === 3 || n === 6) return n;
+  return 1;
+}
+
+/**
+ * Denominator for "Tools & services" credits (remaining / cap). Standard product uses 1500 for all active tiers.
+ */
+export function getToolsCreditsPlanCap(_subscription?: Subscription | null): number {
+  return STANDARD_TOOLS_CREDITS_PLAN_CAP;
+}

@@ -108,7 +108,7 @@ export const LowCreditWarning: React.FC = () => {
   const daysUntilRefresh = getDaysUntilRefresh();
 
   return (
-    <div className={`${style.bg} border ${style.border} rounded-xl p-4 mb-6 shadow-sm`}>
+    <div className={`${style.bg} border ${style.border} rounded-md p-4 mb-6 shadow-sm`}>
       <div className="flex items-start justify-between">
         <div className="flex items-start space-x-3 flex-1">
           <div className={`${style.icon} mt-0.5`}>

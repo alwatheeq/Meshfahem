@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../Toast/Toast';
-import { Shield, Search, Filter, Download, Calendar, User, Activity, Eye } from 'lucide-react';
+import { Shield, Search, Download, Calendar, User, Activity, Eye } from 'lucide-react';
 import { ErrorLogger } from '../../utils/errorLogger';
 import { useDebounce } from '../../hooks/useDebounce';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface AuditLog {
   id: string;
@@ -32,6 +33,7 @@ interface AuditStats {
 }
 
 export const AuditLogPage: React.FC = React.memo(() => {
+  const { getThemeGradient } = useTheme();
   const toast = useToast();
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [stats, setStats] = useState<AuditStats | null>(null);
@@ -148,7 +150,7 @@ export const AuditLogPage: React.FC = React.memo(() => {
       DELETE: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
       VIEW: 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400',
       LOGIN: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
-      LOGOUT: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
+      LOGOUT: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-white',
       EXPORT: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400'
     };
     return colors[type] || 'bg-gray-100 text-gray-800';
@@ -187,7 +189,7 @@ export const AuditLogPage: React.FC = React.memo(() => {
         </div>
         <button
           onClick={exportToCSV}
-          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+          className="flex items-center space-x-2 px-5 py-2.5 bg-blue-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-white rounded-lg hover:bg-blue-700 transition"
         >
           <Download className="h-4 w-4" />
           <span>Export CSV</span>
@@ -197,7 +199,7 @@ export const AuditLogPage: React.FC = React.memo(() => {
       {/* Statistics Cards */}
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className={`${getThemeGradient('ui')} text-white rounded-xl p-6`}>
+          <div className={`${getThemeGradient('ui')} text-white rounded-md p-6`}>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm opacity-80">Total Actions</p>
@@ -207,7 +209,7 @@ export const AuditLogPage: React.FC = React.memo(() => {
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl p-6">
+          <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-md p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm opacity-80">Active Admins</p>
@@ -217,7 +219,7 @@ export const AuditLogPage: React.FC = React.memo(() => {
             </div>
           </div>
 
-          <div className={`${getThemeGradient('ui')} text-white rounded-xl p-6`}>
+          <div className={`${getThemeGradient('ui')} text-white rounded-md p-6`}>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm opacity-80">Most Active</p>
@@ -232,7 +234,7 @@ export const AuditLogPage: React.FC = React.memo(() => {
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-xl p-6">
+          <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-md p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm opacity-80">Period</p>
@@ -247,8 +249,8 @@ export const AuditLogPage: React.FC = React.memo(() => {
       )}
 
       {/* Filters */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow border border-gray-200 dark:border-gray-700 p-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Search
@@ -260,7 +262,7 @@ export const AuditLogPage: React.FC = React.memo(() => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search by admin or description..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 dark:text-white"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
               />
             </div>
           </div>
@@ -272,7 +274,7 @@ export const AuditLogPage: React.FC = React.memo(() => {
             <select
               value={filterActionType}
               onChange={(e) => setFilterActionType(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 dark:text-white"
+              className="w-full px-5 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
             >
               <option value="">All Actions</option>
               <option value="CREATE">Create</option>
@@ -292,7 +294,7 @@ export const AuditLogPage: React.FC = React.memo(() => {
             <select
               value={filterTable}
               onChange={(e) => setFilterTable(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 dark:text-white"
+              className="w-full px-5 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
             >
               <option value="">All Tables</option>
               {uniqueTables.map(table => (
@@ -313,7 +315,7 @@ export const AuditLogPage: React.FC = React.memo(() => {
                   setDateRange(value);
                 }
               }}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 dark:text-white"
+              className="w-full px-5 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
             >
               <option value="today">Today</option>
               <option value="7days">Last 7 Days</option>
@@ -325,10 +327,10 @@ export const AuditLogPage: React.FC = React.memo(() => {
       </div>
 
       {/* Audit Log Table */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-slate-700">
+            <thead className="bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-slate-700">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider">
                   Timestamp
@@ -355,28 +357,28 @@ export const AuditLogPage: React.FC = React.memo(() => {
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {filteredLogs.map((log) => (
-                <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                <tr key={log.id} className="hover:bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:hover:bg-slate-700/50 transition">
+                  <td className="px-6 py-6 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                     {new Date(log.created_at).toLocaleString()}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                  <td className="px-6 py-6 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                     {log.admin_email}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-6 whitespace-nowrap">
                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${getActionTypeColor(log.action_type)}`}>
                       {log.action_type}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                  <td className="px-6 py-6 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
                     {log.table_name || '-'}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400 max-w-md truncate">
+                  <td className="px-6 py-6 text-sm text-gray-600 dark:text-gray-400 max-w-md truncate">
                     {log.description || '-'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                  <td className="px-6 py-6 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
                     {log.ip_address || '-'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <td className="px-6 py-6 whitespace-nowrap text-sm">
                     <button
                       onClick={() => setSelectedLog(log)}
                       className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
@@ -399,13 +401,13 @@ export const AuditLogPage: React.FC = React.memo(() => {
 
       {/* Detail Modal */}
       {selectedLog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
+          <div className="bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-md max-w-2xl w-full max-h-[80vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200 dark:border-gray-700">
               <h3 className="text-xl font-bold text-gray-900 dark:text-white">Audit Log Details</h3>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-6">
               <div>
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Timestamp</label>
                 <p className="text-gray-900 dark:text-gray-100 mt-1">{new Date(selectedLog.created_at).toLocaleString()}</p>
@@ -442,7 +444,7 @@ export const AuditLogPage: React.FC = React.memo(() => {
               {selectedLog.old_values && (
                 <div>
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Old Values</label>
-                  <pre className="text-xs bg-gray-100 dark:bg-slate-700 p-3 rounded mt-1 overflow-x-auto">
+                  <pre className="text-xs bg-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-slate-700 p-3 rounded mt-1 overflow-x-auto">
                     {JSON.stringify(selectedLog.old_values, null, 2)}
                   </pre>
                 </div>
@@ -451,7 +453,7 @@ export const AuditLogPage: React.FC = React.memo(() => {
               {selectedLog.new_values && (
                 <div>
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">New Values</label>
-                  <pre className="text-xs bg-gray-100 dark:bg-slate-700 p-3 rounded mt-1 overflow-x-auto">
+                  <pre className="text-xs bg-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-slate-700 p-3 rounded mt-1 overflow-x-auto">
                     {JSON.stringify(selectedLog.new_values, null, 2)}
                   </pre>
                 </div>
@@ -475,7 +477,7 @@ export const AuditLogPage: React.FC = React.memo(() => {
             <div className="p-6 border-t border-gray-200 dark:border-gray-700">
               <button
                 onClick={() => setSelectedLog(null)}
-                className="w-full px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                className="w-full px-5 py-2.5 bg-gray-200 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition"
               >
                 Close
               </button>

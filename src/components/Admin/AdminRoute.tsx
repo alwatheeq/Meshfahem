@@ -20,7 +20,11 @@ export const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
         return;
       }
 
-      ErrorLogger.debug('Verifying admin status', { component: 'AdminRoute', action: 'verifyAdminStatus', userEmail: user.email });
+      ErrorLogger.debug('Verifying admin status', { 
+        component: 'AdminRoute', 
+        action: 'verifyAdminStatus', 
+        metadata: { userEmail: user.email } 
+      });
 
       // Double-check admin status by querying admin_users table directly
       const { data: adminData, error } = await supabase
@@ -39,12 +43,25 @@ export const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
       }
 
       const isVerified = !!adminData;
-      ErrorLogger.debug('Admin verification result', { component: 'AdminRoute', action: 'verifyAdminStatus', isVerified, userEmail: user.email });
+      ErrorLogger.debug('Admin verification result', { 
+        component: 'AdminRoute', 
+        action: 'verifyAdminStatus', 
+        metadata: { isVerified, userEmail: user.email } 
+      });
 
       if (isVerified) {
-        ErrorLogger.info('Admin status verified from admin_users table', { component: 'AdminRoute', action: 'verifyAdminStatus', userEmail: user.email });
+        ErrorLogger.info('Admin status verified from admin_users table', { 
+          component: 'AdminRoute', 
+          action: 'verifyAdminStatus', 
+          metadata: { userEmail: user.email } 
+        });
       } else {
-        ErrorLogger.warn('User not found in admin_users table or inactive', { component: 'AdminRoute', action: 'verifyAdminStatus', userEmail: user.email, userId: user.id });
+        ErrorLogger.warn('User not found in admin_users table or inactive', { 
+          component: 'AdminRoute', 
+          action: 'verifyAdminStatus', 
+          userId: user.id,
+          metadata: { userEmail: user.email } 
+        });
       }
 
       setIsAdminVerified(isVerified);
@@ -69,7 +86,11 @@ export const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
 
   // Check both the user.role from AuthContext AND the direct verification
   if (user.role !== 'admin' || !isAdminVerified) {
-    ErrorLogger.debug('Access denied - redirecting to home', { component: 'AdminRoute', action: 'verifyAccess', userRole: user.role, isAdminVerified });
+    ErrorLogger.debug('Access denied - redirecting to home', { 
+      component: 'AdminRoute', 
+      action: 'verifyAccess', 
+      metadata: { userRole: user.role, isAdminVerified } 
+    });
     return <Navigate to="/" replace />;
   }
 

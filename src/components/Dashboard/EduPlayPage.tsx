@@ -72,7 +72,7 @@ type QuestionSource = 'auto_generated' | 'manual' | 'saved_set' | 'quiz_session'
 export const EduPlayPage: React.FC = React.memo(() => {
   const { user } = useAuth();
   const { error: showErrorToast } = useToast();
-  const { getThemeGradient, getThemeBorder, getBackgroundGradient, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
+  const { getThemeGradient, getThemeBorder, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
   const { shouldShowTutorial, showTutorial, isTutorialOpen, completeTutorial, skipTutorial, config: tutorialConfig } = usePageTutorial('eduplay');
   const [searchParams] = useSearchParams();
   const [viewMode, setViewMode] = useState<ViewMode>('menu');
@@ -1062,7 +1062,7 @@ export const EduPlayPage: React.FC = React.memo(() => {
   };
 
   return (
-    <div className={`min-h-screen ${getBackgroundGradient()} p-6`}>
+    <div className="w-full min-h-0 p-4 sm:p-6">
       {viewMode === 'menu' && renderMenu()}
       {viewMode === 'game-selection' && renderGameSelection()}
       {viewMode === 'question-source' && renderQuestionSource()}

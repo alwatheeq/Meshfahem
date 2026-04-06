@@ -7,6 +7,7 @@ import { Shield, Search, UserPlus, UserX, UserCheck, Clock, Calendar, AlertCircl
 import { ErrorLogger } from '../../utils/errorLogger';
 import { useDebounce } from '../../hooks/useDebounce';
 import { useConfirm } from '../../hooks/useConfirm';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface AdminUser {
   id: string;
@@ -31,6 +32,7 @@ interface LoginAttempt {
 
 export const AdminUsersManagementPage: React.FC = React.memo(() => {
   const { user } = useAuth();
+  const { getThemeGradient } = useTheme();
   const toast = useToast();
   const { confirm, ConfirmModal } = useConfirm();
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
@@ -112,13 +114,22 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
       if (error) throw error;
 
       // Log the action
-      await supabase.rpc('log_admin_action', {
-        p_action_type: 'CREATE',
-        p_table_name: 'admin_users',
-        p_record_id: data?.user_id || null,
-        p_new_values: { email: newAdminEmail.trim() },
-        p_description: `Added new admin user: ${newAdminEmail.trim()}`
-      }).catch(err => ErrorLogger.warn('Failed to log action', { component: 'AdminUsersManagementPage', action: 'handleAddAdmin', error: err instanceof Error ? err : new Error(String(err)) }));
+      try {
+        await supabase.rpc('log_admin_action', {
+          p_action_type: 'CREATE',
+          p_table_name: 'admin_users',
+          p_record_id: data?.user_id || null,
+          p_new_values: { email: newAdminEmail.trim() },
+          p_description: `Added new admin user: ${newAdminEmail.trim()}`
+        });
+      } catch (logErr: unknown) {
+        const logError = logErr instanceof Error ? logErr : new Error(String(logErr));
+        ErrorLogger.warn('Failed to log action', { 
+          component: 'AdminUsersManagementPage', 
+          action: 'handleAddAdmin', 
+          metadata: { error: logError.message } 
+        });
+      }
 
       toast.success('Admin user added successfully!');
       setShowAddModal(false);
@@ -127,7 +138,11 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
       fetchAdminUsers();
     } catch (err: unknown) {
       const error = err instanceof Error ? err : new Error(String(err));
-      ErrorLogger.error(error, { component: 'AdminUsersManagementPage', action: 'handleAddAdmin', email });
+      ErrorLogger.error(error, { 
+        component: 'AdminUsersManagementPage', 
+        action: 'handleAddAdmin', 
+        metadata: { email: newAdminEmail } 
+      });
       toast.error(error.message || 'Failed to add admin user');
     } finally {
       setIsAddingAdmin(false);
@@ -157,19 +172,32 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
       if (error) throw error;
 
       // Log the action
-      await supabase.rpc('log_admin_action', {
-        p_action_type: 'UPDATE',
-        p_table_name: 'admin_users',
-        p_old_values: { is_active: true },
-        p_new_values: { is_active: false },
-        p_description: `Deactivated admin user: ${adminEmail}`
-      }).catch(err => ErrorLogger.warn('Failed to log action', { component: 'AdminUsersManagementPage', action: 'handleDeactivateAdmin', adminEmail, error: err instanceof Error ? err : new Error(String(err)) }));
+      try {
+        await supabase.rpc('log_admin_action', {
+          p_action_type: 'UPDATE',
+          p_table_name: 'admin_users',
+          p_old_values: { is_active: true },
+          p_new_values: { is_active: false },
+          p_description: `Deactivated admin user: ${adminEmail}`
+        });
+      } catch (logErr: unknown) {
+        const logError = logErr instanceof Error ? logErr : new Error(String(logErr));
+        ErrorLogger.warn('Failed to log action', { 
+          component: 'AdminUsersManagementPage', 
+          action: 'handleDeactivateAdmin', 
+          metadata: { adminEmail, error: logError.message } 
+        });
+      }
 
       toast.success('Admin user deactivated successfully');
       fetchAdminUsers();
     } catch (err: unknown) {
       const error = err instanceof Error ? err : new Error(String(err));
-      ErrorLogger.error(error, { component: 'AdminUsersManagementPage', action: 'handleDeactivateAdmin', adminEmail });
+      ErrorLogger.error(error, { 
+        component: 'AdminUsersManagementPage', 
+        action: 'handleDeactivateAdmin', 
+        metadata: { adminEmail } 
+      });
       toast.error(error.message || 'Failed to deactivate admin user');
     }
   };
@@ -192,19 +220,32 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
       if (error) throw error;
 
       // Log the action
-      await supabase.rpc('log_admin_action', {
-        p_action_type: 'UPDATE',
-        p_table_name: 'admin_users',
-        p_old_values: { is_active: false },
-        p_new_values: { is_active: true },
-        p_description: `Reactivated admin user: ${adminEmail}`
-      }).catch(err => ErrorLogger.warn('Failed to log action', { component: 'AdminUsersManagementPage', action: 'handleReactivateAdmin', adminEmail, error: err instanceof Error ? err : new Error(String(err)) }));
+      try {
+        await supabase.rpc('log_admin_action', {
+          p_action_type: 'UPDATE',
+          p_table_name: 'admin_users',
+          p_old_values: { is_active: false },
+          p_new_values: { is_active: true },
+          p_description: `Reactivated admin user: ${adminEmail}`
+        });
+      } catch (logErr: unknown) {
+        const logError = logErr instanceof Error ? logErr : new Error(String(logErr));
+        ErrorLogger.warn('Failed to log action', { 
+          component: 'AdminUsersManagementPage', 
+          action: 'handleReactivateAdmin', 
+          metadata: { adminEmail, error: logError.message } 
+        });
+      }
 
       toast.success('Admin user reactivated successfully');
       fetchAdminUsers();
     } catch (err: unknown) {
       const error = err instanceof Error ? err : new Error(String(err));
-      ErrorLogger.error(error, { component: 'AdminUsersManagementPage', action: 'handleReactivateAdmin', adminEmail });
+      ErrorLogger.error(error, { 
+        component: 'AdminUsersManagementPage', 
+        action: 'handleReactivateAdmin', 
+        metadata: { adminEmail } 
+      });
       toast.error(error.message || 'Failed to reactivate admin user');
     }
   };
@@ -252,7 +293,7 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+          className="flex items-center space-x-2 px-5 py-2.5 bg-blue-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-white rounded-lg hover:bg-blue-700 transition"
         >
           <UserPlus className="h-4 w-4" />
           <span>Add Admin</span>
@@ -260,8 +301,8 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className={`${getThemeGradient('ui')} text-white rounded-xl p-6`}>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className={`${getThemeGradient('ui')} text-white rounded-md p-6`}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm opacity-80">Total Admins</p>
@@ -271,7 +312,7 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl p-6">
+        <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-md p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm opacity-80">Active Admins</p>
@@ -281,7 +322,7 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-xl p-6">
+        <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-md p-6">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm opacity-80">Inactive Admins</p>
@@ -291,7 +332,7 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
           </div>
         </div>
 
-        <div className={`${getThemeGradient('ui')} text-white rounded-xl p-6`}>
+        <div className={`${getThemeGradient('ui')} text-white rounded-md p-6`}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm opacity-80">Recent Logins</p>
@@ -303,8 +344,8 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
       </div>
 
       {/* Admin Users Table */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
-        <div className="mb-6">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow border border-gray-200 dark:border-gray-700 p-6">
+        <div className="mb-8">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
@@ -312,14 +353,14 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
               placeholder="Search admin users..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 dark:text-white"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
             />
           </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-slate-700">
+            <thead className="bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-slate-700">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Email
@@ -338,10 +379,10 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] divide-y divide-gray-200 dark:divide-gray-700">
               {filteredAdminUsers.map((admin) => (
-                <tr key={admin.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                  <td className="px-6 py-4 whitespace-nowrap">
+                <tr key={admin.id} className="hover:bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:hover:bg-slate-700/50">
+                  <td className="px-6 py-6 whitespace-nowrap">
                     <div className="flex items-center">
                       <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400 mr-2" />
                       <div>
@@ -356,23 +397,23 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-6 whitespace-nowrap">
                     {admin.is_active ? (
-                      <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                      <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-green-800 dark:bg-green-900/30 dark:text-green-300">
                         Active
                       </span>
                     ) : (
-                      <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300">
+                      <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-gray-800 dark:bg-gray-900/30 dark:text-gray-300">
                         Inactive
                       </span>
                     )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-6 whitespace-nowrap">
                     <div className="text-sm text-gray-900 dark:text-white">
                       {admin.creator_email || 'System'}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-6 whitespace-nowrap">
                     <div className="text-sm text-gray-900 dark:text-white">
                       {admin.last_login_at
                         ? new Date(admin.last_login_at).toLocaleString()
@@ -380,7 +421,7 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
                       }
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <td className="px-6 py-6 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center space-x-3">
                       <button
                         onClick={() => handleViewHistory(admin.email)}
@@ -422,9 +463,9 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
 
       {/* Add Admin Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-6">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow-lg max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-8">
               <h3 className="text-xl font-bold text-gray-900 dark:text-white">Add Admin User</h3>
               <button
                 onClick={() => {
@@ -438,7 +479,7 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Email Address
@@ -448,7 +489,7 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
                   value={newAdminEmail}
                   onChange={(e) => setNewAdminEmail(e.target.value)}
                   placeholder="admin@example.com"
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 dark:text-white"
+                  className="w-full px-5 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
                 />
               </div>
 
@@ -461,11 +502,11 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
                   onChange={(e) => setNewAdminNotes(e.target.value)}
                   placeholder="Additional information about this admin..."
                   rows={3}
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 dark:text-white"
+                  className="w-full px-5 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
                 />
               </div>
 
-              <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <div className="bg-blue-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-6">
                 <p className="text-sm text-blue-800 dark:text-blue-200">
                   The user must already have an account in the system. They will be added to the admin_users table.
                 </p>
@@ -487,7 +528,7 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
                     setNewAdminNotes('');
                   }}
                   disabled={isAddingAdmin}
-                  className="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-5 py-2.5 bg-gray-200 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
@@ -499,8 +540,8 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
 
       {/* Login History Modal */}
       {showHistoryModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-4xl w-full max-h-[80vh] overflow-hidden">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow-lg max-w-4xl w-full max-h-[80vh] overflow-hidden">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
               <h3 className="text-xl font-bold text-gray-900 dark:text-white">
                 Login History - {selectedAdminEmail}
@@ -521,7 +562,7 @@ export const AdminUsersManagementPage: React.FC = React.memo(() => {
                 {filteredLoginAttempts.map((attempt) => (
                   <div
                     key={attempt.id}
-                    className={`p-4 rounded-lg border ${
+                    className={`p-6 rounded-lg border ${
                       attempt.success
                         ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
                         : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'

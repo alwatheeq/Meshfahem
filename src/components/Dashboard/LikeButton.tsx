@@ -3,6 +3,7 @@ import { ThumbsUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { ErrorLogger } from '../../utils/errorLogger';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface LikeButtonProps {
   itemId: string;
@@ -18,6 +19,7 @@ export const LikeButton: React.FC<LikeButtonProps> = ({
   showCount = true
 }) => {
   const { user } = useAuth();
+  const { getThemeSubtle, getThemeTextSecondary } = useTheme();
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(initialCount);
   const [isLoading, setIsLoading] = useState(false);
@@ -38,6 +40,7 @@ export const LikeButton: React.FC<LikeButtonProps> = ({
   useEffect(() => {
     if (user) {
       checkIfLiked();
+      fetchLikeCount();
     }
   }, [user, itemId]);
 
@@ -55,10 +58,31 @@ export const LikeButton: React.FC<LikeButtonProps> = ({
 
       if (!error && data) {
         setIsLiked(true);
+      } else {
+        setIsLiked(false);
       }
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       ErrorLogger.error(err, { component: 'LikeButton', action: 'checkLikeStatus', itemId, userId: user?.id });
+    }
+  };
+
+  const fetchLikeCount = async () => {
+    if (!user) return;
+
+    try {
+      const { count, error } = await supabase
+        .from('item_reactions')
+        .select('*', { count: 'exact', head: true })
+        .eq('item_id', itemId)
+        .eq('reaction_type', 'like');
+
+      if (!error && count !== null) {
+        setLikeCount(count);
+      }
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      ErrorLogger.error(err, { component: 'LikeButton', action: 'fetchLikeCount', itemId, userId: user?.id });
     }
   };
 
@@ -80,7 +104,8 @@ export const LikeButton: React.FC<LikeButtonProps> = ({
 
         if (!error) {
           setIsLiked(false);
-          setLikeCount(prev => Math.max(0, prev - 1));
+          // Fetch updated count from database
+          await fetchLikeCount();
         }
       } else {
         const { error } = await supabase
@@ -93,7 +118,8 @@ export const LikeButton: React.FC<LikeButtonProps> = ({
 
         if (!error) {
           setIsLiked(true);
-          setLikeCount(prev => prev + 1);
+          // Fetch updated count from database
+          await fetchLikeCount();
         }
       }
     } catch (error) {
@@ -112,10 +138,10 @@ export const LikeButton: React.FC<LikeButtonProps> = ({
       disabled={isLoading}
       className={`
         ${buttonSizeClasses[size]}
-        flex items-center space-x-1 rounded-lg transition-all duration-200
+        flex items-center space-x-1 rounded-lg transition-colors duration-150
         ${isLiked
           ? 'bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:hover:bg-blue-800'
-          : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
+          : `${getThemeSubtle('ui')} ${getThemeTextSecondary()} hover:opacity-60`
         }
         ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
         ${isAnimating ? 'scale-110' : 'scale-100'}

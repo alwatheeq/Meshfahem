@@ -29,13 +29,14 @@ Deno.serve(async (req: Request) => {
       cancelUrl?: string;
       zegoHours?: number;
       chatBlocks?: number;
+      billingMonths?: number;
     }>(req);
     
     if (bodyResult.error) {
       return bodyResult.error;
     }
 
-    const { plan, userId, userEmail, promoCode, successUrl, cancelUrl, zegoHours = 0, chatBlocks = 0 } = bodyResult.data;
+    const { plan, userId, userEmail, promoCode, successUrl, cancelUrl, zegoHours = 0, chatBlocks = 0, billingMonths: rawBm } = bodyResult.data;
 
     const missingFields = validateRequiredFields(
       { plan, userId, userEmail },
@@ -46,40 +47,44 @@ Deno.serve(async (req: Request) => {
       return errorResponse(missingFields, 400);
     }
 
-    // Define pricing based on plan (amounts in cents)
-    // Standard: $3.20 base + $0.10/hr Zego + $0.10 per 100k chat tokens
-    const STANDARD_BASE_CENTS = 320;
-    const ZEGO_CENTS_PER_HOUR = 10;
-    const CHAT_CENTS_PER_BLOCK = 10;
+    // Standard only: 1 / 3 / 6 month base (cents) — base already includes 10 hr Zego + 500k AI chat
+    const STANDARD_BASE_CENTS_BY_MONTHS: Record<number, number> = { 1: 349, 3: 999, 6: 1899 };
+    const ZEGO_CENTS_PER_EXTRA_HOUR = 10;
+    const CHAT_CENTS_PER_EXTRA_BLOCK = 10;
+    // Credits included in base price — stored in Stripe metadata so webhook can set correct totals
+    const INCLUDED_ZEGO_HOURS = 10;
+    const INCLUDED_CHAT_BLOCKS = 5; // 5 × 100k = 500k tokens
 
-    let planDetails: { amount: number; interval: string; trialDays: number; name: string; description: string };
-
-    if (plan === "standard") {
-      const z = Math.max(0, Math.min(100, Math.floor(zegoHours)));
-      let c = Math.max(0, Math.min(100, Math.floor(chatBlocks)));
-      if (c > 0 && c < 5) c = 5;
-      const totalCents = STANDARD_BASE_CENTS + z * ZEGO_CENTS_PER_HOUR + c * CHAT_CENTS_PER_BLOCK;
-      const parts: string[] = ["Standard subscription"];
-      if (z > 0) parts.push(`${z} hr Study room`);
-      if (c > 0) parts.push(`${c}×100k AI chat tokens`);
-      planDetails = {
-        amount: totalCents,
-        interval: "month",
-        trialDays: 0,
-        name: "Standard Plan",
-        description: parts.join(" · "),
-      };
-    } else {
-      const pricing: Record<string, { amount: number; interval: string; trialDays: number; name: string; description: string }> = {
-        monthly: { amount: 2999, interval: "month", trialDays: 7, name: "Monthly", description: "Unlimited access to all features - billed monthly" },
-        quarterly: { amount: 7999, interval: "month", trialDays: 7, name: "Quarterly", description: "Unlimited access - billed every 3 months (Save 10%)" },
-        biannual: { amount: 14999, interval: "month", trialDays: 7, name: "Biannual", description: "Unlimited access - billed every 6 months (Save 16%)" },
-      };
-      if (!pricing[plan]) {
-        return errorResponse("Invalid plan selected", 400);
-      }
-      planDetails = pricing[plan];
+    if (plan !== "standard") {
+      return errorResponse("Only the Standard plan is available. Please choose Standard from pricing.", 400);
     }
+
+    const bmRaw = Number(rawBm);
+    const billingMonths = bmRaw === 3 || bmRaw === 6 ? bmRaw : 1;
+    const baseCents = STANDARD_BASE_CENTS_BY_MONTHS[billingMonths] ?? 349;
+
+    // zegoHours / chatBlocks from request are EXTRA amounts on top of what's included
+    const extraZego = Math.max(0, Math.min(100, Math.floor(zegoHours)));
+    let extraChat = Math.max(0, Math.min(100, Math.floor(chatBlocks)));
+    if (extraChat > 0 && extraChat < 5) extraChat = 5;
+    const totalCents = baseCents + extraZego * ZEGO_CENTS_PER_EXTRA_HOUR + extraChat * CHAT_CENTS_PER_EXTRA_BLOCK;
+
+    // Total hours/blocks stored = included + extra (used by webhook to set subscription credits)
+    const totalZegoHours = INCLUDED_ZEGO_HOURS + extraZego;
+    const totalChatBlocks = INCLUDED_CHAT_BLOCKS + extraChat;
+
+    const parts: string[] = [`Standard · every ${billingMonths} mo · incl. ${INCLUDED_ZEGO_HOURS}hr study room · incl. 500k AI chat`];
+    if (extraZego > 0) parts.push(`+${extraZego} hr extra study room`);
+    if (extraChat > 0) parts.push(`+${extraChat}×100k extra AI chat`);
+
+    const planDetails = {
+      amount: totalCents,
+      interval: "month" as const,
+      trialDays: 0,
+      name: billingMonths === 1 ? "Standard Plan" : `Standard Plan (${billingMonths} months)`,
+      description: parts.join(" · "),
+      billingMonths,
+    };
 
     // Create or retrieve Stripe customer
     let customer: Stripe.Customer;
@@ -115,18 +120,21 @@ Deno.serve(async (req: Request) => {
             unit_amount: planDetails.amount,
             recurring: {
               interval: planDetails.interval as Stripe.Price.Recurring.Interval,
-              interval_count: plan === "quarterly" ? 3 : plan === "biannual" ? 6 : 1,
+              interval_count: planDetails.billingMonths,
             },
           },
           quantity: 1,
         },
       ],
       subscription_data: {
-        trial_period_days: planDetails.trialDays,
+        ...(planDetails.trialDays > 0 ? { trial_period_days: planDetails.trialDays } : {}),
         metadata: {
           supabase_user_id: userId,
           plan_type: plan,
-          ...(plan === "standard" && { zego_hours: String(zegoHours), chat_blocks: String(chatBlocks) }),
+          billing_months: String(planDetails.billingMonths),
+          // Total amounts (included + any extra add-ons) — used by webhook to set credit limits
+          zego_hours: String(totalZegoHours),
+          chat_blocks: String(totalChatBlocks),
         },
       },
       success_url: successUrl || `${req.headers.get("origin")}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
@@ -134,6 +142,7 @@ Deno.serve(async (req: Request) => {
       metadata: {
         supabase_user_id: userId,
         plan_type: plan,
+        billing_months: String(planDetails.billingMonths),
       },
     };
 

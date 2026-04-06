@@ -7,7 +7,7 @@ import {
   XCircle, Clock, Shield, X, BarChart3, ArrowLeft
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { getTierDisplayInfo, getStatusDisplayInfo, formatTokenUsage, getTokenLimitForTier } from '../../utils/subscriptionHelpers';
+import { getTierDisplayInfo, getStatusDisplayInfo, getToolsCreditsPlanCap } from '../../utils/subscriptionHelpers';
 import { useToast } from '../Toast/Toast';
 import { handleApiError, handleSupabaseError, isOffline, handleOfflineError } from '../../utils/errorHandler';
 import { ErrorLogger } from '../../utils/errorLogger';
@@ -37,7 +37,6 @@ export const SubscriptionManagementPage: React.FC = () => {
     isPaidUser,
     getDaysRemaining,
     getTrialDaysRemaining,
-    getTokensUsed,
     getDaysRemainingInCycle,
     refresh
   } = useSubscription();
@@ -178,17 +177,13 @@ export const SubscriptionManagementPage: React.FC = () => {
   const statusInfo = getStatusDisplayInfo(subscription.status);
   const daysRemaining = getDaysRemaining();
   const trialDaysRemaining = subscription.trial_end_date ? getTrialDaysRemaining() : null;
-  const tokensUsed = getTokensUsed();
-  const effectiveTokenLimit = subscription.token_limit && subscription.token_limit > 0
-    ? subscription.token_limit
-    : getTokenLimitForTier(subscription.subscription_tier);
-  const tokenUsagePercentage = effectiveTokenLimit > 0 ? Math.min(100, Math.round((tokensUsed / effectiveTokenLimit) * 100)) : 0;
   const daysRemainingInCycle = getDaysRemainingInCycle();
-  const isStandard = subscription.subscription_tier === 'standard';
   const hasZego = (subscription.zego_hours_per_cycle ?? 0) > 0 || (creditBalance?.zego_credits_total ?? 0) > 0;
   const hasAiAddon = (subscription.chat_blocks_per_cycle ?? 0) > 0 || (subscription.token_limit ?? 0) > 520000;
   const toolCreditsRemaining = creditBalance?.credits_remaining ?? 0;
-  const toolCreditsTotal = creditBalance?.credits_total ?? 1500;
+  const toolPlanCap = getToolsCreditsPlanCap(subscription);
+  const toolProgressPct =
+    toolPlanCap > 0 ? Math.min(100, (toolCreditsRemaining / toolPlanCap) * 100) : 0;
   const zegoCreditsRemaining = creditBalance?.zego_credits_remaining ?? 0;
   const zegoCreditsTotal = creditBalance?.zego_credits_total ?? 0;
   const aiChatCreditsTotal = hasAiAddon
@@ -280,9 +275,8 @@ export const SubscriptionManagementPage: React.FC = () => {
             </div>
           )}
 
-          {/* Credits / Token Usage */}
-          {isStandard ? (
-            <>
+          {/* Credits (tools / study room / AI) */}
+          <>
               {/* Tools & Services */}
               <div className={`${getThemeGradient('bg')} rounded-lg p-6`}>
                 <div className="flex items-center justify-between mb-4">
@@ -294,19 +288,20 @@ export const SubscriptionManagementPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className={`text-2xl font-bold ${getThemeTextPrimary()}`}>{toolCreditsRemaining}</p>
-                    <p className={`text-sm ${getThemeTextSecondary()}`}>{t('subscription_management.of_credits', { total: toolCreditsTotal })}</p>
+                    <p className={`text-2xl font-bold ${getThemeTextPrimary()}`}>{toolCreditsRemaining.toLocaleString()}</p>
+                    <p className={`text-sm ${getThemeTextSecondary()}`}>
+                      / {toolPlanCap.toLocaleString()} {t('subscription_management.credits_plan_cap_suffix')}
+                    </p>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <div className={`flex justify-between text-sm ${getThemeTextSecondary()}`}>
-                    <span>{t('subscription_management.percent_used', { pct: toolCreditsTotal > 0 ? Math.round(((toolCreditsTotal - toolCreditsRemaining) / toolCreditsTotal) * 100) : 0 })}</span>
-                    <span>{t('subscription_management.credits_remaining', { n: toolCreditsRemaining })}</span>
-                  </div>
+                  <p className={`text-sm ${getThemeTextSecondary()}`}>
+                    {t('subscription_management.credits_remaining', { n: toolCreditsRemaining })}
+                  </p>
                   <div className={`w-full ${getThemeSubtle('ui')} rounded-full h-3`}>
                     <div
                       className={`h-3 rounded-full transition-colors duration-150 ${getThemeGradient('ui')}`}
-                      style={{ width: `${toolCreditsTotal > 0 ? Math.min(100, ((toolCreditsTotal - toolCreditsRemaining) / toolCreditsTotal) * 100) : 0}%` }}
+                      style={{ width: `${toolProgressPct}%` }}
                     />
                   </div>
                 </div>
@@ -370,54 +365,8 @@ export const SubscriptionManagementPage: React.FC = () => {
                 </div>
               )}
             </>
-          ) : (
-            <div className={`${getThemeGradient('bg')} rounded-lg p-6`}>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-3">
-                  <BarChart3 className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                  <div>
-                    <h3 className={`text-lg font-semibold ${getThemeTextPrimary()}`}>{t('subscription_management.token_usage')}</h3>
-                    <p className={`text-sm ${getThemeTextSecondary()}`}>{t('subscription_management.current_billing_cycle')}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className={`text-2xl font-bold ${getThemeTextPrimary()}`}>{formatTokenUsage(tokensUsed)}</p>
-                  <p className={`text-sm ${getThemeTextSecondary()}`}>{t('subscription_management.of_tokens', { amount: formatTokenUsage(effectiveTokenLimit) })}</p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className={`flex justify-between text-sm ${getThemeTextSecondary()}`}>
-                  <span>{t('subscription_management.percent_used', { pct: tokenUsagePercentage })}</span>
-                  <span>{formatTokenUsage(Math.max(0, effectiveTokenLimit - tokensUsed))} {t('subscription_management.credits_remaining', { n: '' }).replace(/\d+\s*/, '').trim() || 'remaining'}</span>
-                </div>
-                <div className={`w-full ${getThemeSubtle('ui')} rounded-full h-3`}>
-                  <div
-                    className={`h-3 rounded-full transition-colors duration-150 ${
-                      tokenUsagePercentage > 90 ? 'bg-gradient-to-r from-red-500 to-orange-500'
-                        : tokenUsagePercentage > 75 ? 'bg-gradient-to-r from-yellow-500 to-orange-500'
-                        : getThemeGradient('ui')
-                    }`}
-                    style={{ width: `${Math.min(tokenUsagePercentage, 100)}%` }}
-                  />
-                </div>
-              </div>
-              {subscription.billing_cycle_end && (
-                <div className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-800">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className={getThemeTextSecondary()}>{t('subscription_management.billing_resets_in')}</span>
-                    <span className={`font-semibold ${getThemeTextPrimary()}`}>
-                      {t('subscription_management.days_left', { count: daysRemainingInCycle })}
-                    </span>
-                  </div>
-                  <p className={`text-xs ${getThemeTextSecondary()} mt-1`}>
-                    {t('subscription_management.resets_on', { date: new Date(subscription.billing_cycle_end).toLocaleDateString() })}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
 
-          {subscription.billing_cycle_end && isStandard && (
+          {subscription.billing_cycle_end && (
             <div className={`${getThemeGradient('bg')} rounded-lg p-4 border-t ${getThemeCardBorder()}`}>
               <div className="flex items-center justify-between text-sm">
                 <span className={getThemeTextSecondary()}>{t('subscription_management.billing_resets_in')}</span>

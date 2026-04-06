@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDebounce } from '../../hooks/useDebounce';
-import { BookOpen, Search, Eye, Share2, Trash2, Users, CheckCircle2, AlertCircle, X, Tag, FileText, Calendar, Stethoscope, Filter, Globe, User, Heart } from 'lucide-react';
+import { BookOpen, Search, Eye, Share2, Trash2, Users, CheckCircle2, AlertCircle, X, Tag, FileText, Calendar, Stethoscope, Filter, Globe, User, Heart, ScanLine } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useI18n } from '../../contexts/I18nContext';
 import { supabase } from '../../lib/supabase';
@@ -10,11 +10,8 @@ import { useUserPreferences } from '../../contexts/UserPreferencesContext';
 import { LikeButton } from './LikeButton';
 import { TopicsTagsModal } from './TopicsTagsModal';
 import { PREDEFINED_TOPICS } from '../../utils/config.js';
-import { usePersistentModal, getFeatureConfig } from '../../contexts/PersistentModalContext';
 import { usePageTutorial } from '../../hooks/usePageTutorial';
 import { PageTutorial } from '../Onboarding/PageTutorial';
-import { PersistentSubscriptionModal } from '../Subscription/PersistentSubscriptionModal';
-import { useSubscription } from '../../hooks/useSubscription';
 import { handleApiError, handleSupabaseError, isOffline, handleOfflineError } from '../../utils/errorHandler';
 import { ErrorLogger } from '../../utils/errorLogger';
 import { PerformanceMonitor } from '../../utils/performanceMonitor';
@@ -29,6 +26,7 @@ interface LibraryItem {
   summary_text: string;
   flashcards_json: Array<{ front: string; back: string }>;
   original_text_content?: string;
+  original_file_name?: string;
   topics?: string[];
   created_at: string;
   last_viewed_at?: string;
@@ -81,10 +79,8 @@ interface PendingInvitation {
 export const LibraryPage: React.FC = React.memo(() => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { t } = useI18n();
-  const { hasActiveSubscription } = useSubscription();
+  const { t, language } = useI18n();
   const { getThemeGradient, getThemeText, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle, getThemeBorder, getThemeFocusRing } = useTheme();
-  const { showModal, dismissModal, isModalOpen, currentFeature, isDismissed } = usePersistentModal();
   const { confirm, ConfirmModal } = useConfirm();
   const { shouldShowTutorial, showTutorial, isTutorialOpen, completeTutorial, skipTutorial, config: tutorialConfig } = usePageTutorial('library');
   const { preferences: _preferences } = useUserPreferences();
@@ -121,30 +117,10 @@ export const LibraryPage: React.FC = React.memo(() => {
     const saved = localStorage.getItem('library_view_mode');
     return (saved as 'library' | 'notebook') || 'library';
   });
-  const [hasCheckedModal, setHasCheckedModal] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Debounce search query to avoid excessive database queries
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
-
-  // Check and show modal after page load
-  useEffect(() => {
-    const checkModal = async () => {
-      if (user && !hasActiveSubscription() && !hasCheckedModal) {
-        const dismissed = await isDismissed('library');
-        if (!dismissed) {
-          setTimeout(() => {
-            showModal('library');
-          }, 500);
-        }
-        setHasCheckedModal(true);
-      }
-    };
-
-    if (!initialLoading) {
-      checkModal();
-    }
-  }, [user, initialLoading, hasActiveSubscription, hasCheckedModal]);
 
   // Auto-dismiss notification
   useEffect(() => {
@@ -399,6 +375,15 @@ export const LibraryPage: React.FC = React.memo(() => {
         const bLikes = b.reaction_counts?.like_count || 0;
         return bLikes - aLikes; // Descending order (most liked first)
       });
+    }
+
+    // Apply locale-aware client-side sort for title so items matching the current
+    // script (e.g., Arabic when the UI is in Arabic) sort naturally to the top.
+    if (sortOption === 'title_asc' || sortOption === 'title_desc') {
+      filteredData.sort((a, b) =>
+        a.title.localeCompare(b.title, language, { sensitivity: 'base' })
+      );
+      if (sortOption === 'title_desc') filteredData.reverse();
     }
 
     // Fetch notes count for each item (for notebook filtering and badge display)
@@ -702,8 +687,6 @@ export const LibraryPage: React.FC = React.memo(() => {
     }
   };
 
-  const featureConfig = getFeatureConfig('library');
-
   if (initialLoading) {
     return (
       <div className="w-full">
@@ -736,13 +719,6 @@ export const LibraryPage: React.FC = React.memo(() => {
 
   return (
     <>
-    <PersistentSubscriptionModal
-      isOpen={isModalOpen && currentFeature === 'library'}
-      onDismiss={dismissModal}
-      featureName="library"
-      featureTitle={featureConfig.title}
-      benefits={featureConfig.benefits}
-    />
     <div className="w-full">
       {/* Notification */}
       {notification.show && (
@@ -839,12 +815,12 @@ export const LibraryPage: React.FC = React.memo(() => {
             {/* Controls Header */}
             <div className={`p-5 border-b ${getThemeCardBorder()}`}>
               <div className="flex flex-col space-y-3">
-                <div className="flex flex-col gap-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1 min-w-0 w-full">
-                    {/* Search - Collapsible */}
-                    {isSearchExpanded ? (
-                      <div className="relative flex-1 min-w-0 w-full sm:max-w-xs transition-colors duration-150">
-                        <Search className={`h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 ${getThemeTextMuted()}`} />
+                <div className="flex flex-col gap-3 w-full min-w-0">
+                  {/* Expanded search: full-width row so it does not collide with filters */}
+                  {isSearchExpanded && (
+                    <div className="flex items-center gap-2 w-full min-w-0">
+                      <div className="relative flex-1 min-w-0">
+                        <Search className={`h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none ${getThemeTextMuted()}`} />
                         <input
                           type="text"
                           value={searchQuery}
@@ -859,95 +835,114 @@ export const LibraryPage: React.FC = React.memo(() => {
                           autoFocus
                         />
                         {searchLoading && (
-                          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                            <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                          <div className="absolute right-10 top-1/2 transform -translate-y-1/2">
+                            <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full" />
                           </div>
                         )}
                       </div>
-                    ) : (
                       <button
-                        onClick={() => setIsSearchExpanded(true)}
-                        className={`p-2 rounded-lg ${getThemeCardBorder()} ${getThemeSubtle('ui')} hover:opacity-80 transition-colors`}
-                        aria-label={t('library.search_library_placeholder')}
+                        type="button"
+                        onClick={() => {
+                          setSearchQuery('');
+                          setIsSearchExpanded(false);
+                        }}
+                        className={`shrink-0 p-2 rounded-lg border ${getThemeCardBorder()} ${getThemeSubtle('ui')} hover:opacity-80 transition-colors`}
+                        aria-label={t('library.search_close_aria')}
                       >
-                        <Search className={`h-4 w-4 ${getThemeTextMuted()}`} />
+                        <X className={`h-4 w-4 ${getThemeTextMuted()}`} />
                       </button>
-                    )}
+                    </div>
+                  )}
 
-                    {/* View filter — full-width select on small screens; horizontal scroll row md+ */}
-                    <select
-                      value={viewFilter}
-                      onChange={(e) => setViewFilter(e.target.value as 'all' | 'mine' | 'community' | 'liked')}
-                      className={`md:hidden w-full min-w-0 px-3 py-2 border ${getThemeBorder()} rounded-lg focus:outline-none focus:ring-2 ${getThemeFocusRing()} focus:border-transparent ${getThemeCardBg()} ${getThemeTextPrimary()}`}
-                      aria-label={t('library.view_filter_aria')}
-                    >
-                      <option value="all">{t('library.all_items')}</option>
-                      <option value="mine">{t('library.view_mine')}</option>
-                      <option value="community">{t('library.view_community')}</option>
-                      <option value="liked">{t('library.view_liked')}</option>
-                    </select>
-                    <div
-                      className={`hidden md:flex flex-nowrap overflow-x-auto items-center gap-1 rounded-lg p-1 -mx-1 px-1 min-w-0 max-w-full ${getThemeSubtle('ui')} border ${getThemeCardBorder()}`}
-                      role="group"
-                      aria-label={t('library.view_filter_aria')}
-                    >
-                      {(
-                        [
-                          { value: 'all' as const, icon: Globe, label: t('library.all_items') },
-                          { value: 'mine' as const, icon: User, label: t('library.view_mine') },
-                          { value: 'community' as const, icon: Users, label: t('library.view_community') },
-                          { value: 'liked' as const, icon: Heart, label: t('library.view_liked') },
-                        ] as const
-                      ).map(({ value, icon: Icon, label }) => (
+                  <div className="flex flex-col lg:flex-row lg:items-stretch gap-3 w-full min-w-0">
+                    <div className="flex flex-col sm:flex-row sm:items-stretch gap-3 flex-1 min-w-0">
+                      {!isSearchExpanded && (
                         <button
-                          key={value}
                           type="button"
-                          onClick={() => setViewFilter(value)}
-                          className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm font-medium transition-colors duration-150 ${
-                            viewFilter === value
-                              ? `${getThemeCardBg()} ${getThemeTextPrimary()} shadow-sm border ${getThemeCardBorder()}`
-                              : `${getThemeTextSecondary()} hover:opacity-80`
-                          }`}
+                          onClick={() => setIsSearchExpanded(true)}
+                          className={`shrink-0 flex items-center justify-center p-2 rounded-lg ${getThemeCardBorder()} ${getThemeSubtle('ui')} hover:opacity-80 transition-colors`}
+                          aria-label={t('library.search_library_placeholder')}
                         >
-                          <Icon className="h-4 w-4 shrink-0" aria-hidden />
-                          <span className="sm:inline">{label}</span>
+                          <Search className={`h-5 w-5 ${getThemeTextMuted()}`} />
                         </button>
-                      ))}
+                      )}
+
+                      <select
+                        value={viewFilter}
+                        onChange={(e) => setViewFilter(e.target.value as 'all' | 'mine' | 'community' | 'liked')}
+                        className={`md:hidden w-full min-w-0 px-3 py-2 border ${getThemeBorder()} rounded-lg focus:outline-none focus:ring-2 ${getThemeFocusRing()} focus:border-transparent ${getThemeCardBg()} ${getThemeTextPrimary()}`}
+                        aria-label={t('library.view_filter_aria')}
+                      >
+                        <option value="all">{t('library.all_items')}</option>
+                        <option value="mine">{t('library.view_mine')}</option>
+                        <option value="community">{t('library.view_community')}</option>
+                        <option value="liked">{t('library.view_liked')}</option>
+                      </select>
+                      <div
+                        className={`hidden md:flex flex-nowrap overflow-x-auto items-center gap-1 rounded-lg p-1 -mx-1 px-1 min-w-0 max-w-full ${getThemeSubtle('ui')} border ${getThemeCardBorder()}`}
+                        role="group"
+                        aria-label={t('library.view_filter_aria')}
+                      >
+                        {(
+                          [
+                            { value: 'all' as const, icon: Globe, label: t('library.all_items') },
+                            { value: 'mine' as const, icon: User, label: t('library.view_mine') },
+                            { value: 'community' as const, icon: Users, label: t('library.view_community') },
+                            { value: 'liked' as const, icon: Heart, label: t('library.view_liked') },
+                          ] as const
+                        ).map(({ value, icon: Icon, label }) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setViewFilter(value)}
+                            className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm font-medium transition-colors duration-150 ${
+                              viewFilter === value
+                                ? `${getThemeCardBg()} ${getThemeTextPrimary()} shadow-sm border ${getThemeCardBorder()}`
+                                : `${getThemeTextSecondary()} hover:opacity-80`
+                            }`}
+                          >
+                            <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                            <span className="sm:inline">{label}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
-                    <select
-                      value={sortOption}
-                      onChange={(e) => setSortOption(e.target.value)}
-                      className={`w-full sm:w-auto min-w-0 px-3 py-2 border ${getThemeBorder()} rounded-lg focus:outline-none focus:ring-2 ${getThemeFocusRing()} focus:border-transparent ${getThemeCardBg()} ${getThemeTextPrimary()}`}
-                      aria-label={t('library.sort_by')}
-                    >
-                      <option value="created_at_desc">{t('library.sort_created_newest')}</option>
-                      <option value="created_at_asc">{t('library.sort_created_oldest')}</option>
-                      <option value="last_viewed_desc">{t('library.sort_last_viewed')}</option>
-                      <option value="title_asc">{t('library.sort_title_az')}</option>
-                      <option value="title_desc">{t('library.sort_title_za')}</option>
-                      <option value="like_count_desc">{t('library.sort_most_liked')}</option>
-                    </select>
+                    {/* Sort + Topics on one row from sm+; stacks on very small screens */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full lg:w-auto lg:shrink-0 lg:min-w-0">
+                      <select
+                        value={sortOption}
+                        onChange={(e) => setSortOption(e.target.value)}
+                        className={`w-full sm:min-w-[12rem] sm:max-w-[min(100%,20rem)] px-3 py-2 border ${getThemeBorder()} rounded-lg focus:outline-none focus:ring-2 ${getThemeFocusRing()} focus:border-transparent ${getThemeCardBg()} ${getThemeTextPrimary()}`}
+                        aria-label={t('library.sort_by')}
+                      >
+                        <option value="created_at_desc">{t('library.sort_created_newest')}</option>
+                        <option value="created_at_asc">{t('library.sort_created_oldest')}</option>
+                        <option value="last_viewed_desc">{t('library.sort_last_viewed')}</option>
+                        <option value="title_asc">{t('library.sort_title_az')}</option>
+                        <option value="title_desc">{t('library.sort_title_za')}</option>
+                        <option value="like_count_desc">{t('library.sort_most_liked')}</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setShowTopicsTagsModal(true)}
+                        className={`flex items-center justify-center sm:justify-start space-x-2 px-3 py-2 text-sm rounded-md transition-colors duration-150 whitespace-nowrap w-full sm:w-auto shrink-0 ${getThemeGradient('ui')} text-white hover:opacity-90`}
+                      >
+                        <Filter className="h-4 w-4 shrink-0" aria-hidden />
+                        <span>{t('library.topics_tags_heading')}</span>
+                        {(selectedTags.length > 0 || selectedTopics.length > 0) && (
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getThemeSubtle('ui')} ${getThemeTextPrimary()}`}>
+                            {selectedTags.length + selectedTopics.length}
+                          </span>
+                        )}
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:justify-end">
-                    {/* Topics & Tags Filter Button */}
-                    <button
-                      onClick={() => setShowTopicsTagsModal(true)}
-                      className={`flex items-center space-x-2 px-3 py-2 text-sm rounded-md transition-colors duration-150 whitespace-nowrap w-full sm:w-auto justify-center sm:justify-start ${getThemeGradient('ui')} text-white hover:opacity-90`}
-                    >
-                      <Filter className="h-4 w-4 shrink-0" />
-                      <span>{t('library.topics_tags_heading')}</span>
-                      {(selectedTags.length > 0 || selectedTopics.length > 0) && (
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getThemeSubtle('ui')} ${getThemeTextPrimary()}`}>
-                          {selectedTags.length + selectedTopics.length}
-                        </span>
-                      )}
-                    </button>
-
-                    {/* Bulk Actions */}
+                  <div className="flex flex-wrap items-center gap-2 w-full justify-end">
                     {selectMultipleMode && selectedItems.size > 0 && (
                       <button
+                        type="button"
                         onClick={() => setShowDeleteModal(true)}
                         className="w-full sm:w-auto px-3 py-2 text-sm text-red-600 hover:text-red-800 border border-red-300 rounded-lg hover:bg-red-50 transition duration-150 whitespace-nowrap dark:border-red-600 dark:hover:bg-red-900 dark:text-red-400 dark:hover:text-red-200"
                       >
@@ -1083,7 +1078,10 @@ export const LibraryPage: React.FC = React.memo(() => {
                           )}
 
                           <div className={`${getThemeSubtle('ui')} p-2 rounded-md flex-shrink-0 ${getThemeCardBorder()}`}>
-                            <FileText className={`h-4 w-4 ${getThemeTextPrimary()}`} />
+                            {/\.(jpg|jpeg|png|webp|gif|bmp|tiff?)$/i.test(item.original_file_name ?? '') || item.topics?.includes('ocr')
+                              ? <ScanLine className={`h-4 w-4 ${getThemeTextPrimary()}`} />
+                              : <BookOpen className={`h-4 w-4 ${getThemeTextPrimary()}`} />
+                            }
                           </div>
 
                           <div className="flex-1">

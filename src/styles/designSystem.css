@@ -1,0 +1,282 @@
+/* Professional UI Design System - Subtle & Elegant */
+
+/* Card Styles - Enhanced with better spacing, softer borders, layered gentle shadows */
+.card-subtle {
+  background: white;
+  border: 1px solid #e5e7eb; /* Softer border */
+  border-radius: 0.75rem; /* rounded-xl - softer */
+  padding: 1.5rem; /* p-6 - increased spacing */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05); /* Layered, gentle */
+  transition: box-shadow 200ms ease, border-color 200ms ease;
+}
+
+.dark .card-subtle {
+  background: #1f2937;
+  border-color: #374151;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+.card-subtle:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.08); /* Slight increase, no transform */
+  border-color: #d1d5db;
+}
+
+.dark .card-subtle:hover {
+  border-color: #4b5563;
+  box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* Button Variants - Soft, Rounded, Gentle Shadows (Option D) */
+.btn-soft-primary {
+  background-color: #111827;
+  color: white;
+  border: none;
+  border-radius: 0.75rem; /* rounded-xl (12px) */
+  padding: 0.625rem 1.25rem; /* py-2.5 px-5 */
+  font-weight: 500; /* font-medium */
+  transition: all 200ms ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); /* gentle, soft shadow */
+}
+
+.btn-soft-primary:hover {
+  background-color: #1f2937;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12); /* slightly stronger on hover */
+}
+
+.dark .btn-soft-primary {
+  background-color: #f9fafb;
+  color: #111827;
+}
+
+.dark .btn-soft-primary:hover {
+  background-color: #f3f4f6;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.btn-soft-secondary {
+  background-color: transparent;
+  color: #374151;
+  border: 1.5px solid #e5e7eb; /* 1.5px border */
+  border-radius: 0.75rem; /* rounded-xl */
+  padding: 0.625rem 1.25rem; /* py-2.5 px-5 */
+  font-weight: 500; /* font-medium */
+  transition: all 200ms ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.btn-soft-secondary:hover {
+  background-color: #f9fafb;
+  border-color: #d1d5db;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08); /* gentle shadow on hover */
+}
+
+.dark .btn-soft-secondary {
+  background-color: transparent;
+  color: #f3f4f6;
+  border-color: #374151;
+}
+
+.dark .btn-soft-secondary:hover {
+  background-color: rgba(55, 65, 81, 0.2);
+  border-color: #4b5563;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Legacy support - map old classes to new (same styles) */
+.btn-primary-subtle {
+  background-color: #111827;
+  color: white;
+  border: none;
+  border-radius: 0.75rem;
+  padding: 0.625rem 1.25rem;
+  font-weight: 500;
+  transition: all 200ms ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.btn-primary-subtle:hover {
+  background-color: #1f2937;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.dark .btn-primary-subtle {
+  background-color: #f9fafb;
+  color: #111827;
+}
+
+.dark .btn-primary-subtle:hover {
+  background-color: #f3f4f6;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.btn-secondary-subtle {
+  background-color: transparent;
+  color: #374151;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 0.625rem 1.25rem;
+  font-weight: 500;
+  transition: all 200ms ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.btn-secondary-subtle:hover {
+  background-color: #f9fafb;
+  border-color: #d1d5db;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.dark .btn-secondary-subtle {
+  background-color: transparent;
+  color: #f3f4f6;
+  border-color: #374151;
+}
+
+.dark .btn-secondary-subtle:hover {
+  background-color: rgba(55, 65, 81, 0.2);
+  border-color: #4b5563;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Input Fields */
+.input-clean {
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.input-clean:focus {
+  outline: none;
+  border-color: #6b7280;
+  box-shadow: 0 0 0 3px rgba(107, 114, 128, 0.1);
+}
+
+.dark .input-clean {
+  background-color: #1f2937;
+  border-color: #374151;
+  color: #f3f4f6;
+}
+
+.dark .input-clean:focus {
+  border-color: #6b7280;
+  box-shadow: 0 0 0 3px rgba(107, 114, 128, 0.2);
+}
+
+/* Shadow Utilities - Enhanced for light mode visibility */
+.shadow-subtle {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+
+.dark .shadow-subtle {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+.shadow-subtle-hover:hover {
+  box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.1), 0 1px 3px 0 rgba(0, 0, 0, 0.08);
+}
+
+.dark .shadow-subtle-hover:hover {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* Typography - Softer, More Elegant */
+.text-subtle {
+  color: #6b7280;
+  line-height: 1.7; /* Increased for better readability */
+}
+
+.dark .text-subtle {
+  color: #9ca3af;
+  line-height: 1.7;
+}
+
+.text-subtle-strong {
+  color: #374151;
+  font-weight: 500; /* font-medium instead of bold */
+  line-height: 1.6;
+}
+
+.dark .text-subtle-strong {
+  color: #d1d5db;
+  line-height: 1.6;
+}
+
+/* Heading Styles - Softer weights */
+.heading-soft {
+  font-weight: 600; /* font-semibold */
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+}
+
+.heading-soft h1 {
+  font-size: 2.25rem; /* text-4xl */
+}
+
+.heading-soft h2 {
+  font-size: 1.875rem; /* text-3xl */
+}
+
+.heading-soft h3 {
+  font-size: 1.5rem; /* text-2xl */
+}
+
+/* Body Text - Better readability */
+.body-text {
+  line-height: 1.7;
+  letter-spacing: 0.01em;
+  color: #374151;
+}
+
+.dark .body-text {
+  color: #d1d5db;
+}
+
+/* Spacing Utilities */
+.spacing-tight {
+  padding: 0.75rem;
+}
+
+.spacing-normal {
+  padding: 1rem;
+}
+
+.spacing-relaxed {
+  padding: 1.5rem;
+}
+
+/* Border Utilities */
+.border-subtle {
+  border: 1px solid #f3f4f6;
+}
+
+.dark .border-subtle {
+  border-color: #374151;
+}
+
+.border-subtle-hover:hover {
+  border-color: #e5e7eb;
+}
+
+.dark .border-subtle-hover:hover {
+  border-color: #4b5563;
+}
+
+/* Background Utilities */
+.bg-subtle {
+  background-color: #f9fafb;
+}
+
+.dark .bg-subtle {
+  background-color: #111827;
+}
+
+.bg-subtle-hover:hover {
+  background-color: #f3f4f6;
+}
+
+.dark .bg-subtle-hover:hover {
+  background-color: #1f2937;
+}
+

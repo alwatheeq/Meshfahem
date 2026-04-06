@@ -1,27 +1,29 @@
-import React, { useState, useRef } from 'react';
-import { useI18n } from '../../contexts/I18nContext';
-import { Upload, FileText, Settings, Info, Type, File, AlertCircle, X, Stethoscope } from 'lucide-react';
+import React, { useState, useRef, useContext } from 'react';
+import { useI18n, I18nContext } from '../../contexts/I18nContext';
+import { Upload, FileText, Settings, Info, Type, File, AlertCircle, X, Stethoscope, Scan } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { medStudentClient } from '../../utils/medStudentClient';
 import { useFeatureAccess } from '../../hooks/useFeatureAccess';
 import { useSubscription } from '../../hooks/useSubscription';
-import { SubscriptionGuard } from '../Subscription/SubscriptionGuard';
 import { ErrorLogger } from '../../utils/errorLogger';
+import { extractTextFromFile } from '../../utils/fileProcessor.js';
 
 interface InputFormProps {
-  onProcessInput: (input: File | string, flashcardCount: number, fromSummary: boolean, medicalMode?: boolean) => void;
+  onProcessInput: (input: File | string, flashcardCount: number, fromSummary: boolean, medicalMode?: boolean, useOCR?: boolean) => void;
 }
 
-export const InputForm: React.FC<InputFormProps> = ({ onProcessInput }) => {
+// Internal component that uses hooks
+const InputFormContent: React.FC<InputFormProps> = ({ onProcessInput }) => {
   const [dragActive, setDragActive] = useState(false);
   const [flashcardCount, setFlashcardCount] = useState(10);
   const [fromSummary, setFromSummary] = useState(false);
   const [medicalMode, setMedicalMode] = useState(false);
   const [medicalValidation, setMedicalValidation] = useState<{ isValid: boolean; score: number; feedback: string } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [inputMode, setInputMode] = useState<'file' | 'text'>('file');
+  const [inputMode, setInputMode] = useState<'file' | 'text' | 'ocr'>('file');
+  const ocrFileInputRef = useRef<HTMLInputElement>(null);
   const { t } = useI18n();
-  const { getThemeGradient } = useTheme();
+  const { getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
   const [textInput, setTextInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [notification, setNotification] = useState<{ show: boolean; message: string; type: 'error' }>({
@@ -81,19 +83,45 @@ export const InputForm: React.FC<InputFormProps> = ({ onProcessInput }) => {
     e.stopPropagation();
     setDragActive(false);
 
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const files = Array.from(e.dataTransfer.files);
+      ErrorLogger.debug('Files dropped', { component: 'InputForm', action: 'handleDrop', fileCount: files.length });
+      if (files.length === 1) {
+        // Single file: use original flow (pass File to Dashboard)
+        handleFile(files[0]).catch(error => {
+          const err = error instanceof Error ? error : new Error(String(error));
+          ErrorLogger.error(err, { component: 'InputForm', action: 'handleDrop', fileName: files[0].name });
+          showNotification('Error processing file. Please try again.');
+        });
+      } else {
+        // Multiple files: extract and combine
+        handleFiles(files);
+      }
     }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.preventDefault();
-    if (e.target.files && e.target.files[0]) {
-      handleFile(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      const files = Array.from(e.target.files);
+      ErrorLogger.debug('Files selected', { component: 'InputForm', action: 'handleChange', fileCount: files.length });
+      if (files.length === 1) {
+        // Single file: use original flow (pass File to Dashboard)
+        handleFile(files[0]).catch(error => {
+          const err = error instanceof Error ? error : new Error(String(error));
+          ErrorLogger.error(err, { component: 'InputForm', action: 'handleChange', fileName: files[0].name });
+          showNotification('Error processing file. Please try again.');
+        });
+      } else {
+        // Multiple files: extract and combine
+        handleFiles(files);
+      }
     }
   };
 
-  const handleFile = async (file: File) => {
+  const handleFiles = async (files: File[]) => {
+    if (files.length === 0) return;
+
     if (!hasActiveSubscription()) {
       showNotification('Please subscribe to process files');
       return;
@@ -110,18 +138,162 @@ export const InputForm: React.FC<InputFormProps> = ({ onProcessInput }) => {
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     ];
 
-    if (!allowedTypes.includes(file.type)) {
-      showNotification(t('dashboard.alert_invalid_file_type'));
+    // Validate all files
+    for (const file of files) {
+      if (!allowedTypes.includes(file.type)) {
+        showNotification(`${file.name}: ${t('dashboard.alert_invalid_file_type')}`);
+        return;
+      }
+
+      if (file.size > 50 * 1024 * 1024) { // 50MB limit
+        showNotification(`${file.name}: ${t('dashboard.alert_file_too_large')}`);
+        return;
+      }
+    }
+
+    await trackFeatureUsage('summary_generation');
+    
+    // Process all files and combine text
+    try {
+      const extractedTexts: string[] = [];
+      
+      // Process files sequentially to avoid overwhelming the system
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        try {
+          // Extract text with progress callback (no-op for now, progress handled in Dashboard)
+          const extractedData = await extractTextFromFile(file, () => {
+            // Progress callback - can be used to update UI if needed
+          });
+          
+          if (extractedData && extractedData.text && extractedData.text.trim()) {
+            extractedTexts.push(extractedData.text);
+          } else {
+            ErrorLogger.warn('No text extracted from file', { 
+              component: 'InputForm', 
+              action: 'handleFiles', 
+              fileName: file.name 
+            });
+          }
+        } catch (fileError) {
+          const err = fileError instanceof Error ? fileError : new Error(String(fileError));
+          ErrorLogger.error(err, { 
+            component: 'InputForm', 
+            action: 'handleFiles', 
+            fileName: file.name,
+            fileIndex: i 
+          });
+          // Continue with other files even if one fails
+          showNotification(`Error processing ${file.name}: ${err.message}`);
+        }
+      }
+      
+      if (extractedTexts.length === 0) {
+        showNotification('No text could be extracted from the selected files.');
+        return;
+      }
+      
+      // Combine all text with double newlines between files
+      const combinedText = extractedTexts.join('\n\n');
+      
+      // Pass combined text as string to onProcessInput
+      onProcessInput(combinedText, flashcardCount, fromSummary, medicalMode, false);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      ErrorLogger.error(err, { component: 'InputForm', action: 'handleFiles', fileCount: files.length });
+      showNotification('Error processing files. Please try again.');
+    }
+  };
+
+  const handleFile = async (file: File) => {
+    try {
+      ErrorLogger.debug('Processing single file', { component: 'InputForm', action: 'handleFile', fileName: file.name, fileType: file.type, fileSize: file.size });
+      
+      if (!hasActiveSubscription()) {
+        showNotification('Please subscribe to process files');
+        return;
+      }
+
+      if (!canAccessFeature('summary_generation')) {
+        showNotification('You have used your trial limit for this feature. Please upgrade to continue.');
+        return;
+      }
+
+      const allowedTypes = [
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      ];
+
+      if (!allowedTypes.includes(file.type)) {
+        showNotification(t('dashboard.alert_invalid_file_type'));
+        return;
+      }
+
+      if (file.size > 50 * 1024 * 1024) { // 50MB limit
+        showNotification(t('dashboard.alert_file_too_large'));
+        return;
+      }
+
+      await trackFeatureUsage('summary_generation');
+      ErrorLogger.debug('Calling onProcessInput with file', { component: 'InputForm', action: 'handleFile', fileName: file.name });
+      onProcessInput(file, flashcardCount, fromSummary, medicalMode, false);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      ErrorLogger.error(err, { component: 'InputForm', action: 'handleFile', fileName: file.name });
+      showNotification('Error processing file. Please try again.');
+    }
+  };
+
+  const handleOCRFile = async (file: File) => {
+    if (!hasActiveSubscription()) {
+      showNotification('Please subscribe to process images with OCR');
       return;
     }
 
-    if (file.size > 50 * 1024 * 1024) { // 50MB limit
-      showNotification(t('dashboard.alert_file_too_large'));
+    if (!canAccessFeature('summary_generation')) {
+      showNotification('You have used your trial limit for this feature. Please upgrade to continue.');
+      return;
+    }
+
+    const allowedImageTypes = [
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/bmp',
+      'image/tiff',
+      'image/gif',
+    ];
+
+    if (!allowedImageTypes.includes(file.type)) {
+      showNotification('Invalid file type for OCR. Please upload an image (JPG, PNG, BMP, TIFF, GIF).');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) { // 10MB limit for images
+      showNotification('File too large. Maximum size is 10MB for images.');
       return;
     }
 
     await trackFeatureUsage('summary_generation');
-    onProcessInput(file, flashcardCount, fromSummary, medicalMode);
+    onProcessInput(file, flashcardCount, fromSummary, medicalMode, true);
+  };
+
+  const handleOCRChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    if (e.target.files && e.target.files[0]) {
+      handleOCRFile(e.target.files[0]);
+    }
+  };
+
+  const handleOCRDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleOCRFile(e.dataTransfer.files[0]);
+    }
   };
 
   const handleTextSubmit = async () => {
@@ -157,27 +329,27 @@ export const InputForm: React.FC<InputFormProps> = ({ onProcessInput }) => {
     }
 
     await trackFeatureUsage('summary_generation');
-    onProcessInput(textInput, flashcardCount, fromSummary, medicalMode);
+    onProcessInput(textInput, flashcardCount, fromSummary, medicalMode, false);
   };
 
   return (
     <div className="max-w-4xl mx-auto">
       <div className="text-center mb-8">
         <div className="flex items-center justify-center space-x-3 mb-4">
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">{t('dashboard.process_content')}</h2>
+          <h2 className={`text-3xl font-bold ${getThemeTextPrimary()}`}>{t('dashboard.process_content')}</h2>
           {medicalMode && (
-            <div className="bg-gradient-to-r from-red-500 to-pink-600 px-3 py-1 rounded-full flex items-center space-x-2">
-              <Stethoscope className="h-4 w-4 text-white" />
-              <span className="text-white text-sm font-medium">Med Student Mode</span>
+            <div className="bg-red-50 dark:bg-red-900/20 px-3 py-1 rounded-full flex items-center space-x-2 border border-red-200 dark:border-red-800">
+              <Stethoscope className="h-4 w-4 text-red-700 dark:text-red-400" />
+              <span className="text-red-700 dark:text-red-400 text-sm font-medium">{t('dashboard.med_student_mode_label')}</span>
             </div>
           )}
         </div>
-        <p className="text-lg text-gray-600 dark:text-gray-300">
+        <p className={`text-lg ${getThemeTextSecondary()}`}>
           {t('dashboard.process_desc')}
         </p>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-xl p-8 dark:bg-gray-800 dark:shadow-none">
+      <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8 ${getThemeCardBorder()}`}>
         {/* Notification */}
         {notification.show && (
           <div className="mb-6 p-4 rounded-lg flex items-center space-x-3 bg-red-50 border border-red-200 text-red-800 dark:bg-red-900 dark:border-red-700 dark:text-red-200">
@@ -193,13 +365,13 @@ export const InputForm: React.FC<InputFormProps> = ({ onProcessInput }) => {
         )}
         
         {/* Tab Navigation */}
-        <div className="flex mb-6 bg-gray-100 rounded-lg p-1 dark:bg-gray-700">
+        <div className={`flex mb-6 ${getThemeSubtle('ui')} rounded-lg p-1`}>
           <button
             onClick={() => setInputMode('file')}
             className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition duration-150 ${
               inputMode === 'file'
-                ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-900 dark:text-gray-100 dark:shadow-none'
-                : 'text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+                ? `${getThemeCardBg()} ${getThemeTextPrimary()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm dark:shadow-none`
+                : `${getThemeTextSecondary()} hover:opacity-80`
             }`}
           >
             <File className="h-4 w-4" />
@@ -209,22 +381,33 @@ export const InputForm: React.FC<InputFormProps> = ({ onProcessInput }) => {
             onClick={() => setInputMode('text')}
             className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition duration-150 ${
               inputMode === 'text'
-                ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-900 dark:text-gray-100 dark:shadow-none'
-                : 'text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+                ? `${getThemeCardBg()} ${getThemeTextPrimary()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm dark:shadow-none`
+                : `${getThemeTextSecondary()} hover:opacity-80`
             }`}
           >
             <Type className="h-4 w-4" />
             <span>{t('dashboard.paste_text')}</span>
+          </button>
+          <button
+            onClick={() => setInputMode('ocr')}
+            className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-md transition duration-150 ${
+              inputMode === 'ocr'
+                ? `${getThemeCardBg()} ${getThemeTextPrimary()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm dark:shadow-none`
+                : `${getThemeTextSecondary()} hover:opacity-80`
+            }`}
+          >
+            <Scan className="h-4 w-4" />
+            <span>{t('dashboard.ocr_scan')}</span>
           </button>
         </div>
 
         {/* File Upload Mode */}
         {inputMode === 'file' && (
           <div
-            className={`relative border-2 border-dashed rounded-xl p-12 text-center transition-all duration-200 ${
+            className={`relative border-2 border-dashed rounded-lg p-12 text-center transition-colors duration-150 ${
               dragActive
-                ? 'border-cyan-400 bg-cyan-50'
-                : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50 dark:border-gray-700 dark:hover:border-gray-600 dark:hover:bg-gray-700'
+                ? `${getThemeCardBorder()} opacity-60 ${getThemeSubtle('bg')}`
+                : `${getThemeCardBorder()} hover:opacity-60 ${getThemeSubtle('bg')} hover:opacity-80`
             }`}
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
@@ -235,21 +418,23 @@ export const InputForm: React.FC<InputFormProps> = ({ onProcessInput }) => {
               ref={fileInputRef}
               type="file"
               accept=".pdf,.pptx,.docx"
+              multiple
               onChange={handleChange}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
 
             <div className="space-y-4">
-              <div className={`mx-auto w-16 h-16 ${getThemeGradient('ui')} rounded-full flex items-center justify-center`}>
-                <Upload className="h-8 w-8 text-white" />
+              <div className={`mx-auto w-16 h-16 ${getThemeSubtle('ui')} rounded-full flex items-center justify-center ${getThemeCardBorder()}`}>
+                <Upload className={`h-8 w-8 ${getThemeTextPrimary()}`} />
               </div>
 
               <div>
-                <p className="text-xl font-semibold text-gray-900 mb-2 dark:text-gray-100">{t('dashboard.drop_file')}</p>
-                <p className="text-gray-500 dark:text-gray-400">{t('dashboard.supported_files')}</p>
+                <p className={`text-xl font-semibold ${getThemeTextPrimary()} mb-2`}>{t('dashboard.drop_file')}</p>
+                <p className={getThemeTextMuted()}>{t('dashboard.supported_files')}</p>
+                <p className={`text-sm ${getThemeTextMuted()} mt-1`}>You can select multiple files at once</p>
               </div>
 
-              <div className="flex justify-center space-x-4 text-sm text-gray-400">
+              <div className={`flex justify-center space-x-4 text-sm ${getThemeTextMuted()}`}>
                 <div className="flex items-center">
                   <FileText className="h-4 w-4 mr-1" />
                   PDF
@@ -267,21 +452,78 @@ export const InputForm: React.FC<InputFormProps> = ({ onProcessInput }) => {
           </div>
         )}
 
+        {/* OCR Scan Mode */}
+        {inputMode === 'ocr' && (
+          <div
+            className={`relative border-2 border-dashed rounded-lg p-12 text-center transition-colors duration-150 ${
+              dragActive
+                ? `${getThemeCardBorder()} opacity-60 ${getThemeSubtle('bg')}`
+                : `${getThemeCardBorder()} hover:opacity-60 ${getThemeSubtle('bg')} hover:opacity-80`
+            }`}
+            onDragEnter={handleDrag}
+            onDragLeave={handleDrag}
+            onDragOver={handleDrag}
+            onDrop={handleOCRDrop}
+          >
+            <input
+              ref={ocrFileInputRef}
+              type="file"
+              accept=".jpg,.jpeg,.png,.bmp,.tiff,.gif,image/jpeg,image/jpg,image/png,image/bmp,image/tiff,image/gif"
+              onChange={handleOCRChange}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+            />
+
+            <div className="space-y-4">
+              <div className={`mx-auto w-16 h-16 ${getThemeSubtle('ui')} rounded-full flex items-center justify-center ${getThemeCardBorder()}`}>
+                <Scan className={`h-8 w-8 ${getThemeTextPrimary()}`} />
+              </div>
+
+              <div>
+                <p className={`text-xl font-semibold ${getThemeTextPrimary()} mb-2`}>{t('dashboard.ocr_scan_title')}</p>
+                <p className={getThemeTextMuted()}>{t('dashboard.ocr_upload_hint')}</p>
+              </div>
+
+              <div className={`flex justify-center space-x-4 text-sm ${getThemeTextMuted()}`}>
+                <div className="flex items-center">
+                  <FileText className="h-4 w-4 mr-1" />
+                  JPG
+                </div>
+                <div className="flex items-center">
+                  <FileText className="h-4 w-4 mr-1" />
+                  PNG
+                </div>
+                <div className="flex items-center">
+                  <FileText className="h-4 w-4 mr-1" />
+                  BMP
+                </div>
+                <div className="flex items-center">
+                  <FileText className="h-4 w-4 mr-1" />
+                  TIFF
+                </div>
+                <div className="flex items-center">
+                  <FileText className="h-4 w-4 mr-1" />
+                  GIF
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Text Input Mode */}
         {inputMode === 'text' && (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-200">{t('dashboard.paste_content')}</label>
+              <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-2`}>{t('dashboard.paste_content')}</label>
               <textarea
                 value={textInput}
                 onChange={(e) => setTextInput(e.target.value)}
                 placeholder={t('dashboard.paste_placeholder')}
-                className="w-full h-64 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent resize-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-400"
+                className={`w-full h-64 px-4 py-3 ${getThemeCardBorder()} rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent resize-none ${getThemeCardBg()} ${getThemeTextPrimary()}`}
               />
             </div>
             
             <div className="flex justify-between items-center text-sm">
-              <span className="text-gray-500 dark:text-gray-400">
+              <span className={getThemeTextMuted()}>
                 {textInput.length.toLocaleString()} {t('dashboard.characters')}
                 {textInput.length > 0 && (
                   <span className="ml-2">
@@ -289,7 +531,7 @@ export const InputForm: React.FC<InputFormProps> = ({ onProcessInput }) => {
                   </span>
                 )}
               </span>
-              <span className="text-gray-400">{t('dashboard.min_characters')} | {t('dashboard.max_characters')}</span>
+              <span className={getThemeTextMuted()}>{t('dashboard.min_characters')} | {t('dashboard.max_characters')}</span>
             </div>
 
             <button
@@ -299,13 +541,13 @@ export const InputForm: React.FC<InputFormProps> = ({ onProcessInput }) => {
                 textInput.length > 100000 ||
                 (medicalMode && medicalValidation && !medicalValidation.isValid)
               }
-              className={`w-full py-3 px-4 text-white rounded-lg font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 ${
+              className={`w-full py-3 px-4 text-white rounded-md font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 ${
                 medicalMode
-                  ? 'bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 focus:ring-red-500 dark:from-red-500 dark:to-pink-500 dark:hover:from-red-600 dark:hover:to-pink-600'
-                  : `${getThemeGradient('ui')} hover:opacity-90 focus:ring-2 focus:ring-offset-2`
+                  ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500 dark:bg-red-500 dark:hover:bg-red-600'
+                  : 'bg-gray-900 hover:bg-gray-800 focus:ring-gray-500 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-gray-200'
               }`}
             >
-              {medicalMode ? '🩺 Process Medical Content' : t('dashboard.process_text')}
+              {medicalMode ? `🩺 ${t('dashboard.process_medical_content')}` : t('dashboard.process_text')}
             </button>
 
             {/* Medical Validation Feedback */}
@@ -320,7 +562,7 @@ export const InputForm: React.FC<InputFormProps> = ({ onProcessInput }) => {
                     medicalValidation.isValid ? 'bg-green-500' : 'bg-orange-500'
                   }`}></div>
                   <span className="font-medium">
-                    Medical Content Score: {medicalValidation.score}/100
+                    {t('dashboard.medical_content_score')}: {medicalValidation.score}/100
                   </span>
                 </div>
                 <p className="mt-1">{medicalValidation.feedback}</p>
@@ -333,27 +575,27 @@ export const InputForm: React.FC<InputFormProps> = ({ onProcessInput }) => {
         <div className="mt-6 flex items-center justify-between">
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className="flex items-center space-x-2 text-gray-600 hover:text-gray-800 transition duration-150 dark:text-gray-300 dark:hover:text-gray-100"
+            className={`flex items-center space-x-2 ${getThemeTextSecondary()} hover:opacity-80 transition duration-150`}
           >
             <Settings className="h-4 w-4" />
             <span>{t('dashboard.processing_settings')}</span>
           </button>
 
-          <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
+          <div className={`flex items-center space-x-2 text-sm ${getThemeTextMuted()}`}>
             <Info className="h-4 w-4" />
             <span>{t('dashboard.content_secure')}</span>
           </div>
         </div>
 
         {showSettings && (
-          <div className="mt-6 p-6 bg-gray-50 rounded-xl space-y-4 dark:bg-gray-900">
+          <div className={`mt-6 p-6 ${getThemeSubtle('bg')} rounded-lg space-y-4 ${getThemeCardBorder()}`}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-200">{t('dashboard.flashcard_count')}</label>
+                <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-2`}>{t('dashboard.flashcard_count')}</label>
                 <select
                   value={flashcardCount}
                   onChange={(e) => setFlashcardCount(Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-700 dark:text-gray-100"
+                  className={`w-full px-3 py-2 ${getThemeCardBorder()} rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent ${getThemeCardBg()} ${getThemeTextPrimary()}`}
                 >
                   <option value={10}>10 {t('dashboard.cards')}</option>
                   <option value={20}>20 {t('dashboard.cards')}</option>
@@ -364,25 +606,25 @@ export const InputForm: React.FC<InputFormProps> = ({ onProcessInput }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-200">{t('dashboard.generate_from')}</label>
+                <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-2`}>{t('dashboard.generate_from')}</label>
                 <div className="flex space-x-4">
                   <label className="flex items-center">
                     <input
                       type="radio"
                       checked={!fromSummary}
                       onChange={() => setFromSummary(false)}
-                      className="h-4 w-4 text-cyan-600 focus:ring-cyan-500 border-gray-300"
+                      className={`h-4 w-4 text-cyan-600 focus:ring-cyan-500 ${getThemeCardBorder()}`}
                     />
-                    <span className="ml-2 text-sm text-gray-700 dark:text-gray-200">{t('dashboard.full_content')}</span>
+                    <span className={`ml-2 text-sm ${getThemeTextSecondary()}`}>{t('dashboard.full_content')}</span>
                   </label>
                   <label className="flex items-center">
                     <input
                       type="radio"
                       checked={fromSummary}
                       onChange={() => setFromSummary(true)}
-                      className="h-4 w-4 text-cyan-600 focus:ring-cyan-500 border-gray-300"
+                      className={`h-4 w-4 text-cyan-600 focus:ring-cyan-500 ${getThemeCardBorder()}`}
                     />
-                    <span className="ml-2 text-sm text-gray-700 dark:text-gray-200">{t('dashboard.summary')}</span>
+                    <span className={`ml-2 text-sm ${getThemeTextSecondary()}`}>{t('dashboard.summary')}</span>
                   </label>
                 </div>
               </div>
@@ -391,7 +633,7 @@ export const InputForm: React.FC<InputFormProps> = ({ onProcessInput }) => {
             <div className={`text-sm rounded-lg p-3 ${
               medicalMode
                 ? 'bg-red-50 border border-red-200 text-red-700 dark:bg-red-900 dark:border-red-700 dark:text-red-200'
-                : 'bg-blue-50 border border-blue-200 text-gray-600 dark:bg-blue-900 dark:border-blue-700 dark:text-gray-300'
+                : `bg-blue-50 border border-blue-200 ${getThemeTextSecondary()} dark:bg-blue-900 dark:border-blue-700`
             }`}>
               <p className="font-medium mb-1">
                 {medicalMode ? '🩺 Medical Processing Tips' : t('dashboard.processing_tips')}
@@ -417,16 +659,16 @@ export const InputForm: React.FC<InputFormProps> = ({ onProcessInput }) => {
         )}
 
         {/* Medical Mode Toggle - Compact Version */}
-        <div className="mt-6 p-4 bg-gradient-to-r from-red-50 to-pink-50 border border-red-200 rounded-xl dark:from-red-900 dark:to-pink-900 dark:border-red-700">
+        <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg dark:bg-red-900/20 dark:border-red-800">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="bg-gradient-to-r from-red-500 to-pink-600 p-2 rounded-lg dark:from-red-600 dark:to-pink-700">
-                <Stethoscope className="h-5 w-5 text-white" />
+              <div className="bg-red-100 dark:bg-red-900/30 p-2 rounded-md border border-red-200 dark:border-red-800">
+                <Stethoscope className="h-5 w-5 text-red-700 dark:text-red-400" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-red-900 dark:text-red-300">Medical Student Mode</h3>
+                <h3 className="text-lg font-semibold text-red-900 dark:text-red-300">{t('dashboard.medical_student_mode_title')}</h3>
                 <p className="text-sm text-red-700 dark:text-red-200">
-                  Enable for medical content with enhanced clinical focus and board exam preparation
+                  {t('dashboard.medical_student_mode_subtitle')}
                 </p>
               </div>
             </div>
@@ -438,38 +680,35 @@ export const InputForm: React.FC<InputFormProps> = ({ onProcessInput }) => {
                 onChange={(e) => setMedicalMode(e.target.checked)}
                 className="sr-only"
               />
-              <div className={`w-12 h-6 rounded-full transition duration-200 ${
+              <div className={`w-12 h-6 rounded-full transition-colors duration-150 ${
                 medicalMode
-                  ? 'bg-gradient-to-r from-red-500 to-pink-600'
+                  ? 'bg-red-600'
                   : 'bg-gray-300 dark:bg-gray-600'
               }`}>
-                <div className={`w-5 h-5 bg-white rounded-full shadow transform transition duration-200 ${
+                <div className={`w-5 h-5 bg-white rounded-full shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow transform transition duration-200 ${
                   medicalMode ? 'translate-x-6' : 'translate-x-0.5'
                 } mt-0.5`}></div>
               </div>
             </label>
           </div>
-
-          {/* Medical Mode Benefits */}
-          {medicalMode && (
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="bg-white bg-opacity-50 rounded-lg p-3 dark:bg-gray-800 dark:bg-opacity-50">
-                <div className="text-sm font-medium text-red-900 dark:text-red-300">🏥 Board Exam Focus</div>
-                <div className="text-xs text-red-700 dark:text-red-200">USMLE/COMLEX style questions</div>
-              </div>
-              <div className="bg-white bg-opacity-50 rounded-lg p-3 dark:bg-gray-800 dark:bg-opacity-50">
-                <div className="text-sm font-medium text-red-900 dark:text-red-300">🧬 Pathophysiology</div>
-                <div className="text-xs text-red-700 dark:text-red-200">Mechanism-based learning</div>
-              </div>
-              <div className="bg-white bg-opacity-50 rounded-lg p-3 dark:bg-gray-800 dark:bg-opacity-50">
-                <div className="text-sm font-medium text-red-900 dark:text-red-300">🩺 Clinical Scenarios</div>
-                <div className="text-xs text-red-700 dark:text-red-200">Real-world case applications</div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
     </div>
   );
+};
+
+// Wrapper component that checks context availability
+export const InputForm: React.FC<InputFormProps> = (props) => {
+  // Check if context is available before rendering
+  const i18nContext = useContext(I18nContext);
+  
+  // If context is not available, don't render (this should never happen in normal flow)
+  if (!i18nContext) {
+    console.warn('InputForm: I18nContext not available, skipping render');
+    return null;
+  }
+  
+  // Context is available, render the component
+  return <InputFormContent {...props} />;
 };

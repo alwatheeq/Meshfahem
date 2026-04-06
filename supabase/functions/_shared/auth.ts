@@ -1,3 +1,4 @@
+/// <reference path="./deno.d.ts" />
 /**
  * Shared authentication utilities for Supabase Edge Functions
  * Provides consistent user authentication patterns

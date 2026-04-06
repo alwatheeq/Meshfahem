@@ -2,7 +2,8 @@ import React, { ReactNode } from 'react';
 import { useSubscription } from '../../hooks/useSubscription';
 import { useFeatureAccess, FeatureName } from '../../hooks/useFeatureAccess';
 import { useAuth } from '../../hooks/useAuth';
-import { Lock, Zap, Crown } from 'lucide-react';
+import { useTheme } from '../../contexts/ThemeContext';
+import { Crown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface SubscriptionGuardProps {
@@ -19,8 +20,8 @@ export const SubscriptionGuard: React.FC<SubscriptionGuardProps> = ({
   showUpgradePrompt = true
 }) => {
   const navigate = useNavigate();
-  const { hasActiveSubscription, subscription, getTierDisplayName, getDaysRemaining } = useSubscription();
-  const { canAccessFeature, getAccessMessage, hasUsedFeature } = useFeatureAccess();
+  const { hasActiveSubscription, subscription, getTierDisplayName, getDaysRemaining: _getDaysRemaining } = useSubscription();
+  const { canAccessFeature, getAccessMessage } = useFeatureAccess();
   const { user } = useAuth();
   const { getThemeGradient } = useTheme();
 
@@ -42,39 +43,24 @@ export const SubscriptionGuard: React.FC<SubscriptionGuardProps> = ({
     return null;
   }
 
-  const is1DayTrial = subscription?.subscription_tier === 'trial_1day';
   const hasExpired = subscription && new Date(subscription.end_date) <= new Date();
 
   return (
     <div className="flex items-center justify-center min-h-[400px] p-6">
-      <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 text-center">
+      <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8 text-center">
         <div className="mb-6">
-          {is1DayTrial && feature && hasUsedFeature(feature) ? (
-            <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-4 rounded-full w-20 h-20 mx-auto flex items-center justify-center">
-              <Zap className="h-10 w-10 text-white" />
-            </div>
-          ) : (
-            <div className={`${getThemeGradient('ui')} p-4 rounded-full w-20 h-20 mx-auto flex items-center justify-center`}>
-              <Crown className="h-10 w-10 text-white" />
-            </div>
-          )}
+          <div className={`${getThemeGradient('ui')} p-4 rounded-full w-20 h-20 mx-auto flex items-center justify-center`}>
+            <Crown className="h-10 w-10 text-white" />
+          </div>
         </div>
 
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
-          {hasExpired ? 'Subscription Expired' : is1DayTrial && feature && hasUsedFeature(feature) ? 'Trial Limit Reached' : 'Upgrade Required'}
+          {hasExpired ? 'Subscription Expired' : 'Upgrade Required'}
         </h2>
 
         <p className="text-gray-600 dark:text-gray-400 mb-2">
           {feature ? getAccessMessage(feature) : 'You need an active subscription to access this feature'}
         </p>
-
-        {is1DayTrial && (
-          <div className="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-4 mb-6">
-            <p className="text-sm text-blue-800 dark:text-blue-300">
-              <span className="font-semibold">1-Day Trial:</span> You can use each feature once. Upgrade to get unlimited access!
-            </p>
-          </div>
-        )}
 
         {hasExpired && (
           <div className="bg-orange-50 dark:bg-orange-900/30 rounded-lg p-4 mb-6">
@@ -105,7 +91,7 @@ export const SubscriptionGuard: React.FC<SubscriptionGuardProps> = ({
 
         <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
           <p className="text-xs text-gray-500 dark:text-gray-500">
-            Choose from flexible plans starting with a free trial
+            Choose a Standard plan with flexible billing periods on the pricing page
           </p>
         </div>
       </div>

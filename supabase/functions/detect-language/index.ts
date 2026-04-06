@@ -1,6 +1,12 @@
+/// <reference path="../_shared/deno.d.ts" />
 import { handleCorsPreflight } from '../_shared/cors.ts';
 import { jsonResponse, errorResponse } from '../_shared/response.ts';
-import { validateMethod, parseJsonBody, validateRequiredFields, validateNonEmptyString } from '../_shared/validation.ts';
+import {
+  validateMethod,
+  validateJsonContentType,
+  parseJsonBody,
+  validateNonEmptyString
+} from '../_shared/validation.ts';
 
 async function detectLanguageWithOpenAI(text: string, openaiApiKey: string) {
   try {
@@ -15,42 +21,42 @@ async function detectLanguageWithOpenAI(text: string, openaiApiKey: string) {
         messages: [
           {
             role: 'system',
-            content: 'Detect the primary language of this text. Respond with only the ISO 639-1 code (en, ar, fr, tr) or "unknown".'
+            content:
+              'Detect the primary language of this text. Respond with only one of: ISO 639-1 code (en, ar, fr, tr), the language name (English/Arabic/French/Turkish), or "unknown". No extra words.'
           },
           {
             role: 'user',
             content: text
           }
         ],
-        max_tokens: 10, // Very short response needed
+        max_tokens: 10,
         temperature: 0.1
       })
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      return { 
-        error: `OpenAI API error ${response.status}: ${errorText}` 
+      return {
+        error: `OpenAI API error ${response.status}: ${errorText}`
       };
     }
 
     const data = await response.json();
     const detectedLanguage = data?.choices?.[0]?.message?.content?.trim().toLowerCase();
-    
+
     if (!detectedLanguage) {
       return { error: 'No language detected from OpenAI API' };
     }
 
     return { language: detectedLanguage };
-  } catch (error) {
-    return { 
-      error: `Language detection failed: ${error.message}` 
+  } catch (error: any) {
+    return {
+      error: `Language detection failed: ${error.message}`
     };
   }
 }
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return handleCorsPreflight();
   }
@@ -58,6 +64,12 @@ Deno.serve(async (req) => {
   const methodError = validateMethod(req, ['POST']);
   if (methodError) {
     return methodError;
+  }
+
+  // ✅ Added: enforce JSON content type
+  const contentTypeError = validateJsonContentType(req);
+  if (contentTypeError) {
+    return contentTypeError;
   }
 
   try {
@@ -68,58 +80,82 @@ Deno.serve(async (req) => {
 
     const { text } = bodyResult.data;
 
-    // Validate input
     const textError = validateNonEmptyString(text, 'text');
     if (textError) {
       return errorResponse(textError, 400);
     }
 
-    // Minimum length check for reliable detection
+    // ✅ Updated: do NOT "pretend-detect" language when too short.
+    // Return original + detectedCode unknown + reason.
     if (text.trim().length < 50) {
-      return jsonResponse({ 
+      return jsonResponse({
         language: 'original',
+        detectedCode: 'unknown',
         confidence: 'low',
         reason: 'Text too short for reliable detection'
       });
     }
 
-    // Get OpenAI API key from environment variables
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openaiApiKey) {
       return errorResponse('OpenAI API key not configured', 500);
     }
 
-    // Use first 1000 characters for efficiency
     const textSample = text.substring(0, 1000);
 
-    // Detect the language
+    // ✅ Added: deterministic Arabic detection (skip OpenAI)
+    const arabicChars = (textSample.match(/[\u0600-\u06FF]/g) || []).length;
+    const latinChars = (textSample.match(/[A-Za-z]/g) || []).length;
+
+    // Threshold tuned to avoid false positives on tiny Arabic fragments
+    if (arabicChars >= 20 && arabicChars > latinChars) {
+      return jsonResponse({
+        language: 'ar',
+        detectedCode: 'ar',
+        confidence: 'high',
+        method: 'regex'
+      });
+    }
+
     const result = await detectLanguageWithOpenAI(textSample, openaiApiKey);
-    
+
     if ('error' in result) {
       return errorResponse(result.error, 500);
     }
 
-    // Map detected language to our codes
+    // Variant-tolerant mapping (as you prefer)
     const languageMap: Record<string, string> = {
-      'en': 'en',
-      'english': 'en',
-      'ar': 'ar',
-      'arabic': 'ar',
-      'fr': 'fr',
-      'french': 'fr',
+      en: 'en',
+      english: 'en',
+
+      ar: 'ar',
+      arabic: 'ar',
+      'العربية': 'ar',
+
+      fr: 'fr',
+      french: 'fr',
       'français': 'fr',
-      'tr': 'tr',
-      'turkish': 'tr',
-      'türkçe': 'tr'
+
+      tr: 'tr',
+      turkish: 'tr',
+      'türkçe': 'tr',
+
+      unknown: 'original'
     };
 
     const detectedCode = result.language?.toLowerCase() || 'unknown';
     const mappedLanguage = languageMap[detectedCode] || 'original';
 
-    return jsonResponse({ 
+    // ✅ Preserve your preference:
+    // - If unknown => language "original" (no user-facing error)
+    // - But still signal unknown in detectedCode + confidence low
+    const isUnknown = mappedLanguage === 'original';
+
+    return jsonResponse({
       language: mappedLanguage,
-      detectedCode: detectedCode,
-      confidence: mappedLanguage !== 'original' ? 'high' : 'low'
+      detectedCode,
+      confidence: isUnknown ? 'low' : 'high',
+      ...(isUnknown ? { reason: 'Language could not be reliably detected' } : {})
     });
 
   } catch (error) {
@@ -130,4 +166,3 @@ Deno.serve(async (req) => {
     );
   }
 });
-

@@ -23,3 +23,11 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Local lint / typecheck dumps (do not commit)
+lint-output.txt
+lint_errors.txt
+lint_full.json
+lint_output.txt
+lint_summary.txt
+tsc_errors.txt

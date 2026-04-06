@@ -10,6 +10,9 @@ interface CreditBalance {
   cycle_start: string | null;
   cycle_end: string | null;
   free_credits_claimed: boolean;
+  /** Study Room (Zego) pool: 1000/month, 1 credit = 1 minute */
+  zego_credits_remaining?: number;
+  zego_credits_total?: number;
 }
 
 interface CreditContextType {
@@ -55,7 +58,9 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           credits_total: data.credits_total,
           cycle_start: data.cycle_start,
           cycle_end: data.cycle_end,
-          free_credits_claimed: data.free_credits_claimed
+          free_credits_claimed: data.free_credits_claimed,
+          zego_credits_remaining: data.zego_credits_remaining ?? 0,
+          zego_credits_total: data.zego_credits_total ?? 0
         });
       }
     } catch (err) {

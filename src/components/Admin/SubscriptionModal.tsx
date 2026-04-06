@@ -114,14 +114,13 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
         }
 
         const billingCycleEnd = new Date(startDate);
-        if (formData.subscription_tier === 'trial_1day' || formData.subscription_tier === 'trial_7day') {
+        if (formData.subscription_tier === 'trial_7day') {
           billingCycleEnd.setTime(endDate.getTime());
         } else {
           billingCycleEnd.setDate(billingCycleEnd.getDate() + 30);
         }
 
         const tokenLimits: Record<string, number> = {
-          trial_1day: 10000,
           trial_7day: 121000,
           monthly: 520000,
           quarterly: 520000,
@@ -173,14 +172,23 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
 
         // Log audit action
         if (user?.id) {
-          await supabase.rpc('log_admin_action', {
-            p_action_type: 'UPDATE',
-            p_table_name: 'subscriptions',
-            p_record_id: subscription!.id,
-            p_old_values: { subscription_tier: subscription!.subscription_tier, status: subscription!.status, auto_renew: subscription!.auto_renew },
-            p_new_values: { subscription_tier: formData.subscription_tier, status: formData.status, auto_renew: formData.auto_renew },
-            p_description: `Updated subscription: ${formData.subscription_tier} (${formData.status})`
-          }).catch(err => ErrorLogger.warn('Failed to log admin action', { component: 'SubscriptionModal', action: 'handleSave', mode: 'edit', subscriptionId: subscription!.id, error: err instanceof Error ? err : new Error(String(err)) }));
+          try {
+            await supabase.rpc('log_admin_action', {
+              p_action_type: 'UPDATE',
+              p_table_name: 'subscriptions',
+              p_record_id: subscription!.id,
+              p_old_values: { subscription_tier: subscription!.subscription_tier, status: subscription!.status, auto_renew: subscription!.auto_renew },
+              p_new_values: { subscription_tier: formData.subscription_tier, status: formData.status, auto_renew: formData.auto_renew },
+              p_description: `Updated subscription: ${formData.subscription_tier} (${formData.status})`
+            });
+          } catch (logErr: unknown) {
+            const logError = logErr instanceof Error ? logErr : new Error(String(logErr));
+            ErrorLogger.warn('Failed to log admin action', { 
+              component: 'SubscriptionModal', 
+              action: 'handleSave', 
+              metadata: { mode: 'edit', subscriptionId: subscription!.id, error: logError.message } 
+            });
+          }
         }
 
         showSuccessToast('Subscription updated successfully!');
@@ -190,7 +198,11 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
       onClose();
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      ErrorLogger.error(error, { component: 'SubscriptionModal', action: 'handleSave', mode, userId: formData.user_id, tier: formData.subscription_tier });
+      ErrorLogger.error(error, { 
+        component: 'SubscriptionModal', 
+        action: 'handleSave', 
+        metadata: { mode, userId: formData.user_id, tier: formData.subscription_tier } 
+      });
       showErrorToast('Failed to save subscription. Please try again.');
     } finally {
       setSaving(false);
@@ -205,15 +217,15 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] border-b border-gray-200 dark:border-gray-700 px-6 py-6 flex items-center justify-between">
           <h3 className="text-xl font-bold text-gray-900 dark:text-white">
             {mode === 'create' ? 'Create New Subscription' : 'Edit Subscription'}
           </h3>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+            className="p-2 hover:bg-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:hover:bg-gray-700 rounded-lg transition"
           >
             <X className="h-5 w-5 text-gray-500 dark:text-gray-400" />
           </button>
@@ -232,14 +244,14 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                   placeholder="Search by email..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
                 />
               </div>
               <select
                 value={formData.user_id}
                 onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
                 required
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                className="w-full px-5 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
                 size={6}
               >
                 <option value="">Choose a user...</option>
@@ -264,9 +276,8 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
               value={formData.subscription_tier}
               onChange={(e) => setFormData({ ...formData, subscription_tier: e.target.value })}
               required
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+              className="w-full px-5 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
             >
-              <option value="trial_1day">1-Day Trial (10K tokens)</option>
               <option value="trial_7day">7-Day Trial (121K tokens)</option>
               <option value="monthly">Monthly (520K tokens/30 days)</option>
               <option value="quarterly">Quarterly (520K tokens/30 days)</option>
@@ -282,7 +293,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
               value={formData.status}
               onChange={(e) => setFormData({ ...formData, status: e.target.value })}
               required
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+              className="w-full px-5 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
             >
               <option value="active">Active</option>
               <option value="canceled">Canceled</option>
@@ -302,7 +313,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
               value={formData.duration_days}
               onChange={(e) => setFormData({ ...formData, duration_days: e.target.value })}
               required
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+              className="w-full px-5 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
             />
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               Common durations: 1 day (trial), 7 days (trial), 30 days (monthly), 90 days (quarterly), 180 days (biannual)
@@ -326,7 +337,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
             <button
               type="submit"
               disabled={saving || (mode === 'create' && !formData.user_id)}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+              className="flex-1 px-5 py-2.5 bg-blue-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               <span>{mode === 'create' ? 'Create Subscription' : 'Update Subscription'}</span>
@@ -334,7 +345,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+              className="px-5 py-2.5 bg-gray-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-white rounded-lg hover:bg-gray-700"
             >
               Cancel
             </button>

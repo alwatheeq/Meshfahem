@@ -192,7 +192,7 @@ export class ErrorLogger {
           if (!insertError) {
             return; // Successfully logged
           }
-        } catch (e) {
+        } catch (_e) {
           // Table might not exist or RLS might block, continue to fallback
         }
       }

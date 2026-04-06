@@ -9,7 +9,7 @@ export type FeatureName = 'summary_generation' | 'flashcard_generation' | 'video
 
 export const useFeatureAccess = () => {
   const { user } = useAuth();
-  const { subscription, hasActiveSubscription, isTrialUser, isPaidUser } = useSubscription();
+  const { subscription, hasActiveSubscription, isTrialUser: _isTrialUser, isPaidUser } = useSubscription();
   const [featureUsage, setFeatureUsage] = useState<Record<FeatureName, number>>({
     summary_generation: 0,
     flashcard_generation: 0,
@@ -72,7 +72,7 @@ export const useFeatureAccess = () => {
     }
   };
 
-  const canAccessFeature = (featureName: FeatureName): boolean => {
+  const canAccessFeature = (_featureName: FeatureName): boolean => {
     if (!user) return false;
 
     if (user.role === 'admin') return true;
@@ -83,10 +83,6 @@ export const useFeatureAccess = () => {
 
     if (subscription?.subscription_tier === 'trial_7day') {
       return true;
-    }
-
-    if (subscription?.subscription_tier === 'trial_1day') {
-      return featureUsage[featureName] === 0;
     }
 
     return false;
@@ -139,13 +135,6 @@ export const useFeatureAccess = () => {
 
     if (!hasActiveSubscription()) {
       return 'Subscribe to access this feature';
-    }
-
-    if (subscription?.subscription_tier === 'trial_1day') {
-      if (hasUsedFeature(featureName)) {
-        return 'You have already used this feature in your 1-day trial. Upgrade to continue using it.';
-      }
-      return 'You can use this feature once during your 1-day trial';
     }
 
     return 'Upgrade your subscription to access this feature';

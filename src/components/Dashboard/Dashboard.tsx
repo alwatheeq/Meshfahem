@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { MoreVertical, Copy, Check, FileSearch, Download, BookOpen, GraduationCap, RefreshCw, ArrowLeft, Coins } from 'lucide-react';
+import { MoreVertical, Copy, Check, FileSearch, Download, BookOpen, GraduationCap, RefreshCw, ArrowLeft, PanelLeft } from 'lucide-react';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { InputForm } from './InputForm';
@@ -17,7 +17,13 @@ import { StudyRoomsPage } from './StudyRoomsPage';
 import { AcademicsPage } from './Academics/AcademicsPage';
 import { InsufficientCreditsModal } from './InsufficientCreditsModal';
 import { PersistentSubscriptionModal } from '../Subscription/PersistentSubscriptionModal';
-import { usePersistentModal, getFeatureConfig } from '../../contexts/PersistentModalContext';
+import {
+  usePersistentModal,
+  getFeatureConfig,
+  SUBSCRIPTION_PROCESSING_PAYWALL_SESSION_KEY,
+} from '../../contexts/PersistentModalContext';
+import type { FeatureType } from '../../contexts/PersistentModalContext';
+import { useSubscriptionUpsellGate } from '../../contexts/SubscriptionUpsellGateContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useSubscription } from '../../hooks/useSubscription';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -58,12 +64,39 @@ export interface ProcessingState {
   confidence?: number;
 }
 
+type DashboardSidebarView =
+  | 'main'
+  | 'history'
+  | 'library'
+  | 'informational'
+  | 'feedback'
+  | 'profile'
+  | 'quiz'
+  | 'eduplay'
+  | 'academics'
+  | 'study-rooms';
+
+function mapDashboardViewToSoftUpsellFeature(view: DashboardSidebarView): FeatureType | null {
+  switch (view) {
+    case 'library':
+      return 'library';
+    case 'quiz':
+      return 'quiz';
+    case 'academics':
+      return 'academics';
+    default:
+      return null;
+  }
+}
+
 export const Dashboard: React.FC = () => {
   const { user, updateUsage } = useAuth();
   const { hasExceededTokenLimit, getTokensRemaining, hasActiveSubscription } = useSubscription();
-  const { showModal, dismissModal, isModalOpen, currentFeature, isDismissed } = usePersistentModal();
+  const { showModal, dismissModal, isModalOpen, currentFeature } = usePersistentModal();
+  const { setBusy } = useSubscriptionUpsellGate();
   const { getBackgroundGradient, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeGradient } = useTheme();
-  const { t } = useI18n();
+  const { t, dir } = useI18n();
+  const isRtl = dir === 'rtl';
   const { shouldShowTutorial, showTutorial, isTutorialOpen, completeTutorial, skipTutorial, config: tutorialConfig } = usePageTutorial('dashboard');
   const location = useLocation();
   const navigate = useNavigate();
@@ -107,7 +140,7 @@ export const Dashboard: React.FC = () => {
           }
         });
     }
-  }, [location.state, location.pathname, user?.id, navigate]);
+  }, [location.state, location.pathname, user, navigate]);
 
   const [currentView, setCurrentView] = useState<'main' | 'history' | 'library' | 'informational' | 'feedback' | 'profile' | 'quiz' | 'eduplay' | 'academics' | 'study-rooms'>('main');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -159,6 +192,32 @@ export const Dashboard: React.FC = () => {
     creditsRemaining: number;
     cycleEnd: string;
   } | null>(null);
+
+  const prevDashboardViewRef = useRef<DashboardSidebarView | null>(null);
+
+  useEffect(() => {
+    const busy =
+      processingState.stage === 'uploading' || processingState.stage === 'processing';
+    setBusy('processing', busy);
+    return () => setBusy('processing', false);
+  }, [processingState.stage, setBusy]);
+
+  useEffect(() => {
+    if (!user || hasActiveSubscription()) {
+      prevDashboardViewRef.current = currentView;
+      return;
+    }
+    const prev = prevDashboardViewRef.current;
+    prevDashboardViewRef.current = currentView;
+    if (prev === null) return;
+    if (prev === currentView) return;
+    const feature = mapDashboardViewToSoftUpsellFeature(currentView);
+    if (!feature) return;
+    const id = window.setTimeout(() => {
+      void showModal(feature);
+    }, 400);
+    return () => window.clearTimeout(id);
+  }, [currentView, user, hasActiveSubscription, showModal]);
 
   // Handle mobile/desktop responsive behavior
   useEffect(() => {
@@ -226,24 +285,6 @@ export const Dashboard: React.FC = () => {
     }
   }, [shouldShowTutorial, showTutorial, processingState.stage, user?.id]);
 
-  // Block admin users from accessing the regular user dashboard (after all hooks)
-  if (user?.role === 'admin') {
-    ErrorLogger.warn('Admin users cannot access the regular user dashboard', { component: 'Dashboard', action: 'accessCheck', userId: user.id });
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-        <div className="text-center p-8">
-          <h1 className="text-2xl font-bold text-white mb-4">Access Denied</h1>
-          <p className={`${getThemeTextMuted()} mb-6`}>Admin users cannot access the regular user dashboard.</p>
-          <a
-            href="/admin/dashboard"
-            className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-          >
-            Go to Admin Dashboard
-          </a>
-        </div>
-      </div>
-    );
-  }
 
   const saveHistoryEntry = async (
     summary: string, 
@@ -301,21 +342,21 @@ export const Dashboard: React.FC = () => {
 
     // Check subscription status first
     if (!hasActiveSubscription()) {
-      const dismissed = await isDismissed('dashboard_processing');
-      if (!dismissed) {
-        showModal('dashboard_processing');
-        return;
-      } else {
-        // User has dismissed modal before, show inline message
-        setProcessingState(prev => ({
-          ...prev,
-          stage: 'error',
-          progress: 0,
-          message: 'Subscription Required',
-          error: 'This feature requires an active subscription. Please upgrade to process content.'
-        }));
+      const snoozed =
+        typeof sessionStorage !== 'undefined' &&
+        sessionStorage.getItem(SUBSCRIPTION_PROCESSING_PAYWALL_SESSION_KEY) === '1';
+      if (!snoozed) {
+        void showModal('dashboard_processing', { force: true });
         return;
       }
+      setProcessingState((prev) => ({
+        ...prev,
+        stage: 'error',
+        progress: 0,
+        message: 'Subscription Required',
+        error: 'This feature requires an active subscription. Please upgrade to process content.',
+      }));
+      return;
     }
 
     // Check if user has exceeded token limit
@@ -1243,17 +1284,17 @@ export const Dashboard: React.FC = () => {
     });
   };
 
-  const featureConfig = getFeatureConfig('dashboard_processing');
+  const subscriptionFeatureConfig = getFeatureConfig(currentFeature);
 
   return (
     <div className={`min-h-screen w-full flex flex-col ${getBackgroundGradient()}`}>
-      {/* Persistent Subscription Modal */}
+      {/* Persistent Subscription Modal (all dashboard soft / paywall prompts) */}
       <PersistentSubscriptionModal
-        isOpen={isModalOpen && currentFeature === 'dashboard_processing'}
+        isOpen={isModalOpen}
         onDismiss={dismissModal}
-        featureName="dashboard_processing"
-        featureTitle={featureConfig.title}
-        benefits={featureConfig.benefits}
+        featureName={currentFeature ?? 'library'}
+        featureTitle={subscriptionFeatureConfig.title}
+        benefits={subscriptionFeatureConfig.benefits}
       />
 
       {/* Insufficient Credits Modal */}
@@ -1284,19 +1325,20 @@ export const Dashboard: React.FC = () => {
 
         <main
           className="flex-1 transition-colors duration-150 ease-in-out"
-          style={{
-            marginLeft: isMobile ? '0' : (isSidebarOpen ? '128px' : '32px')
-          }}
+          style={isMobile ? {} : isRtl
+            ? { marginRight: isSidebarOpen ? '128px' : '32px' }
+            : { marginLeft: isSidebarOpen ? '128px' : '32px' }
+          }
         >
           {/* Mobile menu button */}
           {isMobile && !isSidebarOpen && (
             <button
               type="button"
               onClick={toggleSidebar}
-              className={`fixed bottom-6 left-6 z-30 flex items-center justify-center p-3 ${getThemeGradient('ui')} text-white rounded-full shadow hover:opacity-90 transition duration-150`}
+              className={`fixed bottom-6 ${isRtl ? 'right-6' : 'left-6'} z-30 flex items-center justify-center p-3 ${getThemeGradient('ui')} text-white rounded-full shadow hover:opacity-90 transition duration-150`}
               aria-label={t('header.open_menu')}
             >
-              <Coins className="h-6 w-6" strokeWidth={2} aria-hidden />
+              <PanelLeft className="h-6 w-6" strokeWidth={2} aria-hidden />
             </button>
           )}
 
@@ -1398,9 +1440,9 @@ export const Dashboard: React.FC = () => {
                     {loadedHistoryEntry && (
                       <button
                         onClick={handleBackToHistory}
-                        className={`flex items-center space-x-2 px-3 py-1.5 text-sm ${getThemeTextSecondary()} hover:opacity-80 ${getThemeCardBorder()} rounded-lg hover:opacity-60 transition duration-150 ${getThemeCardBg()}`}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm border ${getThemeCardBorder()} rounded-full ${getThemeTextSecondary()} hover:bg-black/5 dark:hover:bg-white/5 transition-colors ${getThemeCardBg()}`}
                       >
-                        <ArrowLeft className="h-4 w-4" />
+                        <ArrowLeft className="h-3.5 w-3.5" />
                         <span>{t('history.back_to_history') || 'Back to History'}</span>
                       </button>
                     )}
@@ -1408,138 +1450,118 @@ export const Dashboard: React.FC = () => {
                     {(() => {
                       const showFreeFormToggle = false;
                       return showFreeFormToggle && (
-                      <div className="flex items-center">
-                        <FreeFormToggle
-                          enabled={actionBarData.freeFormMode}
-                          onToggle={actionBarData.onFreeFormToggle}
-                          compact={false}
-                        />
-                      </div>
-                    );
+                        <div className="flex items-center">
+                          <FreeFormToggle
+                            enabled={actionBarData.freeFormMode}
+                            onToggle={actionBarData.onFreeFormToggle}
+                            compact={false}
+                          />
+                        </div>
+                      );
                     })()}
-                    
+
                     {/* Actions Menu Button */}
                     <div className="relative">
                       <button
                         onClick={() => setShowActionsMenu(!showActionsMenu)}
-                        className={`flex items-center space-x-2 px-3 py-1.5 text-sm ${getThemeTextSecondary()} hover:opacity-80 ${getThemeCardBorder()} rounded-lg hover:opacity-60 transition duration-150 ${getThemeCardBg()}`}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm border ${getThemeCardBorder()} rounded-xl ${getThemeTextSecondary()} hover:bg-black/5 dark:hover:bg-white/5 transition-colors`}
                       >
-                        <MoreVertical className="h-4 w-4" />
+                        <MoreVertical className="h-3.5 w-3.5" />
                         <span>Actions</span>
                       </button>
-                      
+
                       {/* Actions Dropdown Menu */}
                       {showActionsMenu && (
                         <>
-                          {/* Backdrop to close menu on click outside */}
-                          <div
-                            className="fixed inset-0 z-40"
-                            onClick={() => setShowActionsMenu(false)}
-                          />
-                          <div className={`absolute right-0 mt-1 w-56 ${getThemeCardBg()} ${getThemeCardBorder()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-lg z-50`}>
-                            {/* Copy All */}
-                            <button
-                              onClick={() => {
-                                actionBarData.onCopyAll();
-                                setShowActionsMenu(false);
-                              }}
-                              className={`w-full flex items-center space-x-2 px-4 py-2 text-sm ${getThemeTextSecondary()} hover:opacity-60 rounded-t-lg`}
-                            >
-                              {actionBarData.copiedIndex === -1 ? (
-                                <Check className="h-4 w-4 text-green-600" />
-                              ) : (
-                                <Copy className="h-4 w-4" />
-                              )}
-                              <span>{t('summary.copy_all')}</span>
-                            </button>
-                            
-                            {/* Dual-mode */}
-                            <button
-                              onClick={() => {
-                                actionBarData.onDualMode();
-                                setShowActionsMenu(false);
-                              }}
-                              className={`w-full flex items-center space-x-2 px-4 py-2 text-sm ${getThemeTextSecondary()} hover:opacity-60`}
-                            >
-                              <FileSearch className="h-4 w-4" />
-                              <span>{t('summary.dual_mode')}</span>
-                            </button>
-                            
-                            {/* Export with submenu */}
-                            <div className="relative group">
+                          <div className="fixed inset-0 z-40" onClick={() => setShowActionsMenu(false)} />
+                          <div className={`absolute right-0 mt-1.5 w-56 ${getThemeCardBg()} border ${getThemeCardBorder()} rounded-xl shadow-xl z-50 overflow-hidden`}>
+                            <div className="p-1.5 space-y-0.5">
+                              {/* Copy All */}
                               <button
-                                className={`w-full flex items-center justify-between px-4 py-2 text-sm ${getThemeTextSecondary()} hover:opacity-60`}
+                                onClick={() => { actionBarData.onCopyAll(); setShowActionsMenu(false); }}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm ${getThemeTextSecondary()} hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors`}
                               >
-                                <div className="flex items-center space-x-2">
-                                  <Download className="h-4 w-4" />
-                                  <span>{t('summary.export')}</span>
-                                </div>
-                                <span className="text-xs">›</span>
+                                {actionBarData.copiedIndex === -1 ? (
+                                  <Check className="h-3.5 w-3.5 text-emerald-600" />
+                                ) : (
+                                  <Copy className="h-3.5 w-3.5 opacity-60" />
+                                )}
+                                <span>{t('summary.copy_all')}</span>
                               </button>
-                              
-                              {/* Export Submenu - appears on left to avoid going off-screen */}
-                              <div className={`absolute right-full top-0 mr-1 w-40 ${getThemeCardBg()} ${getThemeCardBorder()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-colors duration-150 z-10`}>
-                                <button
-                                  onClick={() => {
-                                    actionBarData.onExportTxt();
-                                    setShowActionsMenu(false);
-                                  }}
-                                  className={`w-full text-left px-4 py-2 text-sm ${getThemeTextSecondary()} hover:opacity-60 rounded-t-lg`}
-                                >
-                                  {t('summary.export_txt')}
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    actionBarData.onExportPdf();
-                                    setShowActionsMenu(false);
-                                  }}
-                                  className={`w-full text-left px-4 py-2 text-sm ${getThemeTextSecondary()} hover:opacity-60 rounded-b-lg`}
-                                >
-                                  {t('summary.export_pdf')}
-                                </button>
-                              </div>
+
+                              {/* Dual-mode */}
+                              <button
+                                onClick={() => { actionBarData.onDualMode(); setShowActionsMenu(false); }}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm ${getThemeTextSecondary()} hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors`}
+                              >
+                                <FileSearch className="h-3.5 w-3.5 opacity-60" />
+                                <span>{t('summary.dual_mode')}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => { actionBarData.onExportTxt(); setShowActionsMenu(false); }}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm ${getThemeTextSecondary()} hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors`}
+                              >
+                                <Download className="h-3.5 w-3.5 opacity-60" />
+                                <span>{t('summary.export_txt')}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { actionBarData.onExportPdf(); setShowActionsMenu(false); }}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm ${getThemeTextSecondary()} hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors`}
+                              >
+                                <Download className="h-3.5 w-3.5 opacity-60" />
+                                <span>{t('summary.export_pdf')}</span>
+                              </button>
+
+                              {/* Divider before primary action */}
+                              <div className={`my-1 border-t ${getThemeCardBorder()}`} />
+
+                              {/* Publish to Library — highlighted */}
+                              <button
+                                onClick={() => { actionBarData.onPublish(); setShowActionsMenu(false); }}
+                                disabled={actionBarData.publishing || actionBarData.published}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg transition-colors disabled:opacity-50 ${
+                                  actionBarData.published
+                                    ? 'text-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 dark:text-emerald-400'
+                                    : processingState.medicalMode
+                                      ? 'text-red-700 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30'
+                                      : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:hover:bg-emerald-900/30'
+                                }`}
+                              >
+                                {actionBarData.publishing ? (
+                                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                ) : actionBarData.published ? (
+                                  <Check className="h-3.5 w-3.5" />
+                                ) : processingState.medicalMode ? (
+                                  <GraduationCap className="h-3.5 w-3.5" />
+                                ) : (
+                                  <BookOpen className="h-3.5 w-3.5" />
+                                )}
+                                <span>
+                                  {actionBarData.published
+                                    ? t('summary.published')
+                                    : actionBarData.publishing
+                                      ? t('summary.publishing')
+                                      : processingState.medicalMode
+                                        ? 'Save to Medical Library'
+                                        : t('summary.publish_library')}
+                                </span>
+                              </button>
+
+                              {/* Divider before destructive */}
+                              <div className={`my-1 border-t ${getThemeCardBorder()}`} />
+
+                              {/* New Document */}
+                              <button
+                                onClick={() => { actionBarData.onNewDocument(); setShowActionsMenu(false); }}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm ${getThemeTextMuted()} hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors`}
+                              >
+                                <RefreshCw className="h-3.5 w-3.5 opacity-60" />
+                                <span>{t('summary.new_document')}</span>
+                              </button>
                             </div>
-                            
-                            {/* Publish to Library */}
-                            <button
-                              onClick={() => {
-                                actionBarData.onPublish();
-                                setShowActionsMenu(false);
-                              }}
-                              disabled={actionBarData.publishing || actionBarData.published}
-                              className={`w-full flex items-center space-x-2 px-4 py-2 text-sm rounded-lg transition duration-150 ${
-                                actionBarData.published 
-                                  ? 'text-green-600 bg-green-50'
-                                  : processingState.medicalMode
-                                    ? 'text-white bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 disabled:opacity-50 dark:from-red-500 dark:to-pink-500 dark:hover:from-red-600 dark:hover:to-pink-600'
-                                    : `text-white ${getThemeGradient('ui')} hover:opacity-90 disabled:opacity-50`
-                              }`}
-                            >
-                              {actionBarData.publishing ? (
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                              ) : actionBarData.published ? (
-                                <Check className="h-4 w-4" />
-                              ) : processingState.medicalMode ? (
-                                <GraduationCap className="h-4 w-4" />
-                              ) : (
-                                <BookOpen className="h-4 w-4" />
-                              )}
-                              <span>
-                                {actionBarData.published ? t('summary.published') : actionBarData.publishing ? t('summary.publishing') : processingState.medicalMode ? '📚 Save to Medical Library' : t('summary.publish_library')}
-                              </span>
-                            </button>
-                            
-                            {/* New Document */}
-                            <button
-                              onClick={() => {
-                                actionBarData.onNewDocument();
-                                setShowActionsMenu(false);
-                              }}
-                              className={`w-full flex items-center space-x-2 px-4 py-2 text-sm ${getThemeTextSecondary()} hover:opacity-60 rounded-b-lg`}
-                            >
-                              <RefreshCw className="h-4 w-4" />
-                              <span>{t('summary.new_document')}</span>
-                            </button>
                           </div>
                         </>
                       )}

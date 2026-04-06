@@ -1,5 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
-import { useOnboarding } from '../contexts/OnboardingContext';
+import { useState, useEffect, useCallback } from 'react';
+import { useOnboarding } from './useOnboarding';
+import { useI18n } from '../contexts/I18nContext';
+import {
+  pageTutorialShouldShow,
+} from '../contexts/OnboardingContext';
 import { PageName, tutorialConfigs } from '../components/Onboarding/tutorialConfigs';
 import { ErrorLogger } from '../utils/errorLogger';
 
@@ -10,127 +14,103 @@ interface UsePageTutorialReturn {
   isTutorialOpen: boolean;
   completeTutorial: () => Promise<void>;
   skipTutorial: () => Promise<void>;
-  config: typeof tutorialConfigs[PageName] | null;
+  config: (typeof tutorialConfigs)[PageName] | null;
 }
 
-/**
- * Hook for managing page-specific tutorials
- * 
- * Usage:
- * ```tsx
- * const { shouldShowTutorial, showTutorial, isTutorialOpen, completeTutorial, skipTutorial, config } = usePageTutorial('library');
- * 
- * useEffect(() => {
- *   if (shouldShowTutorial) {
- *     showTutorial();
- *   }
- * }, [shouldShowTutorial, showTutorial]);
- * ```
- */
 export const usePageTutorial = (pageName: PageName): UsePageTutorialReturn => {
-  const { isPageTutorialCompleted, completePageTutorial } = useOnboarding();
+  const {
+    completePageTutorial,
+    recordPageTutorialSkip,
+    loading: onboardingLoading,
+    pageTutorialCache,
+  } = useOnboarding();
+
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
-  const [shouldShow, setShouldShow] = useState(false);
-  const [isChecking, setIsChecking] = useState(true);
-  // Track if tutorial was completed locally to prevent re-checking
-  const hasCompletedRef = useRef(false);
-  // Track if we've already checked for this pageName
-  const hasCheckedRef = useRef(false);
-  const currentPageNameRef = useRef<PageName>(pageName);
+  /** After first skip in this page visit, hide until user navigates away (remount). */
+  const [suppressAfterFirstSkipSession, setSuppressAfterFirstSkipSession] = useState(false);
 
-  const config = tutorialConfigs[pageName] || null;
+  const { getTutorialConfig } = useI18n();
+  const localeConfig = getTutorialConfig(pageName);
+  const fallbackConfig = tutorialConfigs[pageName] || null;
+  const config = localeConfig
+    ? { pageName: localeConfig.pageName as PageName, title: localeConfig.title, steps: localeConfig.steps }
+    : fallbackConfig;
 
-  // Reset refs when pageName changes
-  if (currentPageNameRef.current !== pageName) {
-    currentPageNameRef.current = pageName;
-    hasCompletedRef.current = false;
-    hasCheckedRef.current = false;
-  }
+  const status = pageTutorialCache[pageName];
+  const cacheOk =
+    !!status && typeof status.completed === 'boolean' && typeof status.skipCount === 'number';
 
-  // Check if tutorial should be shown on mount (only once per pageName)
   useEffect(() => {
-    // Don't check if already completed locally or already checked
-    if (hasCompletedRef.current || hasCheckedRef.current) {
-      setIsChecking(false);
+    if (onboardingLoading) {
       return;
     }
-
-    const checkTutorialStatus = async () => {
-      hasCheckedRef.current = true;
-      setIsChecking(true);
-      try {
-        const isCompleted = await isPageTutorialCompleted(pageName);
-        if (!isCompleted) {
-          setShouldShow(true);
-        } else {
-          // If already completed in database, mark as completed locally too
-          hasCompletedRef.current = true;
-        }
-      } catch (error) {
-        // If error, don't show tutorial to avoid blocking user
-        ErrorLogger.error(error instanceof Error ? error : new Error(String(error)), {
-          component: 'usePageTutorial',
-          action: 'checkTutorialStatus',
+    if (!cacheOk) {
+      ErrorLogger.warn('Cache state uncertain, not showing tutorial', {
+        component: 'usePageTutorial',
+        action: 'checkTutorialStatus',
+        metadata: {
           pageName,
-        });
-        setShouldShow(false);
-      } finally {
-        setIsChecking(false);
-      }
-    };
+          cacheExists: !!pageTutorialCache,
+          status,
+        },
+      });
+    }
+  }, [pageName, onboardingLoading, pageTutorialCache, cacheOk, status]);
 
-    checkTutorialStatus();
-    // Only depend on pageName - isPageTutorialCompleted is stable (wrapped in useCallback)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageName]);
+  const shouldShowTutorial =
+    !onboardingLoading &&
+    cacheOk &&
+    pageTutorialShouldShow(status) &&
+    !suppressAfterFirstSkipSession;
 
-  const showTutorial = () => {
+  const showTutorial = useCallback(() => {
     setIsTutorialOpen(true);
-  };
+  }, []);
 
-  const hideTutorial = () => {
+  const hideTutorial = useCallback(() => {
     setIsTutorialOpen(false);
-  };
+  }, []);
 
-  const completeTutorial = async () => {
-    // Immediately mark as completed locally to prevent re-checking
-    hasCompletedRef.current = true;
-    setShouldShow(false);
+  const completeTutorial = useCallback(async () => {
+    setSuppressAfterFirstSkipSession(false);
     hideTutorial();
-    
+
     try {
       await completePageTutorial(pageName);
     } catch (error) {
-      ErrorLogger.error(error instanceof Error ? error : new Error(String(error)), {
+      const err = error instanceof Error ? error : new Error(String(error));
+      ErrorLogger.error(err, {
         component: 'usePageTutorial',
         action: 'completeTutorial',
-        pageName,
+        metadata: { pageName },
       });
-      // Don't reset hasCompletedRef - tutorial should stay hidden even if save fails
+      // Keep the tutorial hidden for this session even if the DB save failed
+      setSuppressAfterFirstSkipSession(true);
     }
-  };
+  }, [completePageTutorial, hideTutorial, pageName]);
 
-  const skipTutorial = async () => {
-    // Immediately mark as completed locally to prevent re-checking
-    hasCompletedRef.current = true;
-    setShouldShow(false);
+  const skipTutorial = useCallback(async () => {
     hideTutorial();
-    
+
     try {
-      // Mark as completed when skipped
-      await completePageTutorial(pageName);
+      const newSkip = await recordPageTutorialSkip(pageName);
+      if (newSkip >= 1) {
+        setSuppressAfterFirstSkipSession(true);
+      }
     } catch (error) {
-      ErrorLogger.error(error instanceof Error ? error : new Error(String(error)), {
+      const err = error instanceof Error ? error : new Error(String(error));
+      ErrorLogger.error(err, {
         component: 'usePageTutorial',
         action: 'skipTutorial',
-        pageName,
+        metadata: { pageName },
       });
-      // Don't reset hasCompletedRef - tutorial should stay hidden even if save fails
+      // Keep the tutorial hidden for this session even if the DB save failed
+      setSuppressAfterFirstSkipSession(true);
     }
-  };
+  }, [hideTutorial, recordPageTutorialSkip, pageName]);
 
   return {
-    shouldShowTutorial: shouldShow && !isChecking,
+    shouldShowTutorial,
     showTutorial,
     hideTutorial,
     isTutorialOpen,
@@ -139,4 +119,3 @@ export const usePageTutorial = (pageName: PageName): UsePageTutorialReturn => {
     config,
   };
 };
-

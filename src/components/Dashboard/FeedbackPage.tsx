@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, Lightbulb, Upload, X, Image, Video, Send, CheckCircle, AlertCircle } from 'lucide-react';
+import { MessageSquare, Lightbulb, Upload, X, Video, Send, CheckCircle, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useI18n } from '../../contexts/I18nContext';
 import { supabase } from '../../lib/supabase';
@@ -8,6 +8,7 @@ import { handleApiError, handleSupabaseError, isOffline, handleOfflineError } fr
 import { ErrorLogger } from '../../utils/errorLogger';
 import { usePageTutorial } from '../../hooks/usePageTutorial';
 import { PageTutorial } from '../Onboarding/PageTutorial';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface UploadedFile {
   file: File;
@@ -17,9 +18,10 @@ interface UploadedFile {
 
 export const FeedbackPage: React.FC = React.memo(() => {
   const { user } = useAuth();
-  const { t } = useI18n();
+  const { t: _t } = useI18n();
   const { error: showErrorToast, success: showSuccessToast } = useToast();
   const { shouldShowTutorial, showTutorial, isTutorialOpen, completeTutorial, skipTutorial, config: tutorialConfig } = usePageTutorial('feedback');
+  const { getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
   const [activeTab, setActiveTab] = useState<'feedback' | 'suggestion'>('feedback');
   const [feedbackText, setFeedbackText] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -320,22 +322,22 @@ export const FeedbackPage: React.FC = React.memo(() => {
   return (
     <div className="w-full max-w-4xl mx-auto">
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2 dark:text-gray-100">
+        <h2 className={`text-3xl font-bold ${getThemeTextPrimary()} mb-2`}>
           Feedback & Suggestions
         </h2>
-        <p className="text-lg text-gray-600 dark:text-gray-300">
+        <p className={`text-lg ${getThemeTextSecondary()}`}>
           Help us improve by sharing your thoughts and ideas
         </p>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-xl overflow-hidden dark:bg-gray-800 dark:shadow-none">
-        <div className="flex border-b border-gray-200 dark:border-gray-700">
+      <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm overflow-hidden dark:shadow-none`}>
+        <div className={`flex border-b ${getThemeCardBorder()}`}>
           <button
             onClick={() => setActiveTab('feedback')}
             className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${
               activeTab === 'feedback'
                 ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600 dark:bg-blue-900 dark:text-blue-300'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700'
+                : `${getThemeTextSecondary()} hover:opacity-80 hover:opacity-60`
             }`}
           >
             <div className="flex items-center justify-center space-x-2">
@@ -348,7 +350,7 @@ export const FeedbackPage: React.FC = React.memo(() => {
             className={`flex-1 px-6 py-4 text-sm font-medium transition-colors ${
               activeTab === 'suggestion'
                 ? 'bg-green-50 text-green-700 border-b-2 border-green-600 dark:bg-green-900 dark:text-green-300'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700'
+                : `${getThemeTextSecondary()} hover:opacity-80 hover:opacity-60`
             }`}
           >
             <div className="flex items-center justify-center space-x-2">
@@ -360,7 +362,7 @@ export const FeedbackPage: React.FC = React.memo(() => {
 
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-200">
+            <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-2`}>
               {activeTab === 'feedback' ? 'Your Feedback' : 'Your Suggestion'}
               <span className="text-red-500 ml-1">*</span>
             </label>
@@ -372,23 +374,23 @@ export const FeedbackPage: React.FC = React.memo(() => {
                   ? 'Tell us about your experience, report bugs, or share what you think...'
                   : 'Share your ideas for new features or improvements...'
               }
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400"
+              className={`w-full px-4 py-3 ${getThemeCardBorder()} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none ${getThemeCardBg()} ${getThemeTextPrimary()}`}
               rows={8}
               maxLength={2000}
               disabled={isSubmitting}
             />
             <div className="flex justify-between mt-2">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className={`text-sm ${getThemeTextMuted()}`}>
                 {activeTab === 'feedback' ? 'Describe any issues or feedback' : 'Describe your suggestion in detail'}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className={`text-sm ${getThemeTextMuted()}`}>
                 {feedbackText.length}/2000
               </p>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-200">
+            <label className={`block text-sm font-medium ${getThemeTextSecondary()} mb-2`}>
               Attach Images or Videos (Optional)
             </label>
 
@@ -399,17 +401,17 @@ export const FeedbackPage: React.FC = React.memo(() => {
               className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
                 isDragging
                   ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900'
-                  : 'border-gray-300 hover:border-gray-400 dark:border-gray-600 dark:hover:border-gray-500'
+                  : `${getThemeCardBorder()} hover:opacity-60`
               }`}
             >
-              <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4 dark:text-gray-500" />
-              <p className="text-gray-600 mb-2 dark:text-gray-300">
+              <Upload className={`h-12 w-12 ${getThemeTextMuted()} mx-auto mb-4`} />
+              <p className={`${getThemeTextSecondary()} mb-2`}>
                 Drag and drop files here, or click to browse
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className={`text-sm ${getThemeTextMuted()}`}>
                 Images (JPG, PNG, GIF, WebP) up to 5MB • Videos (MP4, MOV, WebM) up to 50MB
               </p>
-              <p className="text-xs text-gray-400 mt-1 dark:text-gray-500">
+              <p className={`text-xs ${getThemeTextMuted()} mt-1`}>
                 Maximum {maxFiles} files
               </p>
               <input
@@ -433,7 +435,7 @@ export const FeedbackPage: React.FC = React.memo(() => {
               <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
                 {uploadedFiles.map((fileData, index) => (
                   <div key={index} className="relative group">
-                    <div className="aspect-square rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700">
+                    <div className={`aspect-square rounded-lg overflow-hidden ${getThemeSubtle('ui')}`}>
                       {fileData.type === 'image' ? (
                         <img
                           src={fileData.preview}
@@ -442,7 +444,7 @@ export const FeedbackPage: React.FC = React.memo(() => {
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <Video className="h-12 w-12 text-gray-400 dark:text-gray-500" />
+                          <Video className={`h-12 w-12 ${getThemeTextMuted()}`} />
                         </div>
                       )}
                     </div>
@@ -454,7 +456,7 @@ export const FeedbackPage: React.FC = React.memo(() => {
                     >
                       <X className="h-4 w-4" />
                     </button>
-                    <p className="text-xs text-gray-500 mt-1 truncate dark:text-gray-400">
+                    <p className={`text-xs ${getThemeTextMuted()} mt-1 truncate`}>
                       {fileData.file.name}
                     </p>
                   </div>
@@ -480,7 +482,7 @@ export const FeedbackPage: React.FC = React.memo(() => {
           )}
 
           <div className="flex items-center justify-between pt-4">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <p className={`text-sm ${getThemeTextMuted()}`}>
               <span className="text-red-500">*</span> Required field
             </p>
             <button
@@ -488,8 +490,8 @@ export const FeedbackPage: React.FC = React.memo(() => {
               disabled={isSubmitting || !feedbackText.trim()}
               className={`flex items-center space-x-2 px-6 py-3 rounded-lg font-medium transition duration-150 ${
                 activeTab === 'feedback'
-                  ? 'bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-400 dark:bg-blue-700 dark:hover:bg-blue-800'
-                  : 'bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400 dark:bg-green-700 dark:hover:bg-green-800'
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 dark:bg-blue-700 dark:hover:bg-blue-800'
+                  : 'bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 dark:bg-green-700 dark:hover:bg-green-800'
               }`}
             >
               {isSubmitting ? (
@@ -508,7 +510,7 @@ export const FeedbackPage: React.FC = React.memo(() => {
         </form>
       </div>
 
-      <div className="mt-6 bg-blue-50 rounded-xl p-6 dark:bg-blue-900">
+      <div className="mt-6 bg-blue-50 rounded-md p-6 dark:bg-blue-900">
         <h3 className="text-lg font-semibold text-blue-900 mb-2 dark:text-blue-300">
           What happens next?
         </h3>

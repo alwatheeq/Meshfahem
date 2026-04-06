@@ -1,12 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Bell, X, Check, AlertCircle, Info, CheckCircle, XCircle } from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useNavigate } from 'react-router-dom';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export const NotificationCenter: React.FC = () => {
   const navigate = useNavigate();
-  const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
+  const { notifications, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
+  const { getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
+
+  const visibleNotifications = useMemo(
+    () => notifications.filter((n) => n.notification_type !== 'trial_expiring'),
+    [notifications]
+  );
+
+  const visibleUnreadCount = useMemo(
+    () => visibleNotifications.filter((n) => !n.is_read).length,
+    [visibleNotifications]
+  );
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -21,11 +33,11 @@ export const NotificationCenter: React.FC = () => {
       case 'admin_notification':
         return <Info className="h-5 w-5 text-purple-500" />;
       default:
-        return <Bell className="h-5 w-5 text-gray-500" />;
+        return <Bell className={`h-5 w-5 ${getThemeTextMuted()}`} />;
     }
   };
 
-  const getNotificationColor = (type: string) => {
+  const _getNotificationColor = (type: string) => {
     switch (type) {
       case 'payment_failed':
         return 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800';
@@ -38,7 +50,7 @@ export const NotificationCenter: React.FC = () => {
       case 'admin_notification':
         return 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800';
       default:
-        return 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700';
+        return `${getThemeSubtle('bg')} ${getThemeCardBorder()}`;
     }
   };
 
@@ -67,12 +79,12 @@ export const NotificationCenter: React.FC = () => {
       {/* Bell Icon Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition duration-200"
+        className={`relative p-2 hover:opacity-60 rounded-lg transition duration-200`}
       >
-        <Bell className="h-6 w-6 text-gray-600 dark:text-gray-300" />
-        {unreadCount > 0 && (
+        <Bell className={`h-6 w-6 ${getThemeTextSecondary()}`} />
+        {visibleUnreadCount > 0 && (
           <span className="absolute top-0 right-0 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-            {unreadCount > 9 ? '9+' : unreadCount}
+            {visibleUnreadCount > 9 ? '9+' : visibleUnreadCount}
           </span>
         )}
       </button>
@@ -87,18 +99,18 @@ export const NotificationCenter: React.FC = () => {
           />
 
           {/* Dropdown Panel */}
-          <div className="absolute right-0 mt-2 w-96 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 z-50 max-h-[600px] flex flex-col">
+          <div className={`absolute right-0 mt-2 w-96 ${getThemeCardBg()} rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-lg ${getThemeCardBorder()} z-50 max-h-[600px] flex flex-col`}>
             {/* Header */}
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div className={`p-4 border-b ${getThemeCardBorder()} flex items-center justify-between`}>
               <div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Notifications</h3>
-                {unreadCount > 0 && (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {unreadCount} unread
+                <h3 className={`text-lg font-bold ${getThemeTextPrimary()}`}>Notifications</h3>
+                {visibleUnreadCount > 0 && (
+                  <p className={`text-sm ${getThemeTextMuted()}`}>
+                    {visibleUnreadCount} unread
                   </p>
                 )}
               </div>
-              {unreadCount > 0 && (
+              {visibleUnreadCount > 0 && (
                 <button
                   onClick={markAllAsRead}
                   className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium flex items-center space-x-1"
@@ -111,20 +123,20 @@ export const NotificationCenter: React.FC = () => {
 
             {/* Notifications List */}
             <div className="flex-1 overflow-y-auto">
-              {notifications.length === 0 ? (
+              {visibleNotifications.length === 0 ? (
                 <div className="p-8 text-center">
-                  <Bell className="h-12 w-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-                  <p className="text-gray-500 dark:text-gray-400">No notifications</p>
-                  <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
+                  <Bell className={`h-12 w-12 ${getThemeTextMuted()} mx-auto mb-3`} />
+                  <p className={getThemeTextMuted()}>No notifications</p>
+                  <p className={`text-sm ${getThemeTextMuted()} mt-1`}>
                     You're all caught up!
                   </p>
                 </div>
               ) : (
                 <div className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {notifications.map((notification) => (
+                  {visibleNotifications.map((notification) => (
                     <div
                       key={notification.id}
-                      className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition cursor-pointer ${
+                      className={`p-4 hover:opacity-60 transition cursor-pointer ${
                         !notification.is_read ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''
                       }`}
                       onClick={() => handleNotificationClick(notification)}
@@ -136,12 +148,12 @@ export const NotificationCenter: React.FC = () => {
                         <div className="flex-1 min-w-0">
                           <p className={`text-sm ${
                             !notification.is_read
-                              ? 'font-semibold text-gray-900 dark:text-white'
-                              : 'text-gray-700 dark:text-gray-300'
+                              ? `font-semibold ${getThemeTextPrimary()}`
+                              : getThemeTextSecondary()
                           }`}>
                             {notification.message}
                           </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                          <p className={`text-xs ${getThemeTextMuted()} mt-1`}>
                             {formatTimeAgo(notification.created_at)}
                           </p>
                         </div>
@@ -154,9 +166,9 @@ export const NotificationCenter: React.FC = () => {
                               e.stopPropagation();
                               deleteNotification(notification.id);
                             }}
-                            className="ml-2 p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition"
+                            className={`ml-2 p-1 hover:opacity-60 rounded transition`}
                           >
-                            <X className="h-4 w-4 text-gray-400" />
+                            <X className={`h-4 w-4 ${getThemeTextMuted()}`} />
                           </button>
                         </div>
                       </div>
@@ -167,13 +179,13 @@ export const NotificationCenter: React.FC = () => {
             </div>
 
             {/* Footer */}
-            {notifications.length > 0 && (
-              <div className="p-3 border-t border-gray-200 dark:border-gray-700 text-center">
+            {visibleNotifications.length > 0 && (
+              <div className={`p-3 border-t ${getThemeCardBorder()} text-center`}>
                 <button
                   onClick={() => {
                     setIsOpen(false);
                   }}
-                  className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                  className={`text-sm ${getThemeTextSecondary()} hover:opacity-80`}
                 >
                   Close
                 </button>

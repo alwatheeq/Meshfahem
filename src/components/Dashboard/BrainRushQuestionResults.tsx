@@ -43,6 +43,7 @@ export const BrainRushQuestionResults: React.FC<BrainRushQuestionResultsProps> =
   onNextQuestion,
   currentUserId
 }) => {
+  const { getThemeGradient, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
   const [participantResults, setParticipantResults] = useState<ParticipantResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [countdown, setCountdown] = useState(5);
@@ -70,7 +71,11 @@ export const BrainRushQuestionResults: React.FC<BrainRushQuestionResultsProps> =
 
       if (error) {
         const err = error instanceof Error ? error : new Error(String(error));
-        ErrorLogger.error(err, { component: 'BrainRushQuestionResults', action: 'loadAnswers', gameSessionId, questionIndex });
+        ErrorLogger.error(err, { 
+          component: 'BrainRushQuestionResults', 
+          action: 'loadAnswers', 
+          metadata: { gameSessionId, questionIndex } 
+        });
         setLoading(false);
         return;
       }
@@ -97,7 +102,11 @@ export const BrainRushQuestionResults: React.FC<BrainRushQuestionResultsProps> =
       setLoading(false);
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      ErrorLogger.error(error, { component: 'BrainRushQuestionResults', action: 'loadAnswers', gameSessionId, questionIndex });
+      ErrorLogger.error(error, { 
+        component: 'BrainRushQuestionResults', 
+        action: 'loadAnswers', 
+        metadata: { gameSessionId, questionIndex } 
+      });
       setLoading(false);
     }
   };
@@ -112,9 +121,9 @@ export const BrainRushQuestionResults: React.FC<BrainRushQuestionResultsProps> =
   if (loading) {
     return (
       <div className="max-w-6xl mx-auto">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-12 text-center">
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-12 text-center`}>
           <div className="animate-spin h-12 w-12 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Loading results...</p>
+          <p className={getThemeTextSecondary()}>Loading results...</p>
         </div>
       </div>
     );
@@ -123,10 +132,10 @@ export const BrainRushQuestionResults: React.FC<BrainRushQuestionResultsProps> =
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       {/* Correct Answer Display */}
-      <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-2xl shadow-xl p-8 border-2 border-green-500 dark:border-green-600">
+      <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg shadow-sm p-8 border-2 border-green-500 dark:border-green-600">
         <div className="flex items-center justify-center space-x-3 mb-4">
           <CheckCircle className="h-12 w-12 text-green-600 dark:text-green-400" />
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Correct Answer</h2>
+          <h2 className={`text-3xl font-bold ${getThemeTextPrimary()}`}>Correct Answer</h2>
         </div>
         <p className="text-2xl font-bold text-green-700 dark:text-green-300 text-center">
           {correctAnswer}
@@ -134,8 +143,8 @@ export const BrainRushQuestionResults: React.FC<BrainRushQuestionResultsProps> =
       </div>
 
       {/* Statistics */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
-        <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4 flex items-center space-x-2">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-6">
+        <h3 className={`text-xl font-bold ${getThemeTextPrimary()} mb-4 flex items-center space-x-2`}>
           <Target className="h-6 w-6 text-blue-600" />
           <span>Question Statistics</span>
         </h3>
@@ -143,22 +152,22 @@ export const BrainRushQuestionResults: React.FC<BrainRushQuestionResultsProps> =
         <div className="grid grid-cols-3 gap-4 mb-4">
           <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 text-center">
             <p className="text-3xl font-bold text-green-600 dark:text-green-400">{correctCount}</p>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Correct</p>
+            <p className={`text-sm ${getThemeTextSecondary()}`}>Correct</p>
           </div>
           <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-4 text-center">
             <p className="text-3xl font-bold text-red-600 dark:text-red-400">{incorrectCount}</p>
             <p className="text-sm text-gray-600 dark:text-gray-400">Incorrect</p>
           </div>
-          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 text-center">
-            <p className="text-3xl font-bold text-gray-600 dark:text-gray-400">{unansweredCount}</p>
-            <p className="text-sm text-gray-600 dark:text-gray-400">No Answer</p>
+          <div className={`${getThemeSubtle('bg')} rounded-lg p-4 text-center`}>
+            <p className={`text-3xl font-bold ${getThemeTextSecondary()}`}>{unansweredCount}</p>
+            <p className={`text-sm ${getThemeTextSecondary()}`}>No Answer</p>
           </div>
         </div>
 
         {/* Percentage Bar */}
-        <div className="bg-gray-200 dark:bg-gray-700 rounded-full h-6 overflow-hidden">
+        <div className={`${getThemeSubtle('ui')} rounded-full h-6 overflow-hidden`}>
           <div
-            className="bg-gradient-to-r from-green-500 to-emerald-500 h-full flex items-center justify-center text-white text-sm font-bold transition-all duration-500"
+            className="bg-gradient-to-r from-green-500 to-emerald-500 h-full flex items-center justify-center text-white text-sm font-bold transition-colors duration-150"
             style={{ width: `${correctPercentage}%` }}
           >
             {correctPercentage}% Correct
@@ -167,8 +176,8 @@ export const BrainRushQuestionResults: React.FC<BrainRushQuestionResultsProps> =
       </div>
 
       {/* Player Results */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
-        <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4 flex items-center space-x-2">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-6">
+        <h3 className={`text-xl font-bold ${getThemeTextPrimary()} mb-4 flex items-center space-x-2`}>
           <Trophy className="h-6 w-6 text-yellow-600" />
           <span>Player Results</span>
         </h3>
@@ -187,7 +196,7 @@ export const BrainRushQuestionResults: React.FC<BrainRushQuestionResultsProps> =
                     ? 'bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700'
                     : result.answer
                     ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700'
-                    : 'bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600'
+                    : `${getThemeSubtle('bg')} ${getThemeCardBorder()}`
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -197,17 +206,17 @@ export const BrainRushQuestionResults: React.FC<BrainRushQuestionResultsProps> =
                         ? 'bg-green-500 text-white'
                         : result.answer
                         ? 'bg-red-500 text-white'
-                        : 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300'
+                        : `${getThemeSubtle('ui')} ${getThemeTextSecondary()}`
                     }`}>
                       {index + 1}
                     </div>
 
                     <div className="flex-1">
-                      <p className="font-bold text-gray-900 dark:text-gray-100">
+                      <p className={`font-bold ${getThemeTextPrimary()}`}>
                         {result.display_name}
                         {isCurrentUser && <span className="text-blue-600 dark:text-blue-400 ml-2">(You)</span>}
                       </p>
-                      <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400 mt-1">
+                      <div className={`flex items-center space-x-4 text-sm ${getThemeTextSecondary()} mt-1`}>
                         {result.answer ? (
                           <>
                             <span className="flex items-center space-x-1">
@@ -224,7 +233,7 @@ export const BrainRushQuestionResults: React.FC<BrainRushQuestionResultsProps> =
                             </span>
                           </>
                         ) : (
-                          <span className="text-gray-500 dark:text-gray-400">Did not answer</span>
+                          <span className={getThemeTextMuted()}>Did not answer</span>
                         )}
                       </div>
                     </div>
@@ -233,7 +242,7 @@ export const BrainRushQuestionResults: React.FC<BrainRushQuestionResultsProps> =
                   <div className="text-right">
                     {result.answer && (
                       <>
-                        <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                        <p className={`text-2xl font-bold ${getThemeTextPrimary()}`}>
                           +{result.answer.points_earned}
                         </p>
                         <p className="text-sm text-gray-600 dark:text-gray-400">points</p>
@@ -248,20 +257,20 @@ export const BrainRushQuestionResults: React.FC<BrainRushQuestionResultsProps> =
       </div>
 
       {/* Next Question Button / Countdown */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-6">
         {isHost ? (
           <button
             onClick={onNextQuestion}
-            className={`w-full px-6 py-4 ${getThemeGradient('ui')} text-white rounded-xl hover:opacity-90 transition font-semibold flex items-center justify-center space-x-2 text-lg`}
+            className={`w-full px-6 py-4 ${getThemeGradient('ui')} text-white rounded-md hover:opacity-90 transition font-semibold flex items-center justify-center space-x-2 text-lg`}
           >
             <span>Next Question</span>
             <ChevronRight className="h-6 w-6" />
           </button>
         ) : (
           <div className="text-center">
-            <div className="inline-flex items-center space-x-3 bg-blue-50 dark:bg-blue-900/20 px-6 py-4 rounded-xl">
+            <div className="inline-flex items-center space-x-3 bg-blue-50 dark:bg-blue-900/20 px-6 py-4 rounded-md">
               <div className="animate-spin h-6 w-6 border-3 border-blue-600 border-t-transparent rounded-full"></div>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className={getThemeTextSecondary()}>
                 Waiting for host to continue...
               </p>
             </div>

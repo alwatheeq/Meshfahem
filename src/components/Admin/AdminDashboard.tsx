@@ -16,8 +16,9 @@ const TransactionsPage = lazy(() => import('./TransactionsPage').then(m => ({ de
 const AuditLogPage = lazy(() => import('./AuditLogPage').then(m => ({ default: m.AuditLogPage })));
 const UserActivityPage = lazy(() => import('./UserActivityPage').then(m => ({ default: m.UserActivityPage })));
 const CreditManagementPage = lazy(() => import('./CreditManagementPage').then(m => ({ default: m.CreditManagementPage })));
+const AppSettingsPage = lazy(() => import('./AppSettingsPage').then(m => ({ default: m.AppSettingsPage })));
 
-export type AdminView = 'overview' | 'users' | 'user-activity' | 'feedback' | 'folders' | 'tags' | 'subscriptions' | 'token-usage' | 'analytics' | 'admin-users' | 'transactions' | 'audit-log' | 'credits';
+export type AdminView = 'overview' | 'users' | 'user-activity' | 'feedback' | 'folders' | 'tags' | 'subscriptions' | 'token-usage' | 'analytics' | 'admin-users' | 'transactions' | 'audit-log' | 'credits' | 'app-settings';
 
 export const AdminDashboard: React.FC = () => {
   const [currentView, setCurrentView] = useState<AdminView>('overview');
@@ -28,7 +29,7 @@ export const AdminDashboard: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+    <div className="min-h-screen bg-gray-900 shadow-[0_2px_8px_rgba(0,0,0,0.08)]">
       <AdminHeader toggleSidebar={toggleSidebar} />
 
       <div className="flex min-h-screen">
@@ -38,7 +39,7 @@ export const AdminDashboard: React.FC = () => {
           isSidebarOpen={isSidebarOpen}
         />
 
-        <main className={`flex-1 transition-all duration-300 ${
+        <main className={`flex-1 transition-colors duration-150 ${
           isSidebarOpen ? 'ml-64' : 'ml-16'
         }`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -56,6 +57,7 @@ export const AdminDashboard: React.FC = () => {
               {currentView === 'admin-users' && <AdminUsersManagementPage key="admin-users" />}
               {currentView === 'transactions' && <TransactionsPage key="transactions" />}
               {currentView === 'audit-log' && <AuditLogPage key="audit-log" />}
+              {currentView === 'app-settings' && <AppSettingsPage key="app-settings" />}
             </Suspense>
           </div>
         </main>

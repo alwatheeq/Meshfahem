@@ -6,9 +6,7 @@ import { useDebounce } from '../../hooks/useDebounce';
 import { QuizTakingComponent } from './QuizTakingComponent';
 import { useI18n } from '../../contexts/I18nContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useSubscription } from '../../hooks/useSubscription';
-import { PersistentSubscriptionModal } from '../Subscription/PersistentSubscriptionModal';
-import { usePersistentModal, getFeatureConfig } from '../../contexts/PersistentModalContext';
+import { useSubscriptionUpsellGate } from '../../contexts/SubscriptionUpsellGateContext';
 import { useToast } from '../Toast/Toast';
 import { handleApiError, handleSupabaseError, isOffline, handleOfflineError } from '../../utils/errorHandler';
 import { ErrorLogger } from '../../utils/errorLogger';
@@ -94,9 +92,8 @@ interface GlobalExamAttempt {
 export const QuizPage: React.FC = React.memo(() => {
   const { user } = useAuth();
   const { t } = useI18n();
-  const { getThemeGradient, getThemeBorder, getThemeFocusRing, getBackgroundGradient, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
-  const { hasActiveSubscription } = useSubscription();
-  const { showModal, dismissModal, isModalOpen, currentFeature, isDismissed } = usePersistentModal();
+  const { getThemeGradient, getThemeBorder, getThemeFocusRing, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
+  const { setBusy } = useSubscriptionUpsellGate();
   const { error: showErrorToast, success: showSuccessToast, warning: showWarningToast } = useToast();
   const { confirm, ConfirmModal } = useConfirm();
   const { shouldShowTutorial, showTutorial, isTutorialOpen, completeTutorial, skipTutorial, config: tutorialConfig } = usePageTutorial('quiz');
@@ -127,7 +124,6 @@ export const QuizPage: React.FC = React.memo(() => {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [generating, setGenerating] = useState(false);
   const [targetLanguage, setTargetLanguage] = useState<string>('en');
-  const [hasCheckedModal, setHasCheckedModal] = useState(false);
   const [globalExams, setGlobalExams] = useState<GlobalExam[]>([]);
   const [selectedExam, setSelectedExam] = useState<GlobalExam | null>(null);
   const [examCountry, setExamCountry] = useState<string>('all');
@@ -135,24 +131,10 @@ export const QuizPage: React.FC = React.memo(() => {
   const [examAttempts, setExamAttempts] = useState<GlobalExamAttempt[]>([]);
   const [incompleteExams, setIncompleteExams] = useState<GlobalExamAttempt[]>([]);
 
-  // Check and show modal after page load
   useEffect(() => {
-    const checkModal = async () => {
-      if (user && !hasActiveSubscription() && !hasCheckedModal) {
-        const dismissed = await isDismissed('quiz');
-        if (!dismissed) {
-          setTimeout(() => {
-            showModal('quiz');
-          }, 500);
-        }
-        setHasCheckedModal(true);
-      }
-    };
-
-    if (!loading) {
-      checkModal();
-    }
-  }, [user, loading, hasActiveSubscription, hasCheckedModal]);
+    setBusy('quiz', !!activeQuizId);
+    return () => setBusy('quiz', false);
+  }, [activeQuizId, setBusy]);
 
   // Show tutorial on first visit
   useEffect(() => {
@@ -228,9 +210,8 @@ export const QuizPage: React.FC = React.memo(() => {
       const { data, error } = await supabase
         .from('user_library_items')
         .select('id, title, summary_text')
-        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(100);
 
       if (error) {
         const message = handleSupabaseError(error, { component: 'QuizPage', action: 'fetchLibraryItems' });
@@ -915,8 +896,6 @@ export const QuizPage: React.FC = React.memo(() => {
     return colors[level as keyof typeof colors] || colors.medium;
   };
 
-  const featureConfig = getFeatureConfig('quiz');
-
   if (activeQuizId) {
     return (
       <QuizTakingComponent
@@ -929,14 +908,7 @@ export const QuizPage: React.FC = React.memo(() => {
 
   return (
     <>
-    <PersistentSubscriptionModal
-      isOpen={isModalOpen && currentFeature === 'quiz'}
-      onDismiss={dismissModal}
-      featureName="quiz"
-      featureTitle={featureConfig.title}
-      benefits={featureConfig.benefits}
-    />
-    <div className={`min-h-screen ${getBackgroundGradient()} p-6`}>
+    <div className="w-full min-h-0 p-4 sm:p-6">
       <div className="w-full">
         <div className="mb-6">
           <div className="flex items-center justify-between mb-6">

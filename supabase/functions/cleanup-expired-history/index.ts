@@ -1,27 +1,56 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.54.0';
-import { handleCorsPreflight } from '../_shared/cors.ts';
-import { jsonResponse, errorResponse, successResponse } from '../_shared/response.ts';
-import { getSupabaseClient } from '../_shared/auth.ts';
-import { validateMethod } from '../_shared/validation.ts';
+/// <reference path="../_shared/deno.d.ts" />
+import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.54.0';
 
-Deno.serve(async (req) => {
-  // Handle CORS preflight requests
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
+};
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      ...corsHeaders
+    }
+  });
+}
+
+serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return handleCorsPreflight();
+    return new Response(null, { headers: corsHeaders });
   }
 
-  const methodError = validateMethod(req, ['POST']);
-  if (methodError) {
-    return methodError;
+  if (req.method !== 'POST') {
+    return jsonResponse({ error: 'Method not allowed' }, 405);
   }
+
+  // ✅ Authorize caller (cron secret)
+  const cronSecret = Deno.env.get('CRON_SECRET');
+  const providedSecret = req.headers.get('x-cron-secret');
+
+  if (!cronSecret || !providedSecret || providedSecret !== cronSecret) {
+    return jsonResponse({ error: 'Unauthorized' }, 401);
+  }
+
+  // ✅ Validate env vars
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+  if (!supabaseUrl || !supabaseKey) {
+    return jsonResponse({ error: 'Server configuration error' }, 500);
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey, {
+    auth: { persistSession: false },
+  });
 
   try {
-    const supabase = getSupabaseClient();
     console.log('🧹 Starting cleanup of expired history entries...');
-    
     const currentTime = new Date().toISOString();
-    
-    // Delete expired history entries
+
     const { data: deletedEntries, error: deleteError } = await supabase
       .from('user_history')
       .delete()
@@ -30,16 +59,15 @@ Deno.serve(async (req) => {
 
     if (deleteError) {
       console.error('❌ Error deleting expired entries:', deleteError);
-      return errorResponse(
-        `Failed to cleanup expired entries: ${deleteError.message}`,
-        500
-      );
+      return jsonResponse({
+        error: 'Failed to cleanup expired entries',
+        details: deleteError.message
+      }, 500);
     }
 
     const deletedCount = deletedEntries?.length || 0;
-    console.log(`✅ Successfully deleted ${deletedCount} expired history entries`);
+    console.log(`✅ Deleted ${deletedCount} expired history entries`);
 
-    // Also cleanup any expired cached content (if any exists)
     const { data: deletedCache, error: cacheError } = await supabase
       .from('cached_content')
       .delete()
@@ -51,30 +79,33 @@ Deno.serve(async (req) => {
     }
 
     const deletedCacheCount = deletedCache?.length || 0;
-    console.log(`✅ Successfully deleted ${deletedCacheCount} expired cache entries`);
+    console.log(`✅ Deleted ${deletedCacheCount} expired cache entries`);
 
-    // Get statistics about remaining data
-    const { data: historyStats, error: statsError } = await supabase
+    // ✅ Correct remaining count
+    const { count: remainingHistoryCount, error: statsError } = await supabase
       .from('user_history')
       .select('id', { count: 'exact', head: true });
 
-    const remainingHistoryCount = historyStats?.length || 0;
+    if (statsError) {
+      console.warn('⚠️ Failed to fetch remaining count:', statsError);
+    }
 
-    return successResponse({
+    return jsonResponse({
+      success: true,
       message: 'Cleanup completed successfully',
       statistics: {
         deletedHistoryEntries: deletedCount,
         deletedCacheEntries: deletedCacheCount,
-        remainingHistoryEntries: remainingHistoryCount,
+        remainingHistoryEntries: remainingHistoryCount ?? null,
         cleanupTimestamp: currentTime
       }
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('💥 Cleanup function error:', error);
-    return errorResponse(
-      error instanceof Error ? error.message : 'Server error during cleanup',
-      500
-    );
+    return jsonResponse({
+      error: 'Server error during cleanup',
+      details: error?.message || String(error)
+    }, 500);
   }
 });

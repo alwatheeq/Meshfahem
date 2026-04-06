@@ -1,17 +1,19 @@
+/// <reference path="../_shared/deno.d.ts" />
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
-import { handleCorsPreflight } from '../_shared/cors.ts';
-import { jsonResponse, errorResponse, successResponse } from '../_shared/response.ts';
-import { authenticateUser, getSupabaseClient } from '../_shared/auth.ts';
-import { validateMethod, parseJsonBody, validateRequiredFields, validateNumberRange, validateNonEmptyString } from '../_shared/validation.ts';
 
 const MODEL_TOKEN_LIMITS: { [key: string]: number } = {
   'claude-3-haiku-20240307': 4096,
 };
 
 const DEFAULT_MODEL = 'claude-3-haiku-20240307';
-const DEFAULT_MAX_TOKENS = 4096;
-const QUESTIONS_PER_CHUNK = 5;
+const QUESTIONS_PER_CHUNK = 3; // ✅ as requested
 const MAX_CHUNK_RETRIES = 3;
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
+};
 
 interface GenerateQuestionsRequest {
   topic: string;
@@ -27,12 +29,43 @@ interface Question {
   difficulty: string;
 }
 
+type TokenUsage = { input: number; output: number; total: number };
+
 function normalizeString(str: string): string {
   return str.trim().replace(/\s+/g, ' ');
 }
 
+function normalizeUnicode(str: string): string {
+  return str
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\u2026/g, '...')
+    .replace(/[\u00A0]/g, ' ')
+    .replace(/[\u2022\u2023\u25E6\u2043\u2219]/g, '-');
+}
+
 function stripOptionPrefix(str: string): string {
   return str.replace(/^[A-Da-d][\).\]:]\s*/, '').replace(/^[1-4][\).\]:]\s*/, '').trim();
+}
+
+function normalizeForDedup(s: string): string {
+  return normalizeString(s)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, '') // unicode-safe punctuation removal
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function optionsAreUnique(options: string[]): boolean {
+  const seen = new Set<string>();
+  for (const opt of options) {
+    const key = normalizeForDedup(opt);
+    if (!key) continue;
+    if (seen.has(key)) return false;
+    seen.add(key);
+  }
+  return true;
 }
 
 function findBestMatch(correctAnswer: string, options: string[]): string | null {
@@ -42,21 +75,17 @@ function findBestMatch(correctAnswer: string, options: string[]): string | null 
   for (const option of options) {
     const normalizedOption = normalizeString(option);
 
-    if (normalizedOption === normalizedAnswer || normalizedOption === strippedAnswer) {
-      return option;
-    }
+    if (normalizedOption === normalizedAnswer || normalizedOption === strippedAnswer) return option;
 
-    if (normalizedOption.toLowerCase() === normalizedAnswer.toLowerCase() ||
-        normalizedOption.toLowerCase() === strippedAnswer.toLowerCase()) {
-      return option;
-    }
+    if (
+      normalizedOption.toLowerCase() === normalizedAnswer.toLowerCase() ||
+      normalizedOption.toLowerCase() === strippedAnswer.toLowerCase()
+    ) return option;
   }
 
   for (const option of options) {
     const normalizedOption = normalizeString(stripOptionPrefix(option));
-    if (normalizedOption.toLowerCase() === stripOptionPrefix(normalizedAnswer).toLowerCase()) {
-      return option;
-    }
+    if (normalizedOption.toLowerCase() === stripOptionPrefix(normalizedAnswer).toLowerCase()) return option;
   }
 
   return null;
@@ -64,32 +93,23 @@ function findBestMatch(correctAnswer: string, options: string[]): string | null 
 
 function validateAndNormalizeQuestion(q: any): Question | null {
   try {
-    if (!q.question || typeof q.question !== 'string') {
-      console.warn('Missing or invalid question text');
-      return null;
-    }
+    if (!q.question || typeof q.question !== 'string') return null;
 
-    if (!q.options || !Array.isArray(q.options) || q.options.length !== 4) {
-      console.warn('Must have exactly 4 options');
-      return null;
-    }
+    if (!q.options || !Array.isArray(q.options) || q.options.length !== 4) return null;
 
-    if (!q.correct_answer || typeof q.correct_answer !== 'string') {
-      console.warn('Missing or invalid correct answer');
-      return null;
-    }
+    if (!q.correct_answer || typeof q.correct_answer !== 'string') return null;
 
     const normalizedOptions = q.options.map((opt: any) => normalizeString(String(opt)));
+
+    // ✅ Ensure options are unique (common failure)
+    if (!optionsAreUnique(normalizedOptions)) return null;
+
     let normalizedCorrectAnswer = normalizeString(q.correct_answer);
 
     if (!normalizedOptions.includes(normalizedCorrectAnswer)) {
       const bestMatch = findBestMatch(normalizedCorrectAnswer, normalizedOptions);
-      if (bestMatch) {
-        normalizedCorrectAnswer = bestMatch;
-      } else {
-        console.warn('Could not match correct answer to options');
-        return null;
-      }
+      if (bestMatch) normalizedCorrectAnswer = bestMatch;
+      else return null;
     }
 
     return {
@@ -98,14 +118,14 @@ function validateAndNormalizeQuestion(q: any): Question | null {
       correct_answer: normalizedCorrectAnswer,
       difficulty: q.difficulty || 'medium'
     };
-  } catch (error) {
-    console.warn('Question validation error:', error);
+  } catch {
     return null;
   }
 }
 
-function tryParseJSON(text: string): any {
-  let cleaned = text.trim();
+// --- Stronger JSON parsing (sanitization + repair) ---
+function advancedSanitizeJSON(text: string): string {
+  let cleaned = normalizeUnicode((text || '').trim());
 
   cleaned = cleaned.replace(/```json\s*/gi, '');
   cleaned = cleaned.replace(/```javascript\s*/gi, '');
@@ -115,28 +135,70 @@ function tryParseJSON(text: string): any {
     cleaned.indexOf('[') === -1 ? Infinity : cleaned.indexOf('['),
     cleaned.indexOf('{') === -1 ? Infinity : cleaned.indexOf('{')
   );
-  if (jsonStart !== Infinity && jsonStart > 0) {
-    cleaned = cleaned.substring(jsonStart);
-  }
+  if (jsonStart !== Infinity && jsonStart > 0) cleaned = cleaned.substring(jsonStart);
 
   cleaned = cleaned.replace(/,(\s*[\]}])/g, '$1');
+  cleaned = cleaned.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '');
 
+  return cleaned.trim();
+}
+
+function smartRepairJSON(text: string): string {
+  let repaired = text;
+
+  // common join fixes
+  repaired = repaired.replace(/"\s*\n\s*"/g, '", "');
+  repaired = repaired.replace(/\}\s*\n\s*\{/g, '}, {');
+  repaired = repaired.replace(/,(\s*[\]}])/g, '$1');
+
+  // close brackets/braces if missing
+  const openBrackets = (repaired.match(/\[/g) || []).length;
+  const closeBrackets = (repaired.match(/\]/g) || []).length;
+  if (openBrackets > closeBrackets) repaired += ']'.repeat(openBrackets - closeBrackets);
+
+  const openBraces = (repaired.match(/\{/g) || []).length;
+  const closeBraces = (repaired.match(/\}/g) || []).length;
+  if (openBraces > closeBraces) repaired += '}'.repeat(openBraces - closeBraces);
+
+  return repaired.trim();
+}
+
+function tryParseJSON(text: string): any {
+  const sanitized = advancedSanitizeJSON(text);
+
+  // strategy 1
   try {
-    return JSON.parse(cleaned);
-  } catch (error) {
-    const arrayMatch = cleaned.match(/\[[\s\S]*\]/);
-    if (arrayMatch) {
-      return JSON.parse(arrayMatch[0]);
+    return JSON.parse(sanitized);
+  } catch {
+    // strategy 2: repair
+    const repaired = smartRepairJSON(sanitized);
+    try {
+      return JSON.parse(repaired);
+    } catch {
+      // strategy 3: extract array
+      const arrayMatch = repaired.match(/\[[\s\S]*\]/);
+      if (arrayMatch) return JSON.parse(arrayMatch[0]);
+      throw new Error('Failed to parse JSON');
     }
-    throw error;
   }
 }
 
+// Token-aware error to charge even when JSON parsing/validation fails after a model call
+class TokenError extends Error {
+  tokensUsed: number;
+  constructor(message: string, tokensUsed: number) {
+    super(message);
+    this.tokensUsed = tokensUsed;
+  }
+}
+
+// --- Prompt builder with anti-duplication hook ---
 function buildPrompt(
   topic: string,
   questionCount: number,
   difficulty: 'easy' | 'medium' | 'hard',
-  subject?: string
+  subject?: string,
+  avoidQuestions?: string[]
 ): string {
   const difficultyInstructions = {
     easy: 'Create straightforward questions testing basic knowledge and recall. Use simple, clear language.',
@@ -144,7 +206,14 @@ function buildPrompt(
     hard: 'Create challenging questions requiring analysis and critical thinking. Include complex scenarios.'
   };
 
-  const subjectContext = subject ? `Focus on ${subject} related to: ${topic}` : `Topic: ${topic}`;
+  const subjectContext = subject
+    ? `Focus on ${subject} related to: ${topic}`
+    : `Topic: ${topic}`;
+
+  const avoidBlock =
+    avoidQuestions && avoidQuestions.length > 0
+      ? `\nAVOID DUPLICATES:\nDo NOT repeat or closely paraphrase any of these questions:\n- ${avoidQuestions.slice(0, 25).join('\n- ')}\n`
+      : '';
 
   return `You are an expert quiz creator for a fast-paced multiplayer game called Brain Rush. Generate EXACTLY ${questionCount} multiple-choice questions about the following topic.
 
@@ -153,17 +222,15 @@ ${subjectContext}
 DIFFICULTY: ${difficulty}
 ${difficultyInstructions[difficulty]}
 
+${avoidBlock}
 REQUIREMENTS:
-
-1. Generate EXACTLY ${questionCount} questions about: "${topic}"
-
-2. Each question MUST have:
+1) Generate EXACTLY ${questionCount} questions about: "${topic}"
+2) Each question MUST have:
    - Clear, concise question text (1-2 sentences max)
-   - EXACTLY 4 answer options
+   - EXACTLY 4 answer options (all distinct)
    - One correct answer
    - Fast-paced, engaging style suitable for competitive gameplay
-
-3. JSON FORMAT RULES:
+3) JSON FORMAT RULES:
    a) Return ONLY a JSON array starting with [ and ending with ]
    b) NO text before [ or after ]
    c) Each question is a JSON object
@@ -172,8 +239,9 @@ REQUIREMENTS:
    f) Use double quotes only
    g) Options: plain text, NO prefixes like "A)" or "1."
    h) "correct_answer" must EXACTLY match one option
+   i) Do NOT put newline characters inside JSON string values
 
-4. TEMPLATE:
+TEMPLATE:
 [
   {
     "question": "Your question here?",
@@ -183,15 +251,50 @@ REQUIREMENTS:
   }
 ]
 
-5. IMPORTANT:
-   - Questions should be engaging and fun
-   - Mix different aspects of the topic
-   - Ensure variety in difficulty within the level
-   - Make all options plausible but only one correct
-   - Keep questions concise for fast gameplay
-
 RESPOND WITH PURE JSON ONLY - NO MARKDOWN, NO EXPLANATIONS.
 Begin with [ and end with ]`;
+}
+
+// --- Claude call with timeout + usage extraction ---
+async function callClaude(prompt: string, claudeApiKey: string, maxTokens: number, temperature: number): Promise<{ text: string; tokens: TokenUsage }> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 45000);
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': claudeApiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: DEFAULT_MODEL,
+        max_tokens: Math.min(maxTokens, MODEL_TOKEN_LIMITS[DEFAULT_MODEL] || 4096),
+        temperature,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!resp.ok) {
+      const errorText = await resp.text();
+      throw new Error(`Claude API error: ${resp.status} - ${errorText}`);
+    }
+
+    const data = await resp.json();
+    const responseText = (data?.content?.[0]?.text || '').trim();
+    const inputTokens = data?.usage?.input_tokens || 0;
+    const outputTokens = data?.usage?.output_tokens || 0;
+
+    return { text: responseText, tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens } };
+  } catch (e: any) {
+    clearTimeout(timeoutId);
+    if (e?.name === 'AbortError') throw new Error('Claude request timed out');
+    throw e;
+  }
 }
 
 async function generateQuestions(
@@ -199,70 +302,42 @@ async function generateQuestions(
   questionCount: number,
   difficulty: 'easy' | 'medium' | 'hard',
   subject: string | undefined,
-  claudeApiKey: string
-): Promise<Question[]> {
-  console.log(`🤖 Generating ${questionCount} questions about: ${topic}`);
+  claudeApiKey: string,
+  avoidQuestions: string[]
+): Promise<{ questions: Question[]; tokensUsed: number }> {
+  const prompt = buildPrompt(topic, questionCount, difficulty, subject, avoidQuestions);
 
-  const prompt = buildPrompt(topic, questionCount, difficulty, subject);
+  // conservative token budget per question for JSON safety
+  const calculatedMaxTokens = Math.min(Math.ceil(questionCount * 240), 4096);
 
-  const calculatedMaxTokens = Math.min(
-    Math.ceil(questionCount * 200),
-    4096
-  );
+  // ✅ lower temperature: still fun, much fewer JSON errors
+  const temperature = 0.4;
 
-  console.log(`📊 Calling Claude API with max tokens: ${calculatedMaxTokens}`);
+  const { text: responseText, tokens } = await callClaude(prompt, claudeApiKey, calculatedMaxTokens, temperature);
 
-  const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': claudeApiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: DEFAULT_MODEL,
-      max_tokens: calculatedMaxTokens,
-      temperature: 0.7,
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-    }),
-  });
-
-  if (!claudeResponse.ok) {
-    const errorText = await claudeResponse.text();
-    throw new Error(`Claude API error: ${claudeResponse.status} - ${errorText}`);
+  let rawQuestions: any;
+  try {
+    rawQuestions = tryParseJSON(responseText);
+  } catch (err) {
+    // ✅ charge tokens even if parse fails
+    throw new TokenError(`Failed to parse AI response as JSON`, tokens.total);
   }
 
-  const claudeData = await claudeResponse.json();
-  const responseText = claudeData.content[0].text.trim();
-
-  console.log(`📊 Response received (${responseText.length} chars)`);
-
-  const rawQuestions = tryParseJSON(responseText);
   if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
-    throw new Error('Invalid quiz format returned by AI');
+    throw new TokenError('Invalid quiz format returned by AI', tokens.total);
   }
 
   const validatedQuestions: Question[] = [];
-
   for (const q of rawQuestions) {
     const validated = validateAndNormalizeQuestion(q);
-    if (validated) {
-      validatedQuestions.push(validated);
-    }
+    if (validated) validatedQuestions.push(validated);
   }
-
-  console.log(`✅ Validated ${validatedQuestions.length}/${questionCount} questions`);
 
   if (validatedQuestions.length === 0) {
-    throw new Error('No valid questions could be generated');
+    throw new TokenError('No valid questions could be generated', tokens.total);
   }
 
-  return validatedQuestions;
+  return { questions: validatedQuestions, tokensUsed: tokens.total };
 }
 
 async function generateQuestionsInChunks(
@@ -271,12 +346,17 @@ async function generateQuestionsInChunks(
   difficulty: 'easy' | 'medium' | 'hard',
   subject: string | undefined,
   claudeApiKey: string
-): Promise<Question[]> {
+): Promise<{ questions: Question[]; tokensUsedTotal: number }> {
   console.log('🚀 Starting chunked question generation');
   console.log(`📊 Target: ${totalQuestions} questions in chunks of ${QUESTIONS_PER_CHUNK}`);
 
   const allQuestions: Question[] = [];
   const totalChunks = Math.ceil(totalQuestions / QUESTIONS_PER_CHUNK);
+
+  // ✅ avoid duplicates across chunks
+  const usedQuestionKeys = new Set<string>();
+
+  let tokensUsedTotal = 0;
 
   for (let chunkNum = 1; chunkNum <= totalChunks; chunkNum++) {
     const remainingQuestions = totalQuestions - allQuestions.length;
@@ -287,25 +367,45 @@ async function generateQuestionsInChunks(
 
     for (let retry = 1; retry <= MAX_CHUNK_RETRIES; retry++) {
       try {
+        const avoidList = Array.from(usedQuestionKeys).slice(0, 25);
+
         console.log(`📦 Chunk ${chunkNum}/${totalChunks}: Generating ${questionsInThisChunk} questions...`);
 
-        const questions = await generateQuestions(
+        const result = await generateQuestions(
           topic,
           questionsInThisChunk,
           difficulty,
           subject,
-          claudeApiKey
+          claudeApiKey,
+          avoidList
         );
 
-        if (questions.length > 0) {
-          allQuestions.push(...questions);
+        tokensUsedTotal += result.tokensUsed;
+
+        // Filter duplicates against already used
+        const newOnes: Question[] = [];
+        for (const q of result.questions) {
+          const key = normalizeForDedup(q.question);
+          if (!key) continue;
+          if (usedQuestionKeys.has(key)) continue;
+          usedQuestionKeys.add(key);
+          newOnes.push(q);
+        }
+
+        if (newOnes.length > 0) {
+          allQuestions.push(...newOnes);
           console.log(`✅ Chunk ${chunkNum}/${totalChunks} completed: ${allQuestions.length}/${totalQuestions} questions generated`);
           chunkSuccess = true;
           break;
         } else {
-          throw new Error(`Chunk ${chunkNum}: No valid questions generated`);
+          throw new Error(`Chunk ${chunkNum}: Only duplicates produced`);
         }
-      } catch (error) {
+      } catch (error: any) {
+        // If tokens were consumed but parsing/validation failed, count them
+        if (error instanceof TokenError) {
+          tokensUsedTotal += error.tokensUsed;
+        }
+
         lastError = error instanceof Error ? error : new Error('Unknown error');
         console.error(`❌ Chunk ${chunkNum} attempt ${retry}/${MAX_CHUNK_RETRIES} failed:`, lastError.message);
 
@@ -321,15 +421,11 @@ async function generateQuestionsInChunks(
       throw new Error(`Failed to generate chunk ${chunkNum}/${totalChunks}`);
     }
 
-    if (allQuestions.length >= totalQuestions) {
-      break;
-    }
+    if (allQuestions.length >= totalQuestions) break;
   }
 
-  console.log('🎉 Chunked generation complete!');
-  console.log(`📊 Final count: ${allQuestions.length} questions`);
-
-  return allQuestions.slice(0, totalQuestions);
+  // If we still have fewer than requested due to duplicate filtering, return what we have
+  return { questions: allQuestions.slice(0, totalQuestions), tokensUsedTotal };
 }
 
 Deno.serve(async (req: Request) => {
@@ -337,83 +433,61 @@ Deno.serve(async (req: Request) => {
   console.log('📅 Timestamp:', new Date().toISOString());
 
   if (req.method === 'OPTIONS') {
-    return handleCorsPreflight();
-  }
-
-  const methodError = validateMethod(req, ['POST']);
-  if (methodError) {
-    return methodError;
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   try {
     console.log('🔐 Step 1: Authorization check');
-    const authResult = await authenticateUser(req, true);
-    if (authResult.error || !authResult.user) {
-      return errorResponse(authResult.error || 'Unauthorized', 401);
-    }
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) throw new Error('Missing authorization header');
 
-    const supabase = getSupabaseClient();
-    console.log('✅ User authenticated:', authResult.user.id);
+    const token = authHeader.replace('Bearer ', '');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    console.log('👤 Step 2: User authentication');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !user) throw new Error('Unauthorized: Invalid or expired token');
+
+    console.log('✅ User authenticated:', user.id);
 
     let isAdmin = false;
     const { data: profile } = await supabase
       .from('user_profiles')
       .select('role')
-      .eq('id', authResult.user.id)
+      .eq('id', user.id)
       .maybeSingle();
 
     isAdmin = profile?.role === 'admin';
 
     if (!isAdmin) {
       console.log('🔍 Step 2.5: Check credit balance');
-      const { data: creditCheck, error: creditError } = await supabase
-        .rpc('check_sufficient_credits', {
-          p_user_id: authResult.user.id,
-          p_estimated_credits: 3 // Estimate minimum credits needed for brain rush
-        });
+      const { data: creditCheck, error: creditError } = await supabase.rpc('check_sufficient_credits', {
+        p_user_id: user.id,
+        p_estimated_credits: 3
+      });
 
-      if (creditError) {
-        console.error('Failed to check credits:', creditError);
-      } else if (creditCheck && !creditCheck.sufficient) {
+      if (creditError) console.error('Failed to check credits:', creditError);
+      else if (creditCheck && !creditCheck.sufficient) {
         const cycleEnd = creditCheck.cycle_end;
         throw new Error(`You don't have enough credits to complete this action. Your credits will refresh on ${new Date(cycleEnd).toLocaleDateString()}.`);
       }
-
-      console.log(`📊 Current balance: ${creditCheck?.credits_remaining || 0} credits`);
     }
 
     console.log('📥 Step 3: Parse request data');
-    const bodyResult = await parseJsonBody<GenerateQuestionsRequest>(req);
-    if (bodyResult.error) {
-      return bodyResult.error;
-    }
+    const requestData: GenerateQuestionsRequest = await req.json();
+    const { topic, questionCount, difficulty, subject } = requestData;
 
-    const { topic, questionCount, difficulty, subject } = bodyResult.data;
-
-    console.log('📊 Request parameters:');
-    console.log('   - Topic:', topic);
-    console.log('   - Question count:', questionCount);
-    console.log('   - Difficulty:', difficulty);
-    console.log('   - Subject:', subject || 'Not specified');
-
-    const topicError = validateNonEmptyString(topic, 'topic');
-    if (topicError || (typeof topic === 'string' && topic.trim().length < 3)) {
-      return errorResponse('Topic must be at least 3 characters', 400);
-    }
-
-    const questionCountError = validateNumberRange(questionCount, 5, 50, 'questionCount');
-    if (questionCountError) {
-      return errorResponse(questionCountError, 400);
-    }
+    if (!topic || topic.trim().length < 3) throw new Error('Topic must be at least 3 characters');
+    if (questionCount < 5 || questionCount > 50) throw new Error('Question count must be between 5 and 50');
 
     console.log('🔑 Step 4: API key validation');
     const claudeApiKey = Deno.env.get('ANTHROPIC_API_KEY');
-    if (!claudeApiKey) {
-      throw new Error('ANTHROPIC_API_KEY is not configured');
-    }
+    if (!claudeApiKey) throw new Error('ANTHROPIC_API_KEY is not configured');
 
     console.log('🤖 Step 5: Generate questions');
-    const questions = await generateQuestionsInChunks(
+    const { questions, tokensUsedTotal } = await generateQuestionsInChunks(
       topic,
       questionCount,
       difficulty,
@@ -421,34 +495,30 @@ Deno.serve(async (req: Request) => {
       claudeApiKey
     );
 
-    console.log('📊 Step 6: Deduct credits');
-    if (!isAdmin) {
+    console.log(`📊 Tokens used total: ${tokensUsedTotal}`);
+
+    console.log('📊 Step 6: Deduct credits (REAL token usage)');
+    if (!isAdmin && tokensUsedTotal > 0) {
       try {
-        const estimatedTokens = Math.ceil(topic.length * 3 + questionCount * 150);
-
-        console.log(`📊 Usage calculation: ${estimatedTokens} tokens`);
-
-        const { data: deductResult, error: deductError } = await supabase
-          .rpc('deduct_credits_atomic', {
-            p_user_id: authResult.user.id,
-            p_tokens_used: estimatedTokens,
-            p_operation_type: 'deduction'
-          });
+        const { data: deductResult, error: deductError } = await supabase.rpc('deduct_credits_atomic', {
+          p_user_id: user.id,
+          p_tokens_used: tokensUsedTotal,
+          p_operation_type: 'deduction'
+        });
 
         if (deductError) {
           console.error('⚠️ Failed to deduct credits:', deductError);
-        } else if (deductResult && deductResult.success) {
+        } else if (deductResult?.success) {
           console.log(`✅ Credits deducted: ${deductResult.credits_deducted}, remaining: ${deductResult.credits_remaining}`);
 
-          // Handle notifications
           if (deductResult.notify_30_percent || deductResult.notify_10_percent) {
             const percentage = deductResult.notify_10_percent ? 10 : 30;
             const message = `You have ${deductResult.credits_remaining} credits remaining (${percentage}% left). They will refresh on ${new Date(deductResult.cycle_end).toLocaleDateString()}.`;
 
             await supabase.from('notifications').insert({
-              user_id: authResult.user.id,
+              user_id: user.id,
               notification_type: 'admin_notification',
-              message: message,
+              message,
               is_read: false
             });
           }
@@ -460,16 +530,35 @@ Deno.serve(async (req: Request) => {
 
     console.log('🎉 Question generation complete!');
 
-    return successResponse({
-      questionCount: questions.length,
-      questions: questions,
-    });
-  } catch (error) {
+    return new Response(
+      JSON.stringify({
+        success: true,
+        questionCount: questions.length,
+        questions
+      }),
+      {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+  } catch (error: any) {
     console.error('💥 Fatal error in generate-brain-rush-questions:', error);
 
-    return errorResponse(
-      error instanceof Error ? error.message : 'Failed to generate questions',
-      500
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to generate questions',
+      }),
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+        },
+      }
     );
   }
 });

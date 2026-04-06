@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { XCircle, ArrowLeft, RefreshCw } from 'lucide-react';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export const PaymentCancel: React.FC = () => {
   const navigate = useNavigate();
@@ -8,7 +9,7 @@ export const PaymentCancel: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-6">
-      <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
+      <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8">
         <div className="flex items-center justify-center mb-6">
           <div className="bg-orange-100 dark:bg-orange-900/30 p-6 rounded-full">
             <XCircle className="h-16 w-16 text-orange-600 dark:text-orange-400" />

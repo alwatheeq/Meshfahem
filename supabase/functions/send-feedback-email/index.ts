@@ -1,7 +1,11 @@
+/// <reference path="../_shared/deno.d.ts" />
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { handleCorsPreflight } from '../_shared/cors.ts';
-import { jsonResponse, errorResponse, successResponse } from '../_shared/response.ts';
-import { validateMethod, parseJsonBody, validateRequiredFields, validateNonEmptyString } from '../_shared/validation.ts';
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+};
 
 interface FeedbackRequest {
   feedbackType: string;
@@ -12,39 +16,14 @@ interface FeedbackRequest {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return handleCorsPreflight();
-  }
-
-  const methodError = validateMethod(req, ['POST']);
-  if (methodError) {
-    return methodError;
+    return new Response(null, {
+      status: 200,
+      headers: corsHeaders,
+    });
   }
 
   try {
-    const bodyResult = await parseJsonBody<FeedbackRequest>(req);
-    if (bodyResult.error) {
-      return bodyResult.error;
-    }
-
-    const { feedbackType, feedbackText, mediaUrls, userEmail } = bodyResult.data;
-
-    const missingFields = validateRequiredFields(
-      { feedbackType, feedbackText, userEmail },
-      ['feedbackType', 'feedbackText', 'userEmail']
-    );
-    if (missingFields) {
-      return errorResponse(missingFields, 400);
-    }
-
-    const textError = validateNonEmptyString(feedbackText, 'feedbackText');
-    if (textError) {
-      return errorResponse(textError, 400);
-    }
-
-    const emailError = validateNonEmptyString(userEmail, 'userEmail');
-    if (emailError) {
-      return errorResponse(emailError, 400);
-    }
+    const { feedbackType, feedbackText, mediaUrls, userEmail }: FeedbackRequest = await req.json();
 
     // Get Resend API key from environment
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
@@ -53,9 +32,19 @@ Deno.serve(async (req: Request) => {
     if (!resendApiKey) {
       console.error("RESEND_API_KEY not configured");
       // Still save to database even if email fails
-      return successResponse({ 
-        message: "Feedback saved but email notification failed - API key not configured" 
-      });
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: "Feedback saved but email notification failed - API key not configured"
+        }),
+        {
+          status: 200,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
+      );
     }
 
     // Format media URLs as HTML links
@@ -101,12 +90,30 @@ Deno.serve(async (req: Request) => {
     const emailResult = await emailResponse.json();
     console.log("Email sent successfully:", emailResult);
 
-    return successResponse({ message: "Feedback submitted and email sent successfully" });
+    return new Response(
+      JSON.stringify({ success: true, message: "Feedback submitted and email sent successfully" }),
+      {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
+    );
   } catch (error) {
     console.error("Error in send-feedback-email:", error);
-    return errorResponse(
-      error instanceof Error ? error.message : "Unknown error occurred",
-      500
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error occurred"
+      }),
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
     );
   }
 });

@@ -50,7 +50,7 @@
     "google_sign_in_failed": "Échec de la connexion Google",
     "check_email_confirm": "Vérifiez votre e-mail pour confirmer votre compte",
     "signup_success_message": "Compte créé avec succès ! Veuillez vérifier votre e-mail pour vérifier votre compte avant de vous connecter.",
-    "pages_per_month": "2 000 pages/mois",
+    "pages_per_month": "1 500 crédits outils et services/mois (Standard)",
     "supported_formats": "PDF, PPTX, DOCX"
   },
   "sidebar": {
@@ -80,6 +80,13 @@
     "copyright": "© 2025 MeshFahem"
   },
   "header": {
+    "credits_label": "Crédits",
+    "credits_tools_services": "Outils et services",
+    "credits_study_room": "Salle d'étude",
+    "credits_ai_assistant": "Assistant de chat IA",
+    "credits_ai_addon_hint": "Les crédits add-on s'appliquent lorsque vous achetez une capacité IA supplémentaire avec Standard.",
+    "credits_cycle_resets": "Le cycle se renouvelle dans :",
+    "credits_days_remaining": "{count} jours",
     "open_menu": "Ouvrir le menu",
     "pages_used": "Pages utilisées",
     "of": "sur",
@@ -87,6 +94,8 @@
     "pages": "pages",
     "language": "Langue",
     "theme": "Thème",
+    "tagline": "Ce n'est que le début, le meilleur est à venir",
+    "admin_portal": "Portail Admin",
     "profile": "Profil",
     "light_mode": "Clair",
     "dark_mode": "Foncé",
@@ -112,7 +121,10 @@
     "process_text": "Traiter le texte",
     "processing_settings": "Paramètres de traitement",
     "content_secure": "Le contenu est traité de manière sécurisée et non stocké de façon permanente",
-    "flashcard_count": "Nombre de cartes mémoire",
+    "flashcard_count": "Nombre de questions",
+    "ocr_scan": "Scanner OCR",
+    "ocr_scan_title": "Scanner une image avec OCR",
+    "ocr_upload_hint": "Importez une image pour extraire le texte avec OCR",
     "cards": "cartes",
     "generate_from": "Générer à partir de",
     "full_content": "Contenu complet",
@@ -125,7 +137,17 @@
     "alert_file_too_large": "Fichier trop volumineux. Veuillez télécharger un fichier plus petit que 50 Mo.",
     "alert_empty_text": "Texte vide. Veuillez entrer du texte à traiter.",
     "alert_short_text": "Texte court. Veuillez entrer au moins 100 caractères.",
-    "alert_long_text": "Texte long. Veuillez limiter votre texte à 100 000 caractères ou moins."
+    "alert_long_text": "Texte long. Veuillez limiter votre texte à 100 000 caractères ou moins.",
+    "medical_student_mode_title": "Mode étudiant en médecine",
+    "medical_student_mode_subtitle": "Activez pour le contenu médical avec un focus clinique renforcé et une préparation type examen.",
+    "medical_processing_tips_title": "Conseils de traitement médical",
+    "medical_processing_tip_1": "Idéal pour manuels, cours, cas cliniques et articles",
+    "medical_processing_tip_2": "Incluez physiopathologie, pharmacologie et corrélations cliniques si pertinent",
+    "medical_processing_tip_3": "Un texte de meilleure qualité donne de meilleures questions type boards",
+    "medical_processing_tip_4": "La terminologie médicale est préservée et mise en avant",
+    "process_medical_content": "Traiter le contenu médical",
+    "medical_content_score": "Score de contenu médical",
+    "med_student_mode_label": "Mode étudiant médecine"
   },
   "processing": {
     "fast_processing": "Traitement rapide",
@@ -194,6 +216,7 @@
     "cards_remaining": "cartes restantes",
     "reviewed": "révisées",
     "card_of": "Carte {current} sur {total}",
+    "card": "Carte",
     "export": "Exporter",
     "export_csv": "Exporter en CSV",
     "export_txt": "Exporter en TXT",
@@ -295,6 +318,7 @@
     "clear_all_filters": "Effacer tous les filtres ({count})",
     "no_tags_yet": "Pas encore d'étiquettes. Les étiquettes apparaîtront ici lorsque vous publierez des éléments avec des sujets sélectionnés.",
     "search_library_placeholder": "Rechercher dans la bibliothèque...",
+    "search_close_aria": "Fermer la recherche",
     "topics_tags_modal": {
       "title": "Filtrer par sujets et étiquettes",
       "subtitle": "Sélectionnez des sujets et des étiquettes pour filtrer le contenu de votre bibliothèque",
@@ -406,9 +430,9 @@
     "text_input_perfect_for": "Parfait pour articles, notes, et contenu web",
     "text_input_char_counter": "Compteur de caractères en temps réel",
     "configure_settings": "Configurer les paramètres de traitement",
-    "flashcard_count_title": "Nombre de cartes mémoire",
-    "flashcard_count_desc": "Choisissez entre 10, 20, 30, 40, ou 50 cartes mémoire",
-    "flashcard_count_tip": "Plus de cartes = couverture plus complète",
+    "flashcard_count_title": "Nombre de questions",
+    "flashcard_count_desc": "Choisissez entre 10, 20, 30, 40, ou 50 questions",
+    "flashcard_count_tip": "Plus de questions = couverture plus complète",
     "generation_source_title": "Source de génération",
     "generation_source_full": "Contenu complet : Générer des cartes mémoire de tout le document",
     "generation_source_summary": "Résumé : Générer des cartes mémoire seulement des points clés",
@@ -480,7 +504,7 @@
     "sidebar_nav_title": "Navigation de la barre latérale",
     "header_info_title": "Information d'en-tête",
     "usage_tracking": "Suivi d'utilisation :",
-    "usage_limit": "Limite mensuelle de pages : 2 000 pages",
+    "usage_limit": "Forfait Standard : 1 500 crédits outils et services par période de facturation",
     "usage_reset": "Se remet à zéro automatiquement chaque mois",
     "account_info": "Information de compte :",
     "account_info_1": "Voir vos informations de profil et paramètres",
@@ -495,7 +519,29 @@
     "effective_study_1": "Commencez avec les cartes retournables pour vous familiariser avec le contenu",
     "effective_study_2": "Utilisez le mode saisie de réponse pour la pratique de rappel actif",
     "effective_study_3": "Essayez le choix multiple pour une auto-évaluation rapide",
-    "effective_study_4": "Organisez le contenu dans votre bibliothèque avec des dossiers et étiquettes"
+    "effective_study_4": "Organisez le contenu dans votre bibliothèque avec des dossiers et étiquettes",
+    "medical_student_step_title": "4. Mode étudiant en médecine",
+    "medical_student_card_heading": "Traitement du contenu médical",
+    "medical_student_intro": "À utiliser pour les manuels médicaux, notes cliniques ou supports pédagogiques en santé, pour une meilleure gestion de la terminologie et un accent clinique.",
+    "medical_student_bullet_1": "Validation du contenu médical : détecte et vérifie la terminologie",
+    "medical_student_bullet_2": "Focus clinique : cartes mémoire sur diagnostics, traitements et corrélations",
+    "medical_student_bullet_3": "Résumés mettant en avant concepts et contexte médicaux",
+    "medical_student_bullet_4": "Détection de sujets par spécialité (ex. cardiologie, neurologie)",
+    "medical_student_bullet_5": "Score de pertinence pour le contenu médical",
+    "tips_medical_title": "Conseils mode médical",
+    "tips_medical_1": "Activez le mode médical pour le contenu de santé",
+    "tips_medical_2": "Optimal avec manuels, notes cliniques et articles",
+    "tips_medical_3": "La terminologie médicale est validée automatiquement",
+    "tips_medical_4": "Parcourez le contenu médical communautaire quand il est disponible",
+    "whats_new_title": "Nouveautés",
+    "last_updated": "Dernière mise à jour : mars 2026",
+    "whats_new_book_mode": "Mode livre : lisez les résumés en mise page type carnet avec des widgets déplaçables (cartes mémoire, notes).",
+    "whats_new_academics": "Hub Académique : un lieu central pour les outils d'étude alignés sur votre flux de travail.",
+    "whats_new_study_rooms": "Salles d'étude : collaboration en direct ; crédits à la minute lorsque vous ajoutez le pack salle d'étude.",
+    "whats_new_chat": "Assistant de chat global : aide contextuelle dans l'application ; add-ons de jetons IA optionnels sur Standard.",
+    "whats_new_library": "Bibliothèque : vue contenu dédiée, filtres sujets et étiquettes, et mise en page mobile améliorée.",
+    "whats_new_themes": "Nouveaux thèmes de couleur (Brume ardoise, Sable prune) et valeurs par défaut actualisées — Cool Neutrals et Soft Minimal retirés.",
+    "whats_new_standard": "Plan Standard : 1 500 crédits outils et services par cycle (un dépassement peut apparaître comme 2 700 / 1 500)."
   },
   "share": {
     "shared_content": "Contenu partagé",
@@ -758,7 +804,38 @@
     "premium": "Premium",
     "days_remaining": "jours restants",
     "manage_subscription": "Gérer l'Abonnement",
-    "xp": "XP"
+    "xp": "XP",
+    "theme_picker_title": "Thème de couleur",
+    "theme_picker_desc": "Choisissez votre schéma de couleurs préféré pour l'application.",
+    "theme_default_badge": "Par défaut",
+    "theme_monochrome": "Monochrome",
+    "theme_warm_neutrals": "Neutres chauds",
+    "theme_sky_blue": "Bleu ciel",
+    "theme_rose_pink": "Rose",
+    "theme_slate_mist": "Brume ardoise",
+    "theme_plum_sand": "Sable prune",
+    "credits_summary_title": "Crédits",
+    "credits_summary_subtitle": "Solde outils et services ; développez pour salles d’étude et options IA.",
+    "credits_tools_label": "outils et services (plafond du forfait)",
+    "credits_refresh_on": "Renouvellement des crédits le {date}",
+    "claim_free_credits": "Réclamer 300 crédits gratuits",
+    "claiming": "Réclamation...",
+    "tts_hover_label": "Voix de navigation",
+    "tts_hover_desc": "Énoncer le nom des éléments de navigation au survol",
+    "best": "Meilleur",
+    "total_study_time": "Temps d'étude total",
+    "no_achievements": "Pas encore de succès",
+    "start_studying": "Commencez à étudier pour débloquer votre premier succès !"
+  },
+  "subscription_tiers": {
+    "monthly": "Mensuel",
+    "quarterly": "Trimestriel",
+    "biannual": "Semestriel",
+    "standard": "Standard",
+    "trial_1day": "Essai hérité",
+    "trial_7day": "Essai 7 jours",
+    "none": "Aucun abonnement",
+    "unknown": "Inconnu"
   },
   "study_rooms": {
     "title": "Salles d'Étude",
@@ -766,6 +843,8 @@
     "page_description": "Collaborer avec d'autres en temps réel",
     "browse": "Parcourir les Salles",
     "browse_tab": "Parcourir les Salles",
+    "browse_search_placeholder": "Rechercher par nom, code ou description...",
+    "browse_no_matches": "Aucune salle ne correspond à votre recherche.",
     "my_rooms": "Mes Salles",
     "my_rooms_tab": "Mes Salles",
     "create": "Créer une Salle",
@@ -841,6 +920,108 @@
     "next": "Suivant",
     "close": "Fermer",
     "step_of": "Étape {current} sur {total}",
+    "save_failed": "Impossible d’enregistrer la progression du tutoriel. Réessayez.",
+    "save_failed_offline": "Vous êtes hors ligne. Connectez-vous à Internet pour enregistrer la progression.",
+    "dashboard": {
+      "title": "Vue d'ensemble du tableau de bord",
+      "steps": [
+        { "title": "Bienvenue sur votre tableau de bord", "content": "Bienvenue ! Voici votre espace de travail principal pour traiter des documents, générer des résumés et créer des fiches. Explorons les fonctionnalités clés." },
+        { "title": "Télécharger des documents", "content": "Cliquez sur «Télécharger un fichier» pour traiter des PDF, DOCX ou PPTX. Fichiers jusqu'à 400 pages. Votre document sera converti en résumés et fiches." },
+        { "title": "Coller du texte directement", "content": "Vous pouvez aussi coller du texte directement dans la zone de texte. Idéal pour des résumés rapides de notes, articles ou tout contenu textuel." },
+        { "title": "Options de traitement", "content": "Avant de traiter, personnalisez : nombre de fiches (5-50), mode médical pour contenu médical, et sélection de langue pour les traductions." },
+        { "title": "Voir vos résultats", "content": "Après le traitement, vous verrez votre résumé et vos fiches. Vous pouvez voir les fiches, les publier dans votre bibliothèque ou recommencer." },
+        { "title": "Barre latérale de navigation", "content": "Utilisez la barre latérale pour naviguer entre les pages : Bibliothèque, Quiz, EduPlay, Salles d'étude, Historique, et plus. Survolez pour développer." },
+        { "title": "Assistant IA", "content": "Recherchez le bouton de l'assistant IA flottant. Il fournit une aide contextuelle selon votre contenu actuel. Faites-le glisser et redimensionnez-le." },
+        { "title": "Système de crédits", "content": "Votre solde de crédits s'affiche dans l'en-tête. Les crédits servent à traiter le contenu et les fonctionnalités IA. Ils se renouvellent mensuellement." },
+        { "title": "Vous êtes prêt !", "content": "Vous connaissez les bases ! Commencez par télécharger un document ou coller du texte pour créer votre premier résumé. Bonne étude !" }
+      ]
+    },
+    "library": {
+      "title": "Ma Bibliothèque",
+      "steps": [
+        { "title": "Votre bibliothèque de contenu", "content": "Votre bibliothèque stocke tous vos résumés traités et vos fiches. Tout ce que vous publiez depuis le tableau de bord est sauvegardé ici." },
+        { "title": "Rechercher dans votre bibliothèque", "content": "Utilisez l'icône de recherche pour trouver du contenu spécifique. Cliquez pour développer la barre de recherche et tapez des mots-clés." },
+        { "title": "Filtrer et trier", "content": "Utilisez le menu déroulant pour trier par : Date, Titre, Plus aimés ou Sujets. Cela vous aide à trouver rapidement le contenu dont vous avez besoin." },
+        { "title": "Voir les détails du contenu", "content": "Cliquez sur un élément pour voir son résumé complet, ses fiches, le texte original et les sujets. Vous pouvez aussi modifier, partager ou supprimer." },
+        { "title": "Organiser votre contenu", "content": "Utilisez des dossiers et des étiquettes pour organiser votre bibliothèque. Créez des dossiers pour différentes matières ou sujets." },
+        { "title": "Partager le contenu", "content": "Partagez vos résumés avec d'autres en générant des liens partageables. Les autres peuvent voir votre contenu sans avoir besoin d'un compte." },
+        { "title": "Actions de la bibliothèque", "content": "Chaque élément a des boutons d'action : Voir, Modifier, Partager, Supprimer. Utilisez-les pour gérer efficacement votre contenu." },
+        { "title": "Vous êtes prêt !", "content": "Votre bibliothèque est votre base de connaissances. Gardez-la organisée et utilisez la recherche pour trouver rapidement ce dont vous avez besoin." }
+      ]
+    },
+    "quiz": {
+      "title": "Générateur de Quiz",
+      "steps": [
+        { "title": "Créer des quiz depuis votre contenu", "content": "La page Quiz vous permet de créer et de passer des quiz à partir de votre contenu traité. Testez vos connaissances et suivez vos progrès." },
+        { "title": "Choisir la source des questions", "content": "Sélectionnez la source des questions : votre bibliothèque (contenu sauvegardé), votre historique (traitements récents) ou créez des questions manuellement." },
+        { "title": "Génération de questions par IA", "content": "Cliquez sur «Générer des questions» pour créer des questions IA depuis votre contenu. Choisissez le niveau de difficulté et les types de questions." },
+        { "title": "Passer un quiz", "content": "Sélectionnez un quiz et cliquez sur «Démarrer le quiz». Répondez aux questions dans le temps imparti et suivez votre score en temps réel." },
+        { "title": "Voir les résultats du quiz", "content": "Après le quiz, examinez vos résultats : bonnes réponses, mauvaises réponses, temps pris et score global. Apprenez de vos erreurs." },
+        { "title": "Organiser les dossiers de quiz", "content": "Créez des dossiers pour organiser vos quiz par matière ou sujet. Cela facilite la recherche et la gestion de votre collection." },
+        { "title": "Paramètres du quiz", "content": "Personnalisez les paramètres : limites de temps, nombre de questions, niveau de difficulté. Ajustez selon vos préférences d'étude." },
+        { "title": "Vous êtes prêt !", "content": "Commencez à créer des quiz pour tester vos connaissances. La pratique régulière renforce ce que vous avez appris !" }
+      ]
+    },
+    "eduplay": {
+      "title": "Jeux EduPlay",
+      "steps": [
+        { "title": "Jeux éducatifs", "content": "EduPlay propose des jeux éducatifs interactifs pour rendre l'apprentissage amusant. Jouez seul ou affrontez d'autres joueurs en multijoueur." },
+        { "title": "Jeu Brain Rush", "content": "Brain Rush est un jeu de quiz rapide. Répondez vite pour marquer des points. Plus vite vous répondez correctement, plus votre score est élevé." },
+        { "title": "Configuration du jeu", "content": "Avant de commencer, choisissez la source des questions, le niveau de difficulté et configurez les limites de temps selon vos préférences." },
+        { "title": "Jeux multijoueurs", "content": "Rejoignez ou créez des sessions multijoueurs. Affrontez des amis ou d'autres utilisateurs en temps réel. Consultez les classements." },
+        { "title": "Résultats du jeu", "content": "Après chaque partie, consultez vos résultats : score, précision, temps et classement. Révisez les questions incorrectes pour vous améliorer." },
+        { "title": "Vous êtes prêt !", "content": "Commencez à jouer à Brain Rush pour rendre l'apprentissage engageant et compétitif. Défiez-vous et défiez les autres !" }
+      ]
+    },
+    "study-rooms": {
+      "title": "Salles d'étude",
+      "steps": [
+        { "title": "Espaces d'étude collaboratifs", "content": "Les salles d'étude vous permettent d'étudier ensemble en temps réel. Créez ou rejoignez des salles pour collaborer sur des supports d'apprentissage." },
+        { "title": "Rejoindre des salles", "content": "Parcourez les salles publiques disponibles ou rejoignez des salles privées avec un code. Filtrez par matière, sujet ou nombre de participants." },
+        { "title": "Créer des salles", "content": "Cliquez sur «Créer une salle» pour démarrer votre propre salle d'étude. Définissez le nom, la description, les paramètres de confidentialité et les matériaux." },
+        { "title": "Fonctionnalités de collaboration", "content": "Dans une salle d'étude, partagez du contenu, discutez et travaillez ensemble sur des fiches ou des quiz avec des mises à jour en temps réel." },
+        { "title": "Gestion de la salle", "content": "En tant que créateur de la salle, gérez les participants, modifiez les paramètres et contrôlez le contenu. Quittez ou supprimez les salles que vous avez créées." },
+        { "title": "Vous êtes prêt !", "content": "Commencez à collaborer ! Créez une salle pour votre groupe d'étude ou rejoignez des salles existantes pour apprendre ensemble." }
+      ]
+    },
+    "history": {
+      "title": "Historique des traitements",
+      "steps": [
+        { "title": "Votre historique de traitement", "content": "La page Historique affiche tous vos traitements de documents passés. Tout ce que vous avez traité est sauvegardé ici." },
+        { "title": "Consulter l'historique", "content": "Parcourez votre historique chronologiquement. Chaque entrée affiche le nom du fichier, la date de traitement et le type de contenu." },
+        { "title": "Revoir le contenu", "content": "Cliquez sur un élément pour voir son résumé, ses fiches et le texte original. Vous pouvez republier dans votre bibliothèque ou le retraiter." },
+        { "title": "Actions de l'historique", "content": "Depuis les éléments d'historique : voir le contenu complet, publier dans la bibliothèque, supprimer d'anciennes entrées, ou exporter. Gérez efficacement." },
+        { "title": "Vous êtes prêt !", "content": "Utilisez l'historique pour revoir vos traitements passés. Rien n'est perdu !" }
+      ]
+    },
+    "informational": {
+      "title": "Aide et Informations",
+      "steps": [
+        { "title": "Ressources d'aide", "content": "Cette page contient des informations utiles sur l'utilisation de l'application. Trouvez des guides, des conseils et des réponses aux questions courantes." },
+        { "title": "Trouver des informations", "content": "Parcourez les sujets et catégories pour trouver les informations dont vous avez besoin. Utilisez la recherche pour localiser rapidement des sujets spécifiques." },
+        { "title": "Vous êtes prêt !", "content": "Consultez cette page à tout moment pour obtenir de l'aide ou en apprendre davantage sur les fonctionnalités. Nous sommes là pour vous aider !" }
+      ]
+    },
+    "feedback": {
+      "title": "Commentaires et Suggestions",
+      "steps": [
+        { "title": "Partagez vos idées", "content": "Vos retours nous aident à nous améliorer ! Partagez vos pensées, signalez des problèmes ou suggérez de nouvelles fonctionnalités. Nous valorisons votre contribution." },
+        { "title": "Soumettre des commentaires", "content": "Remplissez le formulaire avec votre message, sélectionnez le type (rapport de bug, demande de fonctionnalité, commentaire général) et envoyez." },
+        { "title": "Demandes de fonctionnalités", "content": "Vous avez une idée ? Soumettez-la ici ! Vous pouvez aussi voter sur les demandes existantes d'autres utilisateurs." },
+        { "title": "Vous êtes prêt !", "content": "Nous apprécions vos retours ! Vos suggestions aident à améliorer l'application pour tous. Merci !" }
+      ]
+    },
+    "profile": {
+      "title": "Profil et Paramètres",
+      "steps": [
+        { "title": "Votre profil", "content": "Gérez les paramètres de votre compte, vos préférences et votre abonnement depuis la page Profil. Personnalisez votre expérience ici." },
+        { "title": "Paramètres du compte", "content": "Mettez à jour vos informations de profil, votre adresse e-mail et votre mot de passe. Gardez votre compte sécurisé et à jour." },
+        { "title": "Préférences", "content": "Personnalisez votre expérience : choisissez des thèmes de couleur, définissez les préférences de langue et configurez le comportement de la barre latérale." },
+        { "title": "Gestion de l'abonnement", "content": "Consultez votre statut d'abonnement, vos informations de facturation et les options de mise à niveau. Gérez votre abonnement et vos moyens de paiement." },
+        { "title": "Crédits et utilisation", "content": "Surveillez votre solde de crédits, vos statistiques d'utilisation et l'historique des crédits. Voir quand vos crédits se renouvellent." },
+        { "title": "Vous êtes prêt !", "content": "Votre profil est votre centre de contrôle. Personnalisez les paramètres selon vos préférences et gérez votre compte facilement." }
+      ]
+    },
     "academics": {
       "title": "Académique",
       "steps": [
@@ -918,14 +1099,20 @@
     "base_price_label": "Standard",
     "addons_label": "Options",
     "total_per_month": "Total par mois",
-    "zegocloud_addon_label": "Zegocloud (salle d'étude)",
-    "zegocloud_addon_description": "0,10 $/heure. Non inclus dans le forfait Standard.",
-    "ai_chat_addon_label": "Accès chat IA",
-    "ai_chat_addon_description": "0,10 $ pour 100k jetons (par blocs de 100k).",
-    "ai_min_hint": "Minimum 500k jetons (+0,50 $) lors de l'ajout de l'IA.",
+    "zegocloud_addon_label": "Heures de salle d'étude supplémentaires",
+    "zegocloud_addon_description": "10 heures incluses dans votre forfait. Ajoutez des heures à 0,10 $/heure.",
+    "ai_chat_addon_label": "Jetons de chat IA supplémentaires",
+    "ai_chat_addon_description": "500k jetons inclus dans votre forfait. Ajoutez-en à 0,10 $ par 100k jetons.",
+    "ai_min_hint": "Minimum 500k jetons (+0,50 $) par bloc supplémentaire.",
     "optional_addons": "Options facultatives",
-    "core_features_hint": "Fonctionnalités de base. Options ci-dessous facultatives.",
+    "core_features_hint": "Comprend 1 500 crédits outils, 500 crédits chat et 10 h de salle d'étude.",
     "per_month": "/ mois",
+    "per_billing_period": "par période de facturation",
+    "billing_term_label": "Période de facturation",
+    "billing_every_1": "Chaque mois (3,49 $ / mois)",
+    "billing_every_3": "Tous les 3 mois (9,99 $ au total)",
+    "billing_every_6": "Tous les 6 mois (18,99 $ au total)",
+    "total_per_billing_period": "Total par période de facturation",
     "subscribe": "S'abonner",
     "continue": "Continuer",
     "back_to_dashboard": "Retour au tableau de bord",
@@ -951,6 +1138,7 @@
     "tools_services": "Outils et services",
     "current_billing_cycle": "Cycle de facturation en cours",
     "of_credits": "sur {total} crédits",
+    "credits_plan_cap_suffix": "crédits (plafond du forfait)",
     "percent_used": "{pct} % utilisés",
     "credits_remaining": "{n} restants",
     "study_room": "Salle d'étude",
@@ -988,5 +1176,15 @@
     "cancel_footer": "Besoin d'aide ? Contactez le support plutôt que d'annuler",
     "toast_cancel_success": "Abonnement annulé avec succès",
     "notification_canceled": "Votre abonnement a été annulé. Vous conservez l'accès jusqu'au {date}."
+  },
+  "onboarding": {
+    "step_language": "Choisissez votre langue",
+    "step_language_sub": "Vous pouvez modifier cela à tout moment dans votre profil.",
+    "step_theme": "Choisissez votre thème",
+    "step_theme_sub": "Sélectionnez une palette de couleurs pour votre espace de travail.",
+    "next": "Suivant",
+    "back": "Retour",
+    "get_started": "Commencer",
+    "step_of": "Étape {current} sur {total}"
   }
 }

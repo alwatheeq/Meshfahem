@@ -4,7 +4,6 @@ import { Tag, Search, Edit2, Trash2, User, X, Save } from 'lucide-react';
 import { useToast } from '../Toast/Toast';
 import { ErrorLogger } from '../../utils/errorLogger';
 import { useDebounce } from '../../hooks/useDebounce';
-import { useAuth } from '../../hooks/useAuth';
 import { useConfirm } from '../../hooks/useConfirm';
 
 interface TagData {
@@ -91,14 +90,23 @@ export const TagsManagementPage: React.FC = React.memo(() => {
       // Log audit action
       if (user?.id) {
         const oldTag = tags.find(t => t.id === tagId);
-        await supabase.rpc('log_admin_action', {
-          p_action_type: 'UPDATE',
-          p_table_name: 'tags',
-          p_record_id: tagId,
-          p_old_values: { name: oldTag?.name },
-          p_new_values: { name: editingName.trim() },
-          p_description: `Updated tag name from "${oldTag?.name}" to "${editingName.trim()}"`
-        }).catch(err => ErrorLogger.warn('Failed to log admin action', { component: 'TagsManagementPage', action: 'handleSaveEdit', tagId, error: err instanceof Error ? err : new Error(String(err)) }));
+        try {
+          await supabase.rpc('log_admin_action', {
+            p_action_type: 'UPDATE',
+            p_table_name: 'tags',
+            p_record_id: tagId,
+            p_old_values: { name: oldTag?.name },
+            p_new_values: { name: editingName.trim() },
+            p_description: `Updated tag name from "${oldTag?.name}" to "${editingName.trim()}"`
+          });
+        } catch (logErr: unknown) {
+        const logError = logErr instanceof Error ? logErr : new Error(String(logErr));
+        ErrorLogger.warn('Failed to log admin action', { 
+          component: 'TagsManagementPage', 
+          action: 'handleSaveEdit', 
+          metadata: { tagId, error: logError.message } 
+        });
+      }
       }
 
       await fetchTags();
@@ -106,7 +114,11 @@ export const TagsManagementPage: React.FC = React.memo(() => {
       setEditingName('');
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      ErrorLogger.error(err, { component: 'TagsManagementPage', action: 'handleSaveEdit', tagId });
+      ErrorLogger.error(err, { 
+        component: 'TagsManagementPage', 
+        action: 'handleSaveEdit', 
+        metadata: { tagId } 
+      });
       showErrorToast('Failed to update tag');
     }
   };
@@ -138,19 +150,32 @@ export const TagsManagementPage: React.FC = React.memo(() => {
 
       // Log audit action
       if (user?.id) {
-        await supabase.rpc('log_admin_action', {
-          p_action_type: 'DELETE',
-          p_table_name: 'tags',
-          p_record_id: tagId,
-          p_old_values: { name: tagName, usage_count: usageCount },
-          p_description: `Deleted tag "${tagName}"${usageCount > 0 ? ` (removed from ${usageCount} items)` : ''}`
-        }).catch(err => ErrorLogger.warn('Failed to log admin action', { component: 'TagsManagementPage', action: 'handleDeleteTag', tagId, error: err instanceof Error ? err : new Error(String(err)) }));
+        try {
+          await supabase.rpc('log_admin_action', {
+            p_action_type: 'DELETE',
+            p_table_name: 'tags',
+            p_record_id: tagId,
+            p_old_values: { name: tagName, usage_count: usageCount },
+            p_description: `Deleted tag "${tagName}"${usageCount > 0 ? ` (removed from ${usageCount} items)` : ''}`
+          });
+        } catch (logErr: unknown) {
+          const logError = logErr instanceof Error ? logErr : new Error(String(logErr));
+          ErrorLogger.warn('Failed to log admin action', { 
+            component: 'TagsManagementPage', 
+            action: 'handleDeleteTag', 
+            metadata: { tagId, error: logError.message } 
+          });
+        }
       }
 
       await fetchTags();
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      ErrorLogger.error(err, { component: 'TagsManagementPage', action: 'handleDeleteTag', tagId });
+      ErrorLogger.error(err, { 
+        component: 'TagsManagementPage', 
+        action: 'handleDeleteTag', 
+        metadata: { tagId } 
+      });
       showErrorToast('Failed to delete tag');
     }
   };
@@ -172,8 +197,8 @@ export const TagsManagementPage: React.FC = React.memo(() => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
-        <div className="mb-6">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow border border-gray-200 dark:border-gray-700 p-6">
+        <div className="mb-8">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
@@ -181,7 +206,7 @@ export const TagsManagementPage: React.FC = React.memo(() => {
               placeholder="Search tags by name or user email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 dark:text-white"
+              className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
             />
           </div>
         </div>
@@ -193,7 +218,7 @@ export const TagsManagementPage: React.FC = React.memo(() => {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 dark:bg-slate-700">
+              <thead className="bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-slate-700">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                     Tag Name
@@ -209,17 +234,17 @@ export const TagsManagementPage: React.FC = React.memo(() => {
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-gray-700">
+              <tbody className="bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] divide-y divide-gray-200 dark:divide-gray-700">
                 {filteredTags.map((tag) => (
-                  <tr key={tag.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                    <td className="px-6 py-4">
+                  <tr key={tag.id} className="hover:bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:hover:bg-slate-700/50">
+                    <td className="px-6 py-6">
                       {editingTag === tag.id ? (
                         <div className="flex items-center space-x-2">
                           <input
                             type="text"
                             value={editingName}
                             onChange={(e) => setEditingName(e.target.value)}
-                            className="flex-1 px-3 py-1 border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:text-white"
+                            className="flex-1 px-3 py-1 border border-gray-300 dark:border-gray-600 rounded focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
                             autoFocus
                           />
                           <button
@@ -246,7 +271,7 @@ export const TagsManagementPage: React.FC = React.memo(() => {
                         </div>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <div className="flex items-center space-x-2">
                         <User className="h-4 w-4 text-gray-400" />
                         <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -254,7 +279,7 @@ export const TagsManagementPage: React.FC = React.memo(() => {
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                         tag.usage_count === 0
                           ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
@@ -263,19 +288,19 @@ export const TagsManagementPage: React.FC = React.memo(() => {
                         {tag.usage_count} {tag.usage_count === 1 ? 'item' : 'items'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       {editingTag !== tag.id && (
                         <div className="flex items-center space-x-2">
                           <button
                             onClick={() => handleStartEdit(tag)}
-                            className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition dark:text-blue-400 dark:hover:bg-blue-900/30"
+                            className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-lg transition dark:text-blue-400 dark:hover:bg-blue-900/30"
                             title="Edit tag name"
                           >
                             <Edit2 className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => handleDeleteTag(tag.id, tag.name, tag.usage_count || 0)}
-                            className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition dark:text-red-400 dark:hover:bg-red-900/30"
+                            className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-lg transition dark:text-red-400 dark:hover:bg-red-900/30"
                             title="Delete tag"
                           >
                             <Trash2 className="h-4 w-4" />

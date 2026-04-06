@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Users, MessageSquare, Folder, Tag, CreditCard, BarChart3, Activity, Pin, PinOff, Shield, Receipt, FileText, TrendingUp, Coins } from 'lucide-react';
+import { LayoutDashboard, Users, MessageSquare, Folder, Tag, CreditCard, BarChart3, Activity, Pin, PinOff, Shield, Receipt, FileText, TrendingUp, Coins, Settings } from 'lucide-react';
 import type { AdminView } from './AdminDashboard';
 import { useMouseProximity } from '../../hooks/useMouseProximity';
 
@@ -105,6 +105,11 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       icon: <FileText className="h-5 w-5" />,
     },
     {
+      id: 'app-settings',
+      label: 'App Settings',
+      icon: <Settings className="h-5 w-5" />,
+    },
+    {
       id: 'folders',
       label: 'Folders',
       icon: <Folder className="h-5 w-5" />,
@@ -123,13 +128,13 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   return (
     <aside
-      className={`fixed left-0 top-16 h-[calc(100vh-4rem)] bg-slate-800 border-r border-slate-700 transition-all duration-300 ${
+      className={`fixed left-0 top-16 h-[calc(100vh-4rem)] bg-gray-900 border-r border-gray-800 transition-all duration-300 ease-in-out ${
         shouldBeOpen ? 'w-64' : 'w-16'
-      } overflow-hidden shadow-lg z-30`}
+      } overflow-hidden shadow-sm z-30`}
       onMouseEnter={() => !isMobile && setIsHovered(true)}
       onMouseLeave={() => !isMobile && setIsHovered(false)}
     >
-      <div className="p-4 border-b border-slate-700">
+      <div className="p-6 border-b border-gray-800">
         <div className="flex items-center justify-between">
           {shouldBeOpen && (
             <h2 className="text-lg font-semibold text-gray-100">Admin Panel</h2>
@@ -137,7 +142,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           {!isMobile && (
             <button
               onClick={togglePin}
-              className={`p-2 rounded-lg transition duration-150 text-gray-400 hover:text-gray-200 hover:bg-slate-700 ${
+              className={`p-2 rounded-md transition-colors duration-150 text-gray-400 hover:text-gray-200 hover:bg-gray-800 ${
                 !shouldBeOpen ? 'mx-auto block' : ''
               }`}
               title={isPinned ? 'Unpin Sidebar' : 'Pin Sidebar'}
@@ -151,21 +156,21 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
           )}
         </div>
       </div>
-      <nav className="p-4 space-y-2">
+      <nav className="p-6 space-y-2">
         {navItems.map((item) => (
           <button
             key={item.id}
             onClick={() => onNavigate(item.id)}
-            className={`flex items-center transition ${
-              shouldBeOpen ? 'w-full space-x-3 px-4 py-3 rounded-lg' : 'w-10 h-10 justify-center rounded-lg'
+            className={`flex items-center transition-colors ${
+              shouldBeOpen ? 'w-full space-x-3 px-6 py-3 rounded-md' : 'w-10 h-10 justify-center rounded-md'
             } ${
               currentView === item.id
-                ? 'bg-blue-900/30 text-blue-300 font-semibold border border-blue-800'
-                : 'text-gray-300 hover:bg-slate-700'
+                ? 'bg-gray-800 text-gray-100 font-semibold border border-gray-700'
+                : 'text-gray-300 hover:bg-gray-800'
             }`}
             title={!shouldBeOpen ? item.label : undefined}
           >
-            <span className={currentView === item.id ? 'text-blue-400' : ''}>
+            <span className={currentView === item.id ? 'text-gray-100' : ''}>
               {item.icon}
             </span>
             {shouldBeOpen && (

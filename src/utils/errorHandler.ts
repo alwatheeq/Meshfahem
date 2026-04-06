@@ -1,5 +1,4 @@
-import { ErrorLogger, LogLevel, ErrorContext } from './errorLogger';
-import { supabase } from '../lib/supabase';
+import { ErrorLogger, ErrorContext } from './errorLogger';
 
 /**
  * Standardized error handling utility

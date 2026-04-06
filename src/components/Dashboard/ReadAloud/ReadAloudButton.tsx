@@ -1,56 +1,66 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import { useI18n } from '../../../contexts/I18nContext';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { useTTS } from '../../../hooks/useTTS';
+import { sanitizeForTts } from './readAloudUtils';
 
 export interface ReadAloudButtonProps {
   text: string;
+  lang?: string;
   className?: string;
   ariaLabel?: string;
-  // When true, shows the "disabled" icon/state (future: when TTS is running).
   disabled?: boolean;
-  // Optional callback for future wiring.
   onRequestRead?: (text: string) => void;
 }
 
-/**
- * Read-aloud button (placeholder).
- *
- * Note: Per requirements, we don't activate TTS yet (no API/tts provider selected).
- * This component is ready to be wired later.
- */
 export const ReadAloudButton: React.FC<ReadAloudButtonProps> = ({
   text,
+  lang = 'en-US',
   className,
   ariaLabel,
   disabled = false,
-  onRequestRead
+  onRequestRead,
 }) => {
   const { t } = useI18n();
   const { getThemeGradient, getThemeCardBorder, getThemeTextMuted } = useTheme();
+  const { speak, stop, isSpeaking } = useTTS({ lang });
 
-  const safeText = (text ?? '').trim();
+  const safeText = sanitizeForTts(text);
   const canRead = safeText.length > 0 && !disabled;
+
+  const handleClick = useCallback(() => {
+    if (!canRead) return;
+    if (isSpeaking) {
+      stop();
+      return;
+    }
+    speak(safeText);
+    onRequestRead?.(safeText);
+  }, [canRead, isSpeaking, stop, speak, safeText, onRequestRead]);
+
+  const label = isSpeaking
+    ? t('read_aloud.stop_reading') || 'Stop reading'
+    : ariaLabel || t('read_aloud.read_aloud') || 'Read aloud';
 
   return (
     <button
       type="button"
       disabled={!canRead}
-      aria-label={ariaLabel || t('read_aloud.read_aloud') || 'Read aloud'}
-      title={disabled ? (t('read_aloud.coming_soon') || 'Coming soon') : (t('read_aloud.read_aloud') || 'Read aloud')}
-      onClick={() => {
-        if (!canRead) return;
-        // Placeholder: no TTS yet. Call optional callback so future wiring can hook in.
-        onRequestRead?.(safeText);
-      }}
+      aria-label={label}
+      title={label}
+      onClick={handleClick}
       className={`inline-flex items-center justify-center rounded-md px-2 py-1 text-sm transition-opacity duration-150 ${
         canRead
           ? `${getThemeGradient('ui')} text-white hover:opacity-90`
           : `opacity-60 cursor-not-allowed ${getThemeTextMuted()}`
       } ${getThemeCardBorder()} ${className || ''}`}
     >
-      {canRead ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+      {isSpeaking ? (
+        <VolumeX className="h-4 w-4" />
+      ) : (
+        <Volume2 className="h-4 w-4" />
+      )}
     </button>
   );
 };
-

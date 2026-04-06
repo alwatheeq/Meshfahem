@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { User, Award, Flame, BookOpen, FileQuestion, Clock, TrendingUp, Calendar, Edit2, Save, X, CreditCard, Crown, Gift, Settings } from 'lucide-react';
+import { User, Award, Flame, BookOpen, FileQuestion, Clock, TrendingUp, Edit2, Save, X, CreditCard, Crown, Gift, Settings, ChevronDown } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useSubscription } from '../../hooks/useSubscription';
 import { useCredits } from '../../contexts/CreditContext';
 import { useUserPreferences } from '../../contexts/UserPreferencesContext';
-import { useTheme, getThemeDisplayName, type ColorTheme, themeDefinitions } from '../../contexts/ThemeContext';
+import { useTheme, themeDefinitions, VALID_COLOR_THEMES } from '../../contexts/ThemeContext';
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../../contexts/I18nContext';
 import { useToast } from '../Toast/Toast';
+import { usePageTutorial } from '../../hooks/usePageTutorial';
+import { PageTutorial } from '../Onboarding/PageTutorial';
 import { handleApiError, handleSupabaseError, isOffline, handleOfflineError } from '../../utils/errorHandler';
 import { ErrorLogger } from '../../utils/errorLogger';
+import { getToolsCreditsPlanCap } from '../../utils/subscriptionHelpers';
 
 interface UserStats {
   level: number;
@@ -41,11 +44,13 @@ interface Achievement {
 export const ProfilePage: React.FC = React.memo(() => {
   const { user } = useAuth();
   const { success: showSuccessToast, error: showErrorToast } = useToast();
-  const { t } = useI18n();
+  const { updateColorTheme } = useUserPreferences();
+  const { t, dir } = useI18n();
+  const isRtl = dir === 'rtl';
   const navigate = useNavigate();
   const { balance: creditBalance, refreshBalance } = useCredits();
-  const { preferences, updateSidebarMode } = useUserPreferences();
-  const { currentTheme, setTheme, getThemeGradient, getThemeBorder, getThemeText, getThemeFocusRing } = useTheme();
+  const { preferences, updateSidebarMode, updateTtsHoverEnabled } = useUserPreferences();
+  const { currentTheme, setTheme, getThemeGradient, getThemeBorder, getThemeFocusRing, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
   const { theme: darkMode } = useI18n();
   const {
     subscription,
@@ -53,8 +58,7 @@ export const ProfilePage: React.FC = React.memo(() => {
     isTrialUser,
     isPaidUser,
     getDaysRemaining,
-    getTierDisplayName,
-    getTierColor
+    getTierDisplayName
   } = useSubscription();
   const [stats, setStats] = useState<UserStats | null>(null);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
@@ -66,6 +70,7 @@ export const ProfilePage: React.FC = React.memo(() => {
   const [claimingCredits, setClaimingCredits] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
+  const [creditsDetailOpen, setCreditsDetailOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -874,11 +879,11 @@ export const ProfilePage: React.FC = React.memo(() => {
 
   const getBadgeColor = (tier: string) => {
     const colors = {
-      bronze: 'from-amber-600 to-amber-800',
+      bronze: 'from-gray-600 to-gray-800',
       silver: 'from-gray-400 to-gray-600',
-      gold: 'from-yellow-400 to-yellow-600',
-      platinum: 'from-cyan-400 to-cyan-600',
-      diamond: 'from-purple-400 to-purple-600'
+      gold: 'from-gray-600 to-gray-800',
+      platinum: 'from-gray-500 to-gray-700',
+      diamond: 'from-gray-700 to-gray-900'
     };
     return colors[tier as keyof typeof colors] || 'from-gray-400 to-gray-600';
   };
@@ -888,7 +893,7 @@ export const ProfilePage: React.FC = React.memo(() => {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 ${getThemeBorder()} mx-auto"></div>
-          <p className="mt-4 text-gray-600 dark:text-gray-400">{t('profile.loading')}</p>
+          <p className={`mt-4 ${getThemeTextSecondary()}`}>{t('profile.loading')}</p>
         </div>
       </div>
     );
@@ -899,11 +904,11 @@ export const ProfilePage: React.FC = React.memo(() => {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center max-w-md mx-auto p-6">
           <div className="mb-4">
-            <User className="h-16 w-16 text-gray-400 dark:text-gray-600 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
+            <User className={`h-16 w-16 ${getThemeTextMuted()} mx-auto mb-4`} />
+            <h2 className={`text-xl font-semibold ${getThemeTextPrimary()} mb-2`}>
               {t('profile.load_error') || 'Unable to Load Profile'}
             </h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">
+            <p className={`${getThemeTextSecondary()} mb-4`}>
               We couldn't load your profile data. This might be a temporary issue.
             </p>
           </div>
@@ -917,11 +922,11 @@ export const ProfilePage: React.FC = React.memo(() => {
                 }
               }}
               disabled={loading}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium"
+              className={`px-6 py-3 ${getThemeGradient('ui')} text-white rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition font-medium`}
             >
               {loading ? 'Loading...' : 'Retry'}
             </button>
-            <p className="text-sm text-gray-500 dark:text-gray-500 mt-4">
+            <p className={`text-sm ${getThemeTextMuted()} mt-4`}>
               If this problem persists, please try logging out and back in, or contact support.
             </p>
           </div>
@@ -932,36 +937,55 @@ export const ProfilePage: React.FC = React.memo(() => {
 
   const { currentLevel, progress, xpForNextLevel } = calculateLevelProgress(stats.experience_points);
 
+  const toolPlanCap = getToolsCreditsPlanCap(subscription);
+  const toolRem = creditBalance?.credits_remaining ?? 0;
+  const zegoRem = creditBalance?.zego_credits_remaining ?? 0;
+  const zegoTot = creditBalance?.zego_credits_total ?? 0;
+  const hasAiAddonProfile =
+    !!subscription &&
+    ((subscription.subscription_tier === 'standard' && (subscription.chat_blocks_per_cycle ?? 0) > 0) ||
+      (subscription.token_limit ?? 0) > 520000);
+  const aiChatCreditsTotalProfile =
+    hasAiAddonProfile && subscription
+      ? subscription.token_limit && subscription.token_limit > 520000
+        ? Math.round((subscription.token_limit - 520000) / 1000)
+        : (subscription.chat_blocks_per_cycle ?? 0) * 100
+      : 0;
+  const aiChatCreditsUsedProfile = hasAiAddonProfile && subscription ? Math.round((subscription.tokens_used_current_cycle ?? 0) / 1000) : 0;
+  const aiChatCreditsRemainingProfile = Math.max(0, aiChatCreditsTotalProfile - aiChatCreditsUsedProfile);
+  const toolBarPct =
+    toolPlanCap > 0 ? Math.min(100, (toolRem / toolPlanCap) * 100) : 0;
+
   return (
-    <div className={`min-h-screen ${getThemeGradient('bg')} p-6`}>
+    <div className="w-full min-h-0 p-4 sm:p-6">
       <div className="w-full space-y-6">
         {/* Subscription Status Card */}
-        <div className={`${getThemeGradient('ui')} rounded-2xl shadow-lg p-6 text-white`}>
+        <div className={`${getThemeGradient('ui')} rounded-lg shadow p-6 text-white`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="bg-white bg-opacity-20 p-3 rounded-lg">
+              <div className="bg-white bg-opacity-20 dark:bg-gray-900 dark:bg-opacity-20 p-3 rounded-lg">
                 <Crown className="h-8 w-8" />
               </div>
               <div>
                 <h2 className="text-2xl font-bold">{t('profile.subscription_status')}</h2>
                 {hasActiveSubscription() ? (
                   <>
-                    <p className="text-white text-opacity-90 mt-1">
+                    <p className="text-white dark:text-gray-900 text-opacity-90 dark:text-opacity-90 mt-1">
                       {t('profile.current_plan')}: <span className="font-semibold">{getTierDisplayName()}</span>
                     </p>
                     {isTrialUser() && (
-                      <p className="text-yellow-200 text-sm mt-1">
+                      <p className="text-white dark:text-gray-900 text-sm mt-1">
                         {t('profile.trial_expires', { days: getDaysRemaining() })}
                       </p>
                     )}
                     {isPaidUser() && subscription && (
-                      <p className="text-white text-opacity-80 text-sm mt-1">
+                      <p className="text-white dark:text-gray-900 text-opacity-80 dark:text-opacity-80 text-sm mt-1">
                         {subscription.auto_renew ? t('profile.renews_on') : t('profile.expires_on')} {new Date(subscription.end_date).toLocaleDateString()}
                       </p>
                     )}
                   </>
                 ) : (
-                  <p className="text-white text-opacity-90 mt-1">
+                  <p className="text-white dark:text-gray-900 text-opacity-90 dark:text-opacity-90 mt-1">
                     {t('profile.no_subscription')}
                   </p>
                 )}
@@ -970,8 +994,8 @@ export const ProfilePage: React.FC = React.memo(() => {
             <div className="flex items-center space-x-3">
               {hasActiveSubscription() && !isTrialUser() ? (
                 <button
-                  onClick={() => navigate('/subscription-management')}
-                  className="px-6 py-3 bg-white text-blue-600 rounded-lg hover:bg-gray-100 font-semibold transition flex items-center space-x-2"
+                  onClick={() => navigate('/profile/subscription')}
+                  className={`px-6 py-3 ${getThemeCardBg()} ${getThemeTextPrimary()} rounded-lg hover:opacity-80 font-semibold transition flex items-center space-x-2`}
                 >
                   <CreditCard className="h-5 w-5" />
                   <span>{t('profile.manage_subscription')}</span>
@@ -979,7 +1003,7 @@ export const ProfilePage: React.FC = React.memo(() => {
               ) : (
                 <button
                   onClick={() => navigate('/pricing')}
-                  className="px-6 py-3 bg-white text-blue-600 rounded-lg hover:bg-gray-100 font-semibold transition flex items-center space-x-2"
+                  className={`px-6 py-3 ${getThemeCardBg()} ${getThemeTextPrimary()} rounded-lg hover:opacity-80 font-semibold transition flex items-center space-x-2`}
                 >
                   <Crown className="h-5 w-5" />
                   <span>{isTrialUser() ? t('profile.upgrade_plan') : t('profile.subscribe_now')}</span>
@@ -989,44 +1013,49 @@ export const ProfilePage: React.FC = React.memo(() => {
           </div>
         </div>
 
-        {/* Credit Balance Card */}
+        {/* Credits: summary + expandable breakdown (matches header dropdown) */}
         {creditBalance && (
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Credit Balance</h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                  Your monthly credit allocation for AI services
-                </p>
+          <div
+            className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-6 ${getThemeCardBorder()}`}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setCreditsDetailOpen((o) => !o)}
+                  className="w-full flex items-center justify-between gap-3 text-left rounded-lg -m-2 p-2 hover:opacity-90 transition-opacity"
+                  aria-expanded={creditsDetailOpen}
+                >
+                  <div>
+                    <h2 className={`text-2xl font-bold ${getThemeTextPrimary()} mb-1`}>
+                      {t('profile.credits_summary_title')}
+                    </h2>
+                    <p className={`text-sm ${getThemeTextSecondary()}`}>{t('profile.credits_summary_subtitle')}</p>
+                  </div>
+                  <ChevronDown
+                    className={`h-6 w-6 shrink-0 ${getThemeTextSecondary()} transition-transform ${creditsDetailOpen ? 'rotate-180' : ''}`}
+                    aria-hidden
+                  />
+                </button>
 
-                <div className="flex items-baseline space-x-2 mb-4">
-                  <span className="text-4xl font-bold text-blue-600 dark:text-blue-400">
-                    {creditBalance.credits_remaining.toLocaleString()}
+                <div className="flex items-baseline flex-wrap gap-x-2 gap-y-1 mt-4 mb-2">
+                  <span className={`text-4xl font-bold ${getThemeTextPrimary()}`}>{toolRem.toLocaleString()}</span>
+                  <span className={`text-xl ${getThemeTextMuted()}`}>
+                    / {toolPlanCap.toLocaleString()}
                   </span>
-                  <span className="text-xl text-gray-500 dark:text-gray-400">
-                    / {creditBalance.credits_total.toLocaleString()}
-                  </span>
-                  <span className="text-sm text-gray-500 dark:text-gray-400">credits</span>
+                  <span className={`text-sm ${getThemeTextMuted()}`}>{t('profile.credits_tools_label')}</span>
                 </div>
 
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 mb-2">
+                <div className={`w-full ${getThemeSubtle('ui')} rounded-full h-3 mb-2`}>
                   <div
-                    className={`h-3 rounded-full transition-all duration-300 ${
-                      (creditBalance.credits_remaining / creditBalance.credits_total) * 100 > 30
-                        ? 'bg-green-500'
-                        : (creditBalance.credits_remaining / creditBalance.credits_total) * 100 > 10
-                        ? 'bg-yellow-500'
-                        : 'bg-red-500'
-                    }`}
-                    style={{
-                      width: `${Math.max(0, Math.min(100, (creditBalance.credits_remaining / creditBalance.credits_total) * 100))}%`
-                    }}
+                    className={`h-3 rounded-full transition-colors duration-150 bg-emerald-500 dark:bg-emerald-600`}
+                    style={{ width: `${toolBarPct}%` }}
                   />
                 </div>
 
                 {creditBalance.cycle_end && (
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Credits refresh on {new Date(creditBalance.cycle_end).toLocaleDateString()}
+                  <p className={`text-sm ${getThemeTextSecondary()}`}>
+                    {t('profile.credits_refresh_on', { date: new Date(creditBalance.cycle_end).toLocaleDateString() })}
                   </p>
                 )}
               </div>
@@ -1035,25 +1064,69 @@ export const ProfilePage: React.FC = React.memo(() => {
                 <button
                   onClick={handleClaimFreeCredits}
                   disabled={claimingCredits}
-                  className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg hover:from-green-600 hover:to-emerald-700 font-semibold transition flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg hover:from-green-600 hover:to-emerald-700 font-semibold transition flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
                 >
                   <Gift className="h-5 w-5" />
-                  <span>{claimingCredits ? 'Claiming...' : 'Claim 300 Free Credits'}</span>
+                  <span>{claimingCredits ? t('profile.claiming') : t('profile.claim_free_credits')}</span>
                 </button>
               )}
             </div>
+
+            {creditsDetailOpen && (
+              <div className={`mt-6 pt-6 border-t ${getThemeCardBorder()} space-y-5`}>
+                <div>
+                  <p className={`text-xs font-bold uppercase tracking-wide ${getThemeTextPrimary()}`}>
+                    {t('header.credits_tools_services')}
+                  </p>
+                  <p className={`text-sm ${getThemeTextSecondary()}`}>
+                    {toolRem.toLocaleString()} / {toolPlanCap.toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <p className={`text-xs font-bold uppercase tracking-wide ${getThemeTextPrimary()}`}>
+                    {t('header.credits_study_room')}
+                  </p>
+                  <p className={`text-sm ${getThemeTextSecondary()}`}>
+                    {zegoTot > 0 ? `${zegoRem.toLocaleString()} / ${zegoTot.toLocaleString()}` : '0'}
+                  </p>
+                  {zegoTot > 0 && (
+                    <div className={`w-full ${getThemeSubtle('ui')} rounded-full h-2 mt-2 max-w-xs`}>
+                      <div
+                        className="h-2 rounded-full bg-sky-500 dark:bg-sky-600"
+                        style={{
+                          width: `${Math.min(100, (zegoRem / zegoTot) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <p className={`text-xs font-bold uppercase tracking-wide ${getThemeTextPrimary()}`}>
+                    {t('header.credits_ai_assistant')}
+                  </p>
+                  <p className={`text-sm ${getThemeTextSecondary()}`}>
+                    {hasAiAddonProfile && aiChatCreditsTotalProfile > 0
+                      ? `${aiChatCreditsRemainingProfile.toLocaleString()} / ${aiChatCreditsTotalProfile.toLocaleString()}`
+                      : '0'}
+                  </p>
+                  {!hasAiAddonProfile && (
+                    <p className={`text-xs mt-1 ${getThemeTextMuted()}`}>{t('header.credits_ai_addon_hint')}</p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* Settings Section */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow p-6`}>
           <div className="flex items-center space-x-3 mb-6">
-            <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg">
-              <Settings className="h-6 w-6 text-gray-600 dark:text-gray-300" />
+            <div className={`${getThemeSubtle('ui')} p-3 rounded-lg`}>
+              <Settings className={`h-6 w-6 ${getThemeTextSecondary()}`} />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Settings</h2>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <h2 className={`text-2xl font-bold ${getThemeTextPrimary()}`}>Settings</h2>
+              <p className={`text-sm ${getThemeTextSecondary()}`}>
                 Customize your application preferences
               </p>
             </div>
@@ -1129,17 +1202,42 @@ export const ProfilePage: React.FC = React.memo(() => {
               </div>
             </div>
 
+            {/* Navigation Voice (TTS hover) */}
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">
+                {t('profile.tts_hover_label')}
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                {t('profile.tts_hover_desc')}
+              </p>
+              <label className="flex items-center space-x-3 rtl:space-x-reverse cursor-pointer select-none">
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={preferences?.tts_hover_enabled !== false}
+                    onChange={(e) => updateTtsHoverEnabled(e.target.checked)}
+                  />
+                  <div className={`w-11 h-6 rounded-full transition-colors duration-200 ${preferences?.tts_hover_enabled !== false ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`} />
+                  <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${preferences?.tts_hover_enabled !== false ? 'translate-x-5' : 'translate-x-0'}`} />
+                </div>
+                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  {preferences?.tts_hover_enabled !== false ? t('subscription_management.enabled') : t('subscription_management.disabled')}
+                </span>
+              </label>
+            </div>
+
             {/* Color Theme Selector */}
             <div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
-                Color Theme
+                {t('profile.theme_picker_title')}
               </h3>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                Choose your preferred color scheme for the application
+                {t('profile.theme_picker_desc')}
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {(['pink-white', 'blue-purple', 'green-teal', 'orange-amber', 'indigo-violet'] as ColorTheme[]).map((theme) => {
+                {VALID_COLOR_THEMES.map((theme) => {
                   const isSelected = currentTheme === theme;
                   const themeDef = themeDefinitions[theme];
                   const bgGradient = darkMode === 'dark' ? themeDef.background.dark.gradient : themeDef.background.light.gradient;
@@ -1153,9 +1251,11 @@ export const ProfilePage: React.FC = React.memo(() => {
                         setSavingSettings(true);
                         setSettingsMessage(null);
                         try {
-                          await setTheme(theme);
+                          await setTheme(theme, async () => {
+                            await updateColorTheme(theme);
+                          });
                           setSettingsMessage('Theme updated successfully!');
-                          toast.show('Theme updated successfully!', 'success');
+                          showSuccessToast('Theme updated successfully!');
                           setTimeout(() => setSettingsMessage(null), 3000);
                         } catch (error) {
                           const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1166,7 +1266,7 @@ export const ProfilePage: React.FC = React.memo(() => {
                             showErrorToast(errorMessage);
                             setTimeout(() => setSettingsMessage(null), 5000);
                           } else {
-                            const message = handleApiError(error, { 
+                            handleApiError(error, { 
                               component: 'ProfilePage', 
                               action: 'handleThemeChange',
                               theme,
@@ -1186,15 +1286,15 @@ export const ProfilePage: React.FC = React.memo(() => {
                         }
                       }}
                       disabled={savingSettings}
-                      className={`relative p-4 border-2 rounded-lg transition-all cursor-pointer hover:shadow-lg ${
+                      className={`relative p-4 border-2 rounded-lg transition-all cursor-pointer hover:shadow ${
                         isSelected
-                          ? '${getThemeBorder()} bg-opacity-10 dark:bg-opacity-20 shadow-md'
-                          : '${getThemeBorder()} opacity-50 hover:border-gray-300 dark:hover:border-gray-600'
+                          ? `${getThemeBorder()} bg-opacity-10 dark:bg-opacity-20 shadow-md`
+                          : `${getThemeBorder()} opacity-50 hover:border-gray-300 dark:hover:border-gray-600`
                       } ${savingSettings ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       {isSelected && (
                         <div className="absolute top-2 right-2">
-                          <div className="bg-blue-500 text-white rounded-full p-1">
+                          <div className="bg-gray-700 dark:bg-gray-200 text-white dark:text-gray-900 rounded-full p-1">
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
@@ -1212,10 +1312,10 @@ export const ProfilePage: React.FC = React.memo(() => {
                         </div>
                         <div className="text-center">
                           <div className="font-medium text-gray-900 dark:text-gray-100">
-                            {getThemeDisplayName(theme)}
+                            {t(`profile.theme_${theme.replace(/-/g, '_')}`)}
                           </div>
-                          {theme === 'blue-purple' && (
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Default</div>
+                          {theme === 'sky-blue' && (
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('profile.theme_default_badge')}</div>
                           )}
                         </div>
                       </div>
@@ -1228,14 +1328,14 @@ export const ProfilePage: React.FC = React.memo(() => {
         </div>
 
         {/* Profile Header */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center space-x-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow p-6">
+          <div className={`flex items-start justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex items-center space-x-6 rtl:space-x-reverse ${isRtl ? 'flex-row-reverse' : ''}`}>
               <div className="relative">
-                <div className={`h-24 w-24 rounded-full ${getThemeGradient('ui')} flex items-center justify-center text-white text-3xl font-bold`}>
+                <div className={`h-24 w-24 rounded-full ${getThemeGradient('ui')} flex items-center justify-center text-white dark:text-gray-900 text-3xl font-bold`}>
                   {(stats.display_name || user?.email)?.charAt(0).toUpperCase() || 'U'}
                 </div>
-                <div className="absolute -bottom-2 -right-2 bg-gradient-to-r from-yellow-400 to-yellow-600 text-white px-3 py-1 rounded-full text-sm font-bold shadow-lg">
+                <div className="absolute -bottom-2 -right-2 bg-gradient-to-r from-gray-600 to-gray-800 text-white px-3 py-1 rounded-full text-sm font-bold shadow">
                   Lv {currentLevel}
                 </div>
               </div>
@@ -1272,13 +1372,13 @@ export const ProfilePage: React.FC = React.memo(() => {
                 )}
 
                 <div className="mt-4">
-                  <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400 mb-1">
+                  <div className={`flex items-center justify-between text-sm text-gray-600 dark:text-gray-400 mb-1 ${isRtl ? 'flex-row-reverse' : ''}`}>
                     <span>{t('profile.level')} {currentLevel}</span>
                     <span>{stats.experience_points} / {xpForNextLevel} {t('profile.xp')}</span>
                   </div>
                   <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
                     <div
-                      className={`${getThemeGradient('ui')} h-3 rounded-full transition-all duration-300`}
+                      className={`${getThemeGradient('ui')} h-3 rounded-full transition-colors duration-150`}
                       style={{ width: `${progress}%` }}
                     ></div>
                   </div>
@@ -1292,7 +1392,7 @@ export const ProfilePage: React.FC = React.memo(() => {
                   <button
                     onClick={handleSaveProfile}
                     disabled={saving}
-                    className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    className="p-2 bg-gray-700 dark:bg-gray-200 text-white dark:text-gray-900 rounded-lg hover:bg-gray-600 dark:hover:bg-gray-300 disabled:opacity-50"
                     title="Save"
                   >
                     <Save className="h-5 w-5" />
@@ -1324,8 +1424,8 @@ export const ProfilePage: React.FC = React.memo(() => {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-6">
-            <div className="flex items-center justify-between">
+          <div className="bg-white dark:bg-gray-800 rounded-md shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-6 border border-gray-100 dark:border-gray-700">
+            <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">{t('profile.current_streak')}</p>
                 <p className="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-1">
@@ -1341,8 +1441,8 @@ export const ProfilePage: React.FC = React.memo(() => {
             </div>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-6">
-            <div className="flex items-center justify-between">
+          <div className="bg-white dark:bg-gray-800 rounded-md shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-6 border border-gray-100 dark:border-gray-700">
+            <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">{t('profile.items_published')}</p>
                 <p className="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-1">
@@ -1355,22 +1455,22 @@ export const ProfilePage: React.FC = React.memo(() => {
             </div>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-6">
-            <div className="flex items-center justify-between">
+          <div className="bg-white dark:bg-gray-800 rounded-md shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-6 border border-gray-100 dark:border-gray-700">
+            <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">{t('profile.flashcards_studied')}</p>
                 <p className="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-1">
                   {stats.total_flashcards_studied}
                 </p>
               </div>
-              <div className="bg-blue-100 dark:bg-blue-900 p-3 rounded-lg">
-                <TrendingUp className="h-8 w-8 text-blue-600 dark:text-blue-300" />
+              <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg">
+                <TrendingUp className="h-8 w-8 text-gray-900 dark:text-white" />
               </div>
             </div>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-6">
-            <div className="flex items-center justify-between">
+          <div className="bg-white dark:bg-gray-800 rounded-md shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-6 border border-gray-100 dark:border-gray-700">
+            <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">{t('profile.quizzes_completed')}</p>
                 <p className="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-1">
@@ -1383,8 +1483,8 @@ export const ProfilePage: React.FC = React.memo(() => {
             </div>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-6">
-            <div className="flex items-center justify-between">
+          <div className="bg-white dark:bg-gray-800 rounded-md shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-6 border border-gray-100 dark:border-gray-700">
+            <div className={`flex items-center justify-between ${isRtl ? 'flex-row-reverse' : ''}`}>
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">{t('profile.total_study_time')}</p>
                 <p className="text-3xl font-bold text-gray-900 dark:text-gray-100 mt-1">
@@ -1399,9 +1499,9 @@ export const ProfilePage: React.FC = React.memo(() => {
         </div>
 
         {/* Achievements Section */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
-          <div className="flex items-center space-x-3 mb-6">
-            <Award className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow p-6">
+          <div className={`flex items-center space-x-3 rtl:space-x-reverse mb-6 ${isRtl ? 'flex-row-reverse' : ''}`}>
+            <Award className="h-6 w-6 text-gray-900 dark:text-white" />
             <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
               {t('profile.recent_achievements')} ({achievements.length})
             </h2>
@@ -1422,7 +1522,7 @@ export const ProfilePage: React.FC = React.memo(() => {
                   key={achievement.id}
                   className={`border ${getThemeBorder()} opacity-50 rounded-lg p-4 hover:shadow-md transition-shadow`}
                 >
-                  <div className="flex items-start space-x-3">
+                  <div className={`flex items-start space-x-3 rtl:space-x-reverse ${isRtl ? 'flex-row-reverse' : ''}`}>
                     <div className={`bg-gradient-to-br ${getBadgeColor(achievement.badge_tier)} p-2 rounded-lg flex-shrink-0`}>
                       <Award className="h-6 w-6 text-white" />
                     </div>
@@ -1435,11 +1535,11 @@ export const ProfilePage: React.FC = React.memo(() => {
                       </p>
                       <div className="flex items-center justify-between mt-2">
                         <span className={`text-xs px-2 py-1 rounded-full ${
-                          achievement.badge_tier === 'bronze' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300' :
+                          achievement.badge_tier === 'bronze' ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-white' :
                           achievement.badge_tier === 'silver' ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' :
-                          achievement.badge_tier === 'gold' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300' :
-                          achievement.badge_tier === 'platinum' ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300' :
-                          'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300'
+                          achievement.badge_tier === 'gold' ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-white' :
+                          achievement.badge_tier === 'platinum' ? 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300' :
+                          'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                         }`}>
                           {achievement.badge_tier.toUpperCase()}
                         </span>

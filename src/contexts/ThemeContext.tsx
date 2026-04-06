@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { ErrorLogger } from '../utils/errorLogger';
 
-export type ColorTheme = 'monochrome' | 'warm-neutrals' | 'cool-neutrals' | 'sky-blue' | 'soft-minimal' | 'rose-pink';
+export type ColorTheme = 'monochrome' | 'warm-neutrals' | 'sky-blue' | 'rose-pink' | 'slate-mist' | 'plum-sand';
 
 interface BackgroundColors {
   light: {
@@ -105,9 +105,9 @@ const themeDefinitions: Record<ColorTheme, ThemeColors> = {
         to: 'amber-50',
       },
       dark: {
-        gradient: 'from-stone-900 to-amber-900',
-        from: 'stone-900',
-        to: 'amber-900',
+        gradient: 'from-zinc-950 via-stone-900/80 to-zinc-950',
+        from: 'zinc-950',
+        to: 'zinc-950',
       },
     },
     ui: {
@@ -134,54 +134,10 @@ const themeDefinitions: Record<ColorTheme, ThemeColors> = {
         textPrimary: 'text-stone-100',
         textSecondary: 'text-amber-200',
         textMuted: 'text-amber-400',
-        cardBg: 'bg-stone-800',
-        cardBorder: 'border-amber-700',
-        subtleBg: 'bg-stone-900',
-        tutorialBg: 'bg-amber-900',
-      },
-    },
-  },
-  'cool-neutrals': {
-    background: {
-      light: {
-        gradient: 'from-slate-50 to-gray-50',
-        from: 'slate-50',
-        to: 'gray-50',
-      },
-      dark: {
-        gradient: 'from-slate-900 to-gray-900',
-        from: 'slate-900',
-        to: 'gray-900',
-      },
-    },
-    ui: {
-      light: {
-        gradient: 'from-slate-500 to-slate-600',
-        from: 'slate-500',
-        to: 'slate-600',
-        accent: 'slate-600',
-        accentHover: 'slate-700',
-        textPrimary: 'text-slate-900',
-        textSecondary: 'text-slate-700',
-        textMuted: 'text-slate-500',
-        cardBg: 'bg-slate-50',
-        cardBorder: 'border-slate-200',
-        subtleBg: 'bg-gray-50',
-        tutorialBg: 'bg-slate-100',
-      },
-      dark: {
-        gradient: 'from-slate-600 to-slate-700',
-        from: 'slate-600',
-        to: 'slate-700',
-        accent: 'slate-600',
-        accentHover: 'slate-500',
-        textPrimary: 'text-slate-100',
-        textSecondary: 'text-slate-300',
-        textMuted: 'text-slate-500',
-        cardBg: 'bg-slate-800',
-        cardBorder: 'border-slate-700',
-        subtleBg: 'bg-slate-900',
-        tutorialBg: 'bg-gray-900',
+        cardBg: 'bg-zinc-900',
+        cardBorder: 'border-amber-800/50',
+        subtleBg: 'bg-zinc-950',
+        tutorialBg: 'bg-amber-950/40',
       },
     },
   },
@@ -193,9 +149,9 @@ const themeDefinitions: Record<ColorTheme, ThemeColors> = {
         to: 'blue-50',
       },
       dark: {
-        gradient: 'from-sky-900 to-blue-900',
-        from: 'sky-900',
-        to: 'blue-900',
+        gradient: 'from-zinc-950 via-sky-950/20 to-zinc-950',
+        from: 'zinc-950',
+        to: 'zinc-950',
       },
     },
     ui: {
@@ -222,10 +178,10 @@ const themeDefinitions: Record<ColorTheme, ThemeColors> = {
         textPrimary: 'text-sky-100',
         textSecondary: 'text-blue-200',
         textMuted: 'text-blue-400',
-        cardBg: 'bg-sky-800',
-        cardBorder: 'border-blue-700',
-        subtleBg: 'bg-sky-900',
-        tutorialBg: 'bg-cyan-900',
+        cardBg: 'bg-zinc-900',
+        cardBorder: 'border-sky-800/45',
+        subtleBg: 'bg-zinc-950',
+        tutorialBg: 'bg-sky-950/35',
       },
     },
   },
@@ -237,9 +193,9 @@ const themeDefinitions: Record<ColorTheme, ThemeColors> = {
         to: 'pink-50',
       },
       dark: {
-        gradient: 'from-rose-950 to-pink-950',
-        from: 'rose-950',
-        to: 'pink-950',
+        gradient: 'from-zinc-950 via-rose-950/18 to-zinc-950',
+        from: 'zinc-950',
+        to: 'zinc-950',
       },
     },
     ui: {
@@ -266,54 +222,98 @@ const themeDefinitions: Record<ColorTheme, ThemeColors> = {
         textPrimary: 'text-rose-50',
         textSecondary: 'text-rose-200',
         textMuted: 'text-rose-400',
-        cardBg: 'bg-rose-900',
-        cardBorder: 'border-rose-800',
-        subtleBg: 'bg-rose-950',
-        tutorialBg: 'bg-pink-900',
+        cardBg: 'bg-zinc-900',
+        cardBorder: 'border-rose-800/45',
+        subtleBg: 'bg-zinc-950',
+        tutorialBg: 'bg-rose-950/35',
       },
     },
   },
-  'soft-minimal': {
+  'slate-mist': {
     background: {
       light: {
-        gradient: 'from-gray-50 to-white',
-        from: 'gray-50',
-        to: 'white',
+        gradient: 'from-slate-100 to-teal-50',
+        from: 'slate-100',
+        to: 'teal-50',
       },
       dark: {
-        gradient: 'from-gray-800 to-gray-900',
-        from: 'gray-800',
-        to: 'gray-900',
+        gradient: 'from-slate-900 to-teal-950',
+        from: 'slate-900',
+        to: 'teal-950',
       },
     },
     ui: {
       light: {
-        gradient: 'from-gray-500 to-gray-600',
-        from: 'gray-500',
-        to: 'gray-600',
-        accent: 'gray-600',
-        accentHover: 'gray-700',
-        textPrimary: 'text-gray-900',
-        textSecondary: 'text-gray-700',
-        textMuted: 'text-gray-500',
-        cardBg: 'bg-white',
-        cardBorder: 'border-gray-200',
-        subtleBg: 'bg-gray-50',
-        tutorialBg: 'bg-gray-100',
+        gradient: 'from-teal-500 to-cyan-600',
+        from: 'teal-500',
+        to: 'cyan-600',
+        accent: 'teal-600',
+        accentHover: 'teal-700',
+        textPrimary: 'text-slate-900',
+        textSecondary: 'text-teal-900',
+        textMuted: 'text-teal-700',
+        cardBg: 'bg-slate-50',
+        cardBorder: 'border-teal-200',
+        subtleBg: 'bg-teal-50',
+        tutorialBg: 'bg-cyan-100',
       },
       dark: {
-        gradient: 'from-gray-600 to-gray-700',
-        from: 'gray-600',
-        to: 'gray-700',
-        accent: 'gray-600',
-        accentHover: 'gray-500',
-        textPrimary: 'text-gray-100',
-        textSecondary: 'text-gray-300',
-        textMuted: 'text-gray-500',
-        cardBg: 'bg-gray-800',
-        cardBorder: 'border-gray-700',
-        subtleBg: 'bg-gray-900',
-        tutorialBg: 'bg-gray-800',
+        gradient: 'from-teal-600 to-cyan-700',
+        from: 'teal-600',
+        to: 'cyan-700',
+        accent: 'teal-600',
+        accentHover: 'teal-500',
+        textPrimary: 'text-slate-100',
+        textSecondary: 'text-teal-200',
+        textMuted: 'text-teal-400',
+        cardBg: 'bg-slate-800',
+        cardBorder: 'border-teal-700',
+        subtleBg: 'bg-slate-900',
+        tutorialBg: 'bg-teal-900',
+      },
+    },
+  },
+  'plum-sand': {
+    background: {
+      light: {
+        gradient: 'from-stone-100 to-rose-100',
+        from: 'stone-100',
+        to: 'rose-100',
+      },
+      dark: {
+        gradient: 'from-stone-900 to-rose-950',
+        from: 'stone-900',
+        to: 'rose-950',
+      },
+    },
+    ui: {
+      light: {
+        gradient: 'from-violet-400 to-rose-400',
+        from: 'violet-400',
+        to: 'rose-400',
+        accent: 'violet-500',
+        accentHover: 'violet-600',
+        textPrimary: 'text-stone-900',
+        textSecondary: 'text-violet-900',
+        textMuted: 'text-violet-700',
+        cardBg: 'bg-stone-50',
+        cardBorder: 'border-rose-200',
+        subtleBg: 'bg-rose-50',
+        tutorialBg: 'bg-violet-100',
+      },
+      dark: {
+        gradient: 'from-violet-600 to-rose-600',
+        from: 'violet-600',
+        to: 'rose-600',
+        accent: 'violet-500',
+        accentHover: 'violet-400',
+        textPrimary: 'text-stone-100',
+        textSecondary: 'text-violet-200',
+        textMuted: 'text-rose-400',
+        cardBg: 'bg-stone-800',
+        cardBorder: 'border-rose-800',
+        subtleBg: 'bg-stone-900',
+        tutorialBg: 'bg-violet-900',
       },
     },
   },
@@ -344,14 +344,41 @@ export const ThemeContext = createContext<ThemeContextType | undefined>(undefine
 
 const THEME_STORAGE_KEY = 'meshfahem_color_theme';
 
+/** Valid slugs for color_theme (keep in sync with DB constraint + Profile picker). */
+export const VALID_COLOR_THEMES: ColorTheme[] = [
+  'monochrome',
+  'warm-neutrals',
+  'sky-blue',
+  'rose-pink',
+  'slate-mist',
+  'plum-sand',
+];
+
+const LEGACY_COLOR_THEME_MAP: Record<string, ColorTheme> = {
+  'cool-neutrals': 'sky-blue',
+  'soft-minimal': 'warm-neutrals',
+  'earth-tones': 'sky-blue',
+};
+
+/** Coerce API / legacy DB values to a valid ColorTheme (avoids missing themeDefinitions entries). */
+export function normalizeColorTheme(raw: string | null | undefined): ColorTheme {
+  if (!raw) return 'sky-blue';
+  const mapped = LEGACY_COLOR_THEME_MAP[raw] ?? raw;
+  if (VALID_COLOR_THEMES.includes(mapped as ColorTheme)) {
+    return mapped as ColorTheme;
+  }
+  return 'sky-blue';
+}
+
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Initialize theme from localStorage
   const [currentTheme, setCurrentTheme] = useState<ColorTheme>(() => {
-    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
-    if (savedTheme && ['monochrome', 'warm-neutrals', 'cool-neutrals', 'sky-blue', 'soft-minimal', 'rose-pink'].includes(savedTheme)) {
+    const raw = localStorage.getItem(THEME_STORAGE_KEY);
+    const savedTheme = raw ? LEGACY_COLOR_THEME_MAP[raw] ?? raw : null;
+    if (savedTheme && VALID_COLOR_THEMES.includes(savedTheme as ColorTheme)) {
       return savedTheme as ColorTheme;
     }
-    return 'soft-minimal';
+    return 'sky-blue';
   });
   const [isDark, setIsDark] = useState<boolean>(() => {
     // Check localStorage first
@@ -474,7 +501,12 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         'stone-900': 'bg-stone-900',
         'amber-900': 'bg-amber-900',
         'slate-50': 'bg-slate-50',
+        'slate-100': 'bg-slate-100',
         'slate-900': 'bg-slate-900',
+        'teal-50': 'bg-teal-50',
+        'teal-950': 'bg-teal-950',
+        'stone-100': 'bg-stone-100',
+        'rose-100': 'bg-rose-100',
         'sky-50': 'bg-sky-50',
         'blue-50': 'bg-blue-50',
         'sky-900': 'bg-sky-900',
@@ -503,6 +535,15 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         'rose-600': 'bg-rose-600',
         'rose-400': 'bg-rose-400',
         'rose-700': 'bg-rose-700',
+        'teal-600': 'bg-teal-600',
+        'teal-400': 'bg-teal-400',
+        'cyan-600': 'bg-cyan-600',
+        'cyan-700': 'bg-cyan-700',
+        'violet-500': 'bg-violet-500',
+        'violet-600': 'bg-violet-600',
+        'violet-400': 'bg-violet-400',
+        'rose-400': 'bg-rose-400',
+        'rose-600': 'bg-rose-600',
       };
       return accentClassMap[activeUI.accent] || `bg-${activeUI.accent}`;
     } else {
@@ -520,10 +561,10 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       const subtleUIMap: Record<ColorTheme, { light: string; dark: string }> = {
         'monochrome': { light: 'bg-gray-100', dark: 'bg-gray-700' },
         'warm-neutrals': { light: 'bg-amber-100', dark: 'bg-amber-800' },
-        'cool-neutrals': { light: 'bg-slate-100', dark: 'bg-slate-700' },
         'sky-blue': { light: 'bg-blue-100', dark: 'bg-blue-800' },
-        'soft-minimal': { light: 'bg-gray-100', dark: 'bg-gray-700' },
         'rose-pink': { light: 'bg-rose-100', dark: 'bg-rose-800' },
+        'slate-mist': { light: 'bg-teal-100', dark: 'bg-teal-900' },
+        'plum-sand': { light: 'bg-violet-100', dark: 'bg-violet-900' },
       };
       return isDark ? subtleUIMap[currentTheme].dark : subtleUIMap[currentTheme].light;
     } else {
@@ -645,10 +686,10 @@ export const getThemeDisplayName = (theme: ColorTheme): string => {
   const names: Record<ColorTheme, string> = {
     'monochrome': 'Monochrome',
     'warm-neutrals': 'Warm Neutrals',
-    'cool-neutrals': 'Cool Neutrals',
     'sky-blue': 'Sky Blue',
-    'soft-minimal': 'Soft Minimal',
     'rose-pink': 'Rose Pink',
+    'slate-mist': 'Slate Mist',
+    'plum-sand': 'Plum Sand',
   };
   return names[theme];
 };

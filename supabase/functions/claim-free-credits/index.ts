@@ -1,54 +1,86 @@
+/// <reference path="../_shared/deno.d.ts" />
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { handleCorsPreflight } from '../_shared/cors.ts';
-import { jsonResponse, errorResponse, successResponse } from '../_shared/response.ts';
-import { authenticateUser, getSupabaseClient } from '../_shared/auth.ts';
-import { validateMethod } from '../_shared/validation.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2.54.0';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
+};
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+  });
+}
 
 Deno.serve(async (req: Request) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return handleCorsPreflight();
+    return new Response(null, { headers: corsHeaders, status: 200 });
   }
 
-  const methodError = validateMethod(req, ['POST']);
-  if (methodError) {
-    return methodError;
+  // ✅ Enforce POST only
+  if (req.method !== 'POST') {
+    return json({ error: 'Method not allowed' }, 405);
   }
 
   try {
-    // Authenticate user
-    const authResult = await authenticateUser(req, true);
-    if (authResult.error || !authResult.user) {
-      return errorResponse(authResult.error || 'Unauthorized', 401);
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return json({ error: 'Server configuration error' }, 500);
     }
 
-    const supabase = getSupabaseClient();
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false }
+    });
+
+    // Authenticate user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return json({ error: 'Missing authorization header' }, 401);
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+
+    if (userError || !user) {
+      return json({ error: 'Unauthorized' }, 401);
+    }
 
     // Call claim_free_credits function
     const { data, error } = await supabase.rpc('claim_free_credits', {
-      p_user_id: authResult.user.id
+      p_user_id: user.id
     });
 
     if (error) {
-      console.error('Error claiming free credits:', error);
-      return errorResponse('Failed to claim credits', 500);
+      console.error('Error claiming free credits (rpc error):', error);
+      return json({ error: 'Failed to claim credits' }, 500);
     }
 
-    if (!data.success) {
-      return errorResponse(data.error || 'Failed to claim credits', 400);
+    // ✅ Validate RPC return shape
+    if (!data || typeof data !== 'object' || typeof (data as any).success !== 'boolean') {
+      console.error('Unexpected claim_free_credits response shape:', data);
+      return json({ error: 'Failed to claim credits' }, 500);
     }
 
-    // Return success
-    return successResponse({
-      credits_added: data.credits_added,
-      new_balance: data.new_balance
-    });
+    const result = data as any;
 
-  } catch (error) {
+    if (!result.success) {
+      return json({ error: result.error || 'Failed to claim credits' }, 400);
+    }
+
+    return json({
+      success: true,
+      credits_added: result.credits_added,
+      new_balance: result.new_balance
+    }, 200);
+
+  } catch (error: any) {
     console.error('Unexpected error:', error);
-    return errorResponse(
-      error instanceof Error ? error.message : 'Internal server error',
-      500
-    );
+    return json({ error: 'Internal server error' }, 500);
   }
 });

@@ -4,6 +4,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { I18nProvider } from './contexts/I18nContext';
 import { CreditProvider } from './contexts/CreditContext';
 import { PersistentModalProvider } from './contexts/PersistentModalContext';
+import { SubscriptionUpsellGateProvider } from './contexts/SubscriptionUpsellGateContext';
 import { UserPreferencesProvider } from './contexts/UserPreferencesContext';
 import { OnboardingProvider } from './contexts/OnboardingContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -32,7 +33,7 @@ const BillingHistoryPage = lazy(() => import('./components/Dashboard/BillingHist
 const GameJoinPage = lazy(() => import('./components/Dashboard/GameJoinPage').then(m => ({ default: m.GameJoinPage })));
 const AccountSuspended = lazy(() => import('./components/AccountSuspended').then(m => ({ default: m.AccountSuspended })));
 const ContentViewPage = lazy(() => import('./components/Dashboard/ContentViewPage').then(m => ({ default: m.ContentViewPage })));
-const LanguageChoicePage = lazy(() => import('./components/Onboarding/LanguageChoicePage').then(m => ({ default: m.LanguageChoicePage })));
+const OnboardingWizard = lazy(() => import('./components/Onboarding/OnboardingWizard').then(m => ({ default: m.OnboardingWizard })));
 
 // Internal component that uses hooks
 const AppContentInternal: React.FC = () => {
@@ -40,10 +41,12 @@ const AppContentInternal: React.FC = () => {
   const { getBackgroundGradient } = useTheme();
   const [isBlocked, setIsBlocked] = useState<boolean | null>(null);
   const [checkingBlock, setCheckingBlock] = useState(true);
-  const [languageChosen, setLanguageChosen] = useState(() => {
-    if (typeof localStorage === 'undefined') return true;
-    return localStorage.getItem('meshfahem_language_chosen') === 'true';
-  });
+
+  // Per-user key so each account gets its own onboarding gate regardless of browser history
+  const onboardingDone =
+    typeof localStorage === 'undefined' ||
+    !user ||
+    localStorage.getItem(`meshfahem_onboarding_completed_${user.id}`) === 'true';
 
   useEffect(() => {
     ErrorLogger.debug('AppContent - user', { component: 'App', action: 'render', userId: user?.id, userRole: user?.role });
@@ -99,14 +102,8 @@ const AppContentInternal: React.FC = () => {
     return <Navigate to="/account/suspended" replace />;
   }
 
-  // Redirect admin users to admin dashboard
-  if (user?.role === 'admin') {
-    ErrorLogger.debug('Admin user detected, redirecting to admin dashboard', { component: 'App', action: 'redirectAdmin', userId: user?.id });
-    return <Navigate to="/admin/dashboard" replace />;
-  }
-
-  // Post-login language choice gate: show language picker before any tutorials or services
-  if (user && !languageChosen) {
+  // Post-login onboarding gate: show wizard (language + theme) before any tutorials or services
+  if (user && !onboardingDone) {
     return (
       <div className={`min-h-screen w-full min-w-full overflow-x-auto ${getBackgroundGradient()}`}>
         <Suspense fallback={
@@ -114,7 +111,7 @@ const AppContentInternal: React.FC = () => {
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
           </div>
         }>
-          <LanguageChoicePage onComplete={() => setLanguageChosen(true)} />
+          <OnboardingWizard />
         </Suspense>
       </div>
     );
@@ -133,10 +130,12 @@ const AppContentWithoutTheme: React.FC = () => {
   const { user, loading } = useAuth();
   const [isBlocked, setIsBlocked] = useState<boolean | null>(null);
   const [checkingBlock, setCheckingBlock] = useState(true);
-  const [languageChosen, setLanguageChosen] = useState(() => {
-    if (typeof localStorage === 'undefined') return true;
-    return localStorage.getItem('meshfahem_language_chosen') === 'true';
-  });
+
+  // Per-user key so each account gets its own onboarding gate regardless of browser history
+  const onboardingDone =
+    typeof localStorage === 'undefined' ||
+    !user ||
+    localStorage.getItem(`meshfahem_onboarding_completed_${user.id}`) === 'true';
 
   useEffect(() => {
     ErrorLogger.debug('AppContent - user', { component: 'App', action: 'render', userId: user?.id, userRole: user?.role });
@@ -191,12 +190,7 @@ const AppContentWithoutTheme: React.FC = () => {
     return <Navigate to="/account/suspended" replace />;
   }
 
-  if (user?.role === 'admin') {
-    ErrorLogger.debug('Admin user detected, redirecting to admin dashboard', { component: 'App', action: 'redirectAdmin', userId: user?.id });
-    return <Navigate to="/admin/dashboard" replace />;
-  }
-
-  if (user && !languageChosen) {
+  if (user && !onboardingDone) {
     return (
       <div className="min-h-screen w-full min-w-full overflow-x-auto bg-gray-50 dark:bg-gray-900">
         <Suspense fallback={
@@ -204,7 +198,7 @@ const AppContentWithoutTheme: React.FC = () => {
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
           </div>
         }>
-          <LanguageChoicePage onComplete={() => setLanguageChosen(true)} />
+          <OnboardingWizard />
         </Suspense>
       </div>
     );
@@ -270,12 +264,6 @@ const ProtectedRouteInternal: React.FC<{ children: React.ReactNode }> = ({ child
     return <Navigate to="/" replace />;
   }
 
-  // Block admin users from accessing regular user routes
-  if (user.role === 'admin') {
-    ErrorLogger.debug('Admin user blocked from user route, redirecting to admin dashboard', { component: 'App', action: 'protectedRoute', userId: user.id });
-    return <Navigate to="/admin/dashboard" replace />;
-  }
-
   return <>{children}</>;
 };
 
@@ -293,9 +281,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
   if (!user) {
     return <Navigate to="/" replace />;
-  }
-  if (user.role === 'admin') {
-    return <Navigate to="/admin/dashboard" replace />;
   }
   if (!themeContext) {
     return <>{children}</>;
@@ -315,6 +300,7 @@ function App() {
                   <OnboardingProvider>
                     <ThemeProvider>
                       <ChatProvider>
+                      <SubscriptionUpsellGateProvider>
                       <PersistentModalProvider>
                         <ToastProvider>
                       <SubscriptionRefreshListener />
@@ -411,6 +397,7 @@ function App() {
                   </ErrorBoundary>
                         </ToastProvider>
                       </PersistentModalProvider>
+                      </SubscriptionUpsellGateProvider>
                       </ChatProvider>
                     </ThemeProvider>
                   </OnboardingProvider>

@@ -8,13 +8,53 @@ import { ErrorLogger } from './errorLogger';
 /**
  * Validate uploaded file against requirements
  * @param {File} file - The uploaded file
+ * @param {string} mode - Optional mode: 'file' for documents, 'ocr' for images, or undefined for default (file mode)
  * @returns {Object} - Validation result with isValid flag and error message
  */
-export const validateFile = (file) => {
+export const validateFile = (file, mode = 'file') => {
   if (!file) {
     return { isValid: false, error: 'No file selected' };
   }
 
+  // OCR mode validation (images only)
+  if (mode === 'ocr') {
+    const allowedImageTypes = [
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/bmp',
+      'image/tiff',
+      'image/gif',
+    ];
+
+    if (!allowedImageTypes.includes(file.type)) {
+      return { 
+        isValid: false, 
+        error: 'Invalid file type for OCR. Please upload an image (JPG, PNG, BMP, TIFF, GIF).' 
+      };
+    }
+
+    // 10MB limit for images
+    const maxSizeBytes = 10 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      return { 
+        isValid: false, 
+        error: 'File size exceeds 10MB limit for images.' 
+      };
+    }
+
+    // Basic file name validation
+    if (file.name.length > 255) {
+      return { 
+        isValid: false, 
+        error: 'File name is too long.' 
+      };
+    }
+
+    return { isValid: true, error: null };
+  }
+
+  // File mode validation (documents only - default)
   // Check file type
   if (!CONFIG.ALLOWED_FILE_TYPES.includes(file.type)) {
     return { 
@@ -58,6 +98,29 @@ const getFileTypeName = (mimeType) => {
       return 'DOCX';
     default:
       return 'file';
+  }
+};
+
+/**
+ * Get image type name for user-friendly messages
+ * @param {string} mimeType - Image MIME type
+ * @returns {string} - User-friendly image type name
+ */
+const getImageTypeName = (mimeType) => {
+  switch (mimeType) {
+    case 'image/jpeg':
+    case 'image/jpg':
+      return 'JPG';
+    case 'image/png':
+      return 'PNG';
+    case 'image/bmp':
+      return 'BMP';
+    case 'image/tiff':
+      return 'TIFF';
+    case 'image/gif':
+      return 'GIF';
+    default:
+      return 'image';
   }
 };
 
@@ -312,6 +375,211 @@ export const extractTextFromFile = async (file, onProgress) => {
     }
 
     throw new Error(`Failed to extract text from ${fileTypeName}: ${err.message}`);
+  }
+};
+
+/**
+ * Extract text from image using OCR
+ * @param {File} file - The image file to process
+ * @param {Function} onProgress - Progress callback
+ * @returns {Promise<Object>} - Extracted text and metadata
+ */
+export const extractTextFromImage = async (file, onProgress) => {
+  const validation = validateFile(file, 'ocr');
+  if (!validation.isValid) {
+    throw new Error(validation.error);
+  }
+
+  const imageTypeName = getImageTypeName(file.type);
+  ErrorLogger.info('Starting OCR extraction', { 
+    component: 'fileProcessor', 
+    action: 'extractTextFromImage', 
+    fileName: file.name, 
+    fileType: imageTypeName, 
+    fileSize: file.size 
+  });
+
+  onProgress(10, `Preparing ${imageTypeName} for OCR...`);
+
+  try {
+    // Get active session for authentication
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      const error = new Error('No active session. Please log in again.');
+      ErrorLogger.error(error, { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name });
+      throw error;
+    }
+    ErrorLogger.debug('Active session verified', { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name });
+
+    // Create FormData to send file to Edge Function
+    const formData = new FormData();
+    formData.append('file', file);
+
+    onProgress(30, `Sending ${imageTypeName} for OCR processing...`);
+
+    // Use direct fetch approach for reliable file upload
+    const ocrStartTime = Date.now();
+    const ocrResponse = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ocr-scan`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: formData,
+      }
+    );
+    const ocrDuration = Date.now() - ocrStartTime;
+    ErrorLogger.debug(`OCR function responded in ${(ocrDuration / 1000).toFixed(2)}s`, { 
+      component: 'fileProcessor', 
+      action: 'extractTextFromImage', 
+      fileName: file.name, 
+      duration: ocrDuration 
+    });
+
+    if (!ocrResponse.ok) {
+      let errorData = {};
+      let errorText = '';
+      try {
+        errorText = await ocrResponse.text();
+        if (errorText) {
+          errorData = JSON.parse(errorText);
+        }
+      } catch (parseErr) {
+        ErrorLogger.warn('Failed to parse error response', { 
+          component: 'fileProcessor', 
+          action: 'extractTextFromImage', 
+          fileName: file.name,
+          parseError: parseErr,
+          rawErrorText: errorText?.substring(0, 500)
+        });
+        errorData = { error: errorText || ocrResponse.statusText };
+      }
+
+      const errorMessage = errorData.error || `OCR processing failed: ${ocrResponse.statusText} (Status: ${ocrResponse.status})`;
+      const error = new Error(errorMessage);
+      ErrorLogger.error(error, { 
+        component: 'fileProcessor', 
+        action: 'extractTextFromImage', 
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        status: ocrResponse.status,
+        statusText: ocrResponse.statusText,
+        errorData,
+        rawErrorText: errorText?.substring(0, 500)
+      });
+      throw error;
+    }
+
+    ErrorLogger.debug('OCR function succeeded, parsing response', { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name });
+    
+    let data;
+    try {
+      const responseText = await ocrResponse.text();
+      ErrorLogger.debug('Raw OCR response received', { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name, responseLength: responseText.length });
+      
+      if (!responseText || responseText.trim().length === 0) {
+        throw new Error('Empty response from OCR function');
+      }
+      
+      data = JSON.parse(responseText);
+      ErrorLogger.debug('OCR response parsed successfully', { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name, hasText: !!data?.text });
+    } catch (parseError) {
+      const err = parseError instanceof Error ? parseError : new Error(String(parseError));
+      ErrorLogger.error(err, { 
+        component: 'fileProcessor', 
+        action: 'extractTextFromImage', 
+        fileName: file.name,
+        step: 'parseResponse',
+        status: ocrResponse.status,
+        statusText: ocrResponse.statusText
+      });
+      throw new Error(`Failed to parse response from OCR service: ${err.message}`);
+    }
+    
+    ErrorLogger.info('OCR results', { 
+      component: 'fileProcessor', 
+      action: 'extractTextFromImage', 
+      fileName: file.name,
+      textLength: data?.text?.length || 0,
+      confidence: data?.confidence,
+      language: data?.language,
+      hasText: !!data?.text,
+      hasError: !!data?.error
+    });
+
+    if (!data) {
+      const error = new Error('Invalid response from OCR service - no data received');
+      ErrorLogger.error(error, { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name, responseData: data });
+      throw error;
+    }
+
+    if (data.error) {
+      const error = new Error(data.error || 'OCR service returned an error');
+      ErrorLogger.error(error, { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name, errorDetails: data });
+      throw error;
+    }
+
+    // Validate data structure before accessing properties
+    if (!data.text || typeof data.text !== 'string') {
+      const error = new Error(data?.error || 'No text could be extracted from the image. The image may be too blurry, contain no text, or be in an unsupported language.');
+      ErrorLogger.error(error, { 
+        component: 'fileProcessor', 
+        action: 'extractTextFromImage', 
+        fileName: file.name,
+        responseData: data,
+        textType: typeof data.text,
+        textLength: data.text?.length
+      });
+      throw error;
+    }
+
+    onProgress(90, 'Processing OCR results...');
+
+    // Validate the extracted text
+    if (data.text.trim().length < 10) {
+      const wordCount = data.text.trim().split(/\s+/).filter(w => w.length > 0).length;
+      console.warn(`⚠️ [FILE-PROCESSOR] Insufficient text extracted from image: ${data.text.length} chars, ${wordCount} words`);
+      throw new Error(
+        `Insufficient text content found in the ${imageTypeName} image. ` +
+        `The image may be too blurry, contain no readable text, or be in an unsupported language.`
+      );
+    }
+
+    const wordCount = data.text.split(/\s+/).filter(w => w.length > 0).length;
+    ErrorLogger.info('OCR extraction complete', { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name, wordCount, textLength: data.text.length });
+
+    onProgress(100, 'OCR extraction complete');
+
+    return {
+      text: data.text,
+      pageCount: data.pageCount || 1,
+      fileType: data.fileType || file.type,
+      fileName: data.fileName || file.name,
+      fileSize: data.fileSize || file.size,
+      extractionMethod: data.extractionMethod || 'OCR',
+      confidence: data.confidence,
+      language: data.language,
+      wordCount: data.wordCount || wordCount,
+    };
+
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    ErrorLogger.error(err, { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name });
+
+    // Provide more specific error messages
+    if (err.message?.includes('Function not found')) {
+      throw new Error('OCR service is not available. Please contact support.');
+    } else if (err.message?.includes('timeout')) {
+      throw new Error(`${imageTypeName} image processing timed out. Please try with a smaller image.`);
+    } else if (err.message?.includes('No active session')) {
+      throw new Error(err.message);
+    } else if (err.message?.includes('credentials not configured')) {
+      throw new Error('OCR service is not configured. Please contact support.');
+    }
+
+    throw new Error(`Failed to extract text from ${imageTypeName} image: ${err.message}`);
   }
 };
 

@@ -1,18 +1,119 @@
+/// <reference path="../_shared/deno.d.ts" />
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-import { handleCorsPreflight } from '../_shared/cors.ts';
-import { jsonResponse, errorResponse, successResponse } from '../_shared/response.ts';
-import { authenticateUser, getSupabaseClient } from '../_shared/auth.ts';
-import { validateMethod, parseJsonBody, validateRequiredFields, validateNonEmptyString } from '../_shared/validation.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.54.0';
+
+// Standard CORS headers for allowing cross-origin requests
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+// Security: server-side model/limits only (ignore client-provided model/maxTokens)
+const DEFAULT_MODEL = 'claude-3-haiku-20240307';
+const MAX_MODEL_TOKENS = 4096;
+
+// Action-specific caps (prevents abuse + stabilizes output)
+const MAX_TOKENS_BY_ACTION: Record<string, number> = {
+  summarize_medical_text: 2400,
+  generate_medical_flashcards: 1800,
+  detect_medical_topics: 500,
+};
+
+// Chunking caps (so users can send long text safely without runaway cost)
+const MAX_INPUT_CHARS_BY_ACTION: Record<string, number> = {
+  summarize_medical_text: 50000,
+  generate_medical_flashcards: 50000,
+  detect_medical_topics: 30000,
+};
+
+const CHUNK_CHARS = 12000;
+const MAX_CHUNKS = 4; // 4 * 12k = 48k chars
+
+// Helper function to send JSON responses
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      ...corsHeaders
+    }
+  });
+}
+
+// --- Chunking helper (paragraph-aware, hard-capped) ---
+function splitIntoChunks(text: string, maxCharsPerChunk = CHUNK_CHARS, maxChunks = MAX_CHUNKS): string[] {
+  const t = (text || '').trim();
+  if (!t) return [];
+  if (t.length <= maxCharsPerChunk) return [t];
+
+  const paras = t.split(/\n\s*\n/);
+  const chunks: string[] = [];
+  let current = '';
+
+  const pushCurrent = () => {
+    const c = current.trim();
+    if (c) chunks.push(c);
+    current = '';
+  };
+
+  for (const p of paras) {
+    const para = p.trim();
+    if (!para) continue;
+
+    // If a single paragraph is too large, split by sentences (incl Arabic ؟)
+    if (para.length > maxCharsPerChunk) {
+      pushCurrent();
+
+      const sentences = para.split(/(?<=[.!?؟])\s+/);
+      let sCur = '';
+      for (const s of sentences) {
+        const cand = (sCur ? sCur + ' ' : '') + s;
+        if (cand.length > maxCharsPerChunk) {
+          if (sCur.trim()) chunks.push(sCur.trim());
+          sCur = s;
+          if (chunks.length >= maxChunks) break;
+        } else {
+          sCur = cand;
+        }
+      }
+      if (chunks.length >= maxChunks) break;
+      if (sCur.trim()) chunks.push(sCur.trim());
+      continue;
+    }
+
+    const cand = current ? current + '\n\n' + para : para;
+    if (cand.length > maxCharsPerChunk) {
+      pushCurrent();
+      current = para;
+    } else {
+      current = cand;
+    }
+
+    if (chunks.length >= maxChunks) break;
+  }
+
+  if (chunks.length < maxChunks) pushCurrent();
+
+  // If we didn't cover all text, signal overflow by returning empty
+  const covered = chunks.reduce((sum, c) => sum + c.length, 0);
+  if (covered < t.length) return [];
+
+  return chunks;
+}
 
 // Enhanced medical content validation
+// Changes:
+// - Adds Arabic medical keywords
+// - Makes "medical-ness" advisory (not gatekeeping), but still blocks too short/too long
 function validateMedicalContent(text: string): { isValid: boolean; score: number; feedback: string } {
   if (!text || typeof text !== 'string') {
     return { isValid: false, score: 0, feedback: 'No text content provided' };
   }
 
   const trimmedText = text.trim();
-  
-  // Basic length validation
+
+  // Hard limits only (these are the only true blockers)
   if (trimmedText.length < 100) {
     return { isValid: false, score: 0, feedback: 'Text too short for meaningful medical analysis' };
   }
@@ -21,43 +122,56 @@ function validateMedicalContent(text: string): { isValid: boolean; score: number
     return { isValid: false, score: 0, feedback: 'Text too long - please break into smaller sections' };
   }
 
-  // Medical terminology detection
-  const medicalTerms = [
-    // Basic medical terms
+  const lowerText = trimmedText.toLowerCase();
+
+  // English + Arabic keywords (minimal set, high coverage)
+  const medicalTermsEn = [
     'diagnosis', 'treatment', 'symptom', 'patient', 'disease', 'condition', 'therapy',
     'clinical', 'medical', 'pathology', 'etiology', 'prognosis', 'syndrome',
-    // Body systems
     'cardiovascular', 'respiratory', 'neurological', 'gastrointestinal', 'renal',
     'hepatic', 'cardiac', 'pulmonary', 'dermatology', 'oncology',
-    // Medical procedures
     'surgery', 'procedure', 'intervention', 'examination', 'assessment',
-    // Medications
     'medication', 'drug', 'pharmacology', 'dosage', 'administration',
-    // Anatomy
-    'anatomy', 'physiology', 'organ', 'tissue', 'cell', 'muscle', 'bone'
+    'anatomy', 'physiology', 'organ', 'tissue', 'cell', 'muscle', 'bone',
+    'pathophysiology', 'mechanism'
   ];
 
-  const lowerText = trimmedText.toLowerCase();
-  const foundTerms = medicalTerms.filter(term => lowerText.includes(term));
-  const medicalScore = (foundTerms.length / medicalTerms.length) * 100;
+  const medicalTermsAr = [
+    'تشخيص', 'علاج', 'الأعراض', 'اعراض', 'مريض', 'مرض', 'حالة', 'سريري', 'طبي', 'مرضية',
+    'مسببات', 'إنذار', 'متلازمة', 'قلب', 'قلبي', 'تنفسي', 'عصبي', 'هضمي', 'كلوي', 'كبدي',
+    'جراحة', 'إجراء', 'تدخل', 'فحص', 'تقييم', 'دواء', 'أدوية', 'جرعة', 'إعطاء', 'تشريح',
+    'فيزيولوجيا', 'عضو', 'نسيج', 'خلية', 'عضلة', 'عظم', 'آلية', 'آليات', 'فيزيولوجية'
+  ];
 
-  let score = 50; // Base score
-  score += Math.min(medicalScore, 40); // Add up to 40 points for medical content
-  
-  // Bonus points for clinical indicators
-  if (lowerText.includes('patient') || lowerText.includes('clinical')) score += 10;
-  if (lowerText.includes('diagnosis') || lowerText.includes('treatment')) score += 10;
-  if (lowerText.includes('pathophysiology') || lowerText.includes('mechanism')) score += 10;
+  const foundEn = medicalTermsEn.filter(t => lowerText.includes(t));
+  const foundAr = medicalTermsAr.filter(t => trimmedText.includes(t));
 
-  const isValid = score >= 60;
-  
-  return {
-    isValid,
-    score: Math.round(score),
-    feedback: isValid 
-      ? `Medical content detected (${Math.round(medicalScore)}% medical terminology)`
-      : 'Content may not be medical-focused enough for optimal results'
-  };
+  const totalTerms = medicalTermsEn.length + medicalTermsAr.length;
+  const foundCount = foundEn.length + foundAr.length;
+  const termScore = (foundCount / totalTerms) * 100;
+
+  // Base score reflects "maybe medical" by default (advisory)
+  let score = 45;
+  score += Math.min(termScore, 45);
+
+  // Bonus for clinical structure cues (EN/AR)
+  if (lowerText.includes('patient') || lowerText.includes('clinical') || trimmedText.includes('مريض') || trimmedText.includes('سريري')) score += 10;
+  if (lowerText.includes('diagnosis') || lowerText.includes('treatment') || trimmedText.includes('تشخيص') || trimmedText.includes('علاج')) score += 10;
+  if (lowerText.includes('pathophysiology') || lowerText.includes('mechanism') || trimmedText.includes('آلية') || trimmedText.includes('فيزيولوجيا')) score += 10;
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  // Advisory: always "valid" unless hard limits above triggered
+  const isValid = true;
+
+  const feedback =
+    score >= 70
+      ? `Strong medical content detected (score ${score}/100)`
+      : score >= 55
+        ? `Some medical content detected (score ${score}/100)`
+        : `Low medical signal (score ${score}/100) — results may be less accurate`;
+
+  return { isValid, score, feedback };
 }
 
 // Enhanced flashcard parsing with medical focus
@@ -264,19 +378,18 @@ function parseMedicalTopics(aiOutput: string): string[] {
   return validTopics.slice(0, 8);
 }
 
-// Enhanced Anthropic API call with medical-specific error handling
-async function callAnthropicForMedicalContent(prompt: string, model: string, maxTokens: number) {
+// Enhanced Anthropic API call with timeout + enforced model + enforced maxTokens
+async function callAnthropicForMedicalContent(prompt: string, maxTokens: number) {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) {
     console.error('ANTHROPIC_API_KEY environment variable is not set.');
     return { error: 'Missing ANTHROPIC_API_KEY environment variable' };
   }
 
-  // Enforce 4096 token limit for Claude 3 Haiku
-  const safeMaxTokens = Math.min(maxTokens, 4096);
-  if (safeMaxTokens < maxTokens) {
-    console.warn(`⚠️ Token limit capped from ${maxTokens} to ${safeMaxTokens} for Claude 3 Haiku`);
-  }
+  const safeMaxTokens = Math.min(Math.max(200, maxTokens), MAX_MODEL_TOKENS);
+
+  const controller = new AbortController();
+  const timeoutId: ReturnType<typeof setTimeout> | undefined = setTimeout(() => controller.abort(), 45000);
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -287,14 +400,17 @@ async function callAnthropicForMedicalContent(prompt: string, model: string, max
         'content-type': 'application/json'
       },
       body: JSON.stringify({
-        model,
+        model: DEFAULT_MODEL,
         max_tokens: safeMaxTokens,
-        messages: [{ 
-          role: 'user', 
+        messages: [{
+          role: 'user',
           content: [{ type: 'text', text: prompt }]
         }]
-      })
+      }),
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -325,11 +441,13 @@ async function callAnthropicForMedicalContent(prompt: string, model: string, max
     }
 
     return { output, tokens: { input: inputTokens, output: outputTokens, total: totalTokens } };
-  } catch (error) {
-    console.error(`Request to Anthropic API failed: ${error.message}`);
-    return { 
-      error: `Medical AI request failed: ${error.message}` 
-    };
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error?.name === 'AbortError') {
+      return { error: 'Medical AI request timed out - please try again' };
+    }
+    console.error(`Request to Anthropic API failed: ${error?.message}`);
+    return { error: `Medical AI request failed: ${error?.message}` };
   }
 }
 
@@ -485,191 +603,262 @@ Extract the most clinically relevant medical topics now:`;
 // Main handler for the Edge Function
 serve(async (req) => {
   console.log(`🏥 Med Student Mode Edge Function called: ${req.method}`);
-  
-  // Handle CORS preflight requests (OPTIONS method)
+
   if (req.method === 'OPTIONS') {
-    return handleCorsPreflight();
+    return new Response(null, { headers: corsHeaders });
   }
 
-  // Only allow POST requests for actual processing
-  const methodError = validateMethod(req, ['POST']);
-  if (methodError) {
-    return methodError;
+  if (req.method !== 'POST') {
+    return jsonResponse({ error: 'Method not allowed' }, 405);
   }
 
-  // Initialize Supabase client for database operations
-  const supabase = getSupabaseClient();
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    {
+      auth: { persistSession: false },
+    }
+  );
 
   try {
-    const bodyResult = await parseJsonBody<{
-      text: string;
-      action: string;
-      model?: string;
-      maxTokens?: number;
-      pageCount?: number;
-    }>(req);
-    if (bodyResult.error) {
-      return bodyResult.error;
-    }
-
-    const { text, action, model = 'claude-3-haiku-20240307', maxTokens = 2000, pageCount = 0 } = bodyResult.data;
+    const requestBody = await req.json();
+    const { text, action, pageCount = 0 } = requestBody;
 
     console.log(`🏥 Processing medical action: ${action}`);
-    
-    // Extract user ID from the request for usage tracking
-    const authResult = await authenticateUser(req, false);
-    const userId = authResult.user?.id || null;
-    
-    if (userId) {
-      console.log(`👤 User authenticated: ${userId}`);
+
+    // Extract user ID and admin role
+    const authHeader = req.headers.get('Authorization');
+    let userId: string | null = null;
+    let isAdmin = false;
+
+    if (authHeader) {
+      try {
+        const token = authHeader.replace('Bearer ', '');
+        const { data: { user } } = await supabase.auth.getUser(token);
+        userId = user?.id || null;
+
+        if (userId) {
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('role')
+            .eq('id', userId)
+            .maybeSingle();
+
+          isAdmin = profile?.role === 'admin';
+        }
+
+        console.log(`👤 User authenticated: ${userId} (admin=${isAdmin})`);
+      } catch (error) {
+        console.warn('⚠️ Failed to extract user from token:', error);
+      }
     }
 
-    // Handle ping action for API validation
     if (action === 'ping') {
-      console.log('🏓 Ping request received');
-      return successResponse({ ok: true, service: 'Med Student Mode', version: '2.0' });
+      return jsonResponse({ ok: true, service: 'Med Student Mode', version: '2.1' });
     }
 
-    // Enhanced input validation with medical focus
-    const textError = validateNonEmptyString(text, 'text');
-    if (textError) {
-      return errorResponse(
-        'Medical text content is required for processing. Please provide medical content such as textbooks, lecture notes, or clinical cases',
-        400
-      );
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return jsonResponse({
+        error: 'Medical text content is required for processing',
+        hint: 'Please provide medical content such as textbooks, lecture notes, or clinical cases'
+      }, 400);
     }
 
-    // Validate medical content quality
+    // Validate length per action and chunking policy (users can send long text; we chunk safely)
+    const actionMaxChars = MAX_INPUT_CHARS_BY_ACTION[action] ?? 50000;
+    if (text.length > actionMaxChars) {
+      return jsonResponse({
+        error: `Text is too long for this action (limit ${actionMaxChars} characters). Please split it.`,
+      }, 400);
+    }
+
+    // Advisory medical validation (not blocking unless length violated)
     const validation = validateMedicalContent(text);
-    if (!validation.isValid) {
-      return errorResponse(
-        validation.feedback + '. Consider providing more clinically-focused medical content for better results',
-        400,
-        { score: validation.score }
-      );
+    console.log(`✅ Medical content validation (score: ${validation.score}): ${validation.feedback}`);
+
+    if (!['summarize_medical_text', 'generate_medical_flashcards', 'detect_medical_topics', 'ping'].includes(action)) {
+      return jsonResponse({
+        error: 'Invalid action for Med Student Mode',
+        supportedActions: ['ping', 'summarize_medical_text', 'generate_medical_flashcards', 'detect_medical_topics'],
+        hint: 'Use one of the supported medical education actions'
+      }, 400);
     }
 
-    console.log(`✅ Medical content validation passed (score: ${validation.score}): ${validation.feedback}`);
-    
-    let aiPrompt = '';
-    let responseData: { [key: string]: any } = {};
+    // Credits pre-check (estimate) for non-admin authenticated users
+    if (userId && !isAdmin && action !== 'ping') {
+      const estimateCredits = 5; // conservative minimum; actual deduction uses token usage
+      const { data: creditCheck, error: creditError } = await supabase.rpc('check_sufficient_credits', {
+        p_user_id: userId,
+        p_estimated_credits: estimateCredits
+      });
 
-    // Medical summary generation
+      if (creditError) {
+        console.error('Failed to check credits:', creditError);
+      } else if (creditCheck && !creditCheck.sufficient) {
+        const cycleEnd = creditCheck.cycle_end;
+        return jsonResponse({
+          error: 'insufficient_credits',
+          message: `You don't have enough credits. Credits refresh on ${new Date(cycleEnd).toLocaleDateString()}.`,
+          credits_remaining: creditCheck.credits_remaining,
+          cycle_end: cycleEnd
+        }, 429);
+      }
+    }
+
+    // Chunk input if needed
+    const chunks = splitIntoChunks(text, CHUNK_CHARS, MAX_CHUNKS);
+    if (chunks.length === 0) {
+      return jsonResponse({
+        error: `Text is too long to process safely (max ${MAX_CHUNKS * CHUNK_CHARS} characters). Please split it.`,
+      }, 400);
+    }
+
+    let totalTokensUsed = 0;
+    let responseData: Record<string, any> = {};
+
     if (action === 'summarize_medical_text') {
       console.log('📚 Generating medical summary...');
-      
-      aiPrompt = createMedicalSummaryPrompt(text);
-      
-      const result = await callAnthropicForMedicalContent(aiPrompt, model, maxTokens);
-      if ('error' in result) {
-        console.error('❌ Medical summary generation failed:', result.error);
-        return errorResponse(result.error as string, 500);
-      }
-      
-      // Extract and clean the summary
-      let summary = result.output;
-      if (summary.includes('=== MEDICAL STUDENT SUMMARY ===')) {
-        summary = summary.split('=== MEDICAL STUDENT SUMMARY ===')[1] || summary;
-      }
-      summary = summary.trim();
+      const maxTokens = MAX_TOKENS_BY_ACTION.summarize_medical_text;
 
-      console.log(`✅ Medical summary generated, length: ${summary.length}, tokens: ${result.tokens?.total || 0}`);
+      // Generate per chunk then combine (keeps quality + supports long text)
+      const chunkSummaries: string[] = [];
+
+      for (let i = 0; i < chunks.length; i++) {
+        const chunkHeader =
+          chunks.length > 1 ? `This is chunk ${i + 1} of ${chunks.length}. Do not repeat generic overview points.\n\n` : '';
+
+        const prompt = createMedicalSummaryPrompt(chunkHeader + chunks[i]);
+        const result = await callAnthropicForMedicalContent(prompt, maxTokens);
+
+        if ('error' in result) return jsonResponse(result, 500);
+
+        totalTokensUsed += result.tokens?.total || 0;
+
+        const summary = result.output.trim();
+        // Keep only bullet lines
+        const bulletLines = summary.split('\n').map(l => l.trim()).filter(l => l.startsWith('-') || l.startsWith('  -'));
+        chunkSummaries.push(bulletLines.join('\n'));
+      }
+
+      // Merge summaries (no second pass to avoid extra cost)
+      const summary = chunkSummaries.filter(Boolean).join('\n');
+
       responseData = {
         summary,
-        tokens: result.tokens || { input: 0, output: 0, total: 0 }
+        tokens: { total: totalTokensUsed }
       };
 
     } else if (action === 'generate_medical_flashcards') {
       const cardCount = Math.max(1, Math.min(Number(requestBody.count) || 10, 50));
       console.log(`🃏 Generating ${cardCount} medical flashcards...`);
-      
-      aiPrompt = createMedicalFlashcardPrompt(text, cardCount);
 
-      const result = await callAnthropicForMedicalContent(aiPrompt, model, maxTokens);
-      if ('error' in result) {
-        console.error('❌ Medical flashcard generation failed:', result.error);
-        return errorResponse(result.error as string, 500);
-      }
+      const maxTokens = MAX_TOKENS_BY_ACTION.generate_medical_flashcards;
 
-      // Parse medical flashcards with enhanced processing
+      const combinedText = chunks.join('\n\n');
+
+      const prompt = createMedicalFlashcardPrompt(combinedText, cardCount);
+      const result = await callAnthropicForMedicalContent(prompt, maxTokens);
+
+      if ('error' in result) return jsonResponse(result, 500);
+
+      totalTokensUsed += result.tokens?.total || 0;
+
       const flashcards = parseMedicalFlashcards(result.output, cardCount);
 
       if (flashcards.length === 0) {
-        console.error('❌ No valid medical flashcards could be parsed');
-        return errorResponse(
-          'No valid medical flashcards could be generated from this content. Try providing more structured medical content with clear concepts to learn',
-          502
-        );
+        return jsonResponse({
+          error: 'No valid medical flashcards could be generated from this content',
+          hint: 'Try providing more structured medical content with clear concepts to learn'
+        }, 502);
       }
 
-      console.log(`✅ Generated ${flashcards.length} valid medical flashcards, tokens: ${result.tokens?.total || 0}`);
       responseData = {
         flashcards,
-        tokens: result.tokens || { input: 0, output: 0, total: 0 }
+        tokens: { total: totalTokensUsed }
       };
 
     } else if (action === 'detect_medical_topics') {
       console.log('🔍 Detecting medical topics...');
-      
-      aiPrompt = createMedicalTopicPrompt(text);
+      const maxTokens = MAX_TOKENS_BY_ACTION.detect_medical_topics;
 
-      const result = await callAnthropicForMedicalContent(aiPrompt, model, 500);
-      if ('error' in result) {
-        console.error('❌ Medical topic detection failed:', result.error);
-        return errorResponse(result.error as string, 500);
-      }
+      const combinedText = chunks.join('\n\n');
+      const prompt = createMedicalTopicPrompt(combinedText);
+      const result = await callAnthropicForMedicalContent(prompt, maxTokens);
 
-      // Parse medical topics with enhanced processing
+      if ('error' in result) return jsonResponse(result, 500);
+
+      totalTokensUsed += result.tokens?.total || 0;
+
       const topics = parseMedicalTopics(result.output);
 
-      console.log(`✅ Detected ${topics.length} medical topics:`, topics, `tokens: ${result.tokens?.total || 0}`);
       responseData = {
         topics,
-        tokens: result.tokens || { input: 0, output: 0, total: 0 }
+        tokens: { total: totalTokensUsed }
       };
-
-    } else {
-      return errorResponse(
-        'Invalid action for Med Student Mode. Use one of the supported medical education actions',
-        400,
-        { supportedActions: ['ping', 'summarize_medical_text', 'generate_medical_flashcards', 'detect_medical_topics'] }
-      );
     }
 
-    // Update user usage tracking (if pageCount provided and user identified)
+    // Deduct credits using token usage (consistent with your other edge functions)
+    if (userId && !isAdmin && action !== 'ping' && totalTokensUsed > 0) {
+      try {
+        const { data: deductResult, error: deductError } = await supabase.rpc('deduct_credits_atomic', {
+          p_user_id: userId,
+          p_tokens_used: totalTokensUsed,
+          p_operation_type: 'deduction'
+        });
+
+        if (deductError) {
+          console.error('⚠️ Failed to deduct credits:', deductError);
+        } else if (deductResult?.success) {
+          // Notifications
+          if (deductResult.notify_30_percent || deductResult.notify_10_percent) {
+            const percentage = deductResult.notify_10_percent ? 10 : 30;
+            const message = `You have ${deductResult.credits_remaining} credits remaining (${percentage}% left). They will refresh on ${new Date(deductResult.cycle_end).toLocaleDateString()}.`;
+
+            await supabase.from('notifications').insert({
+              user_id: userId,
+              notification_type: 'admin_notification',
+              message,
+              is_read: false
+            });
+          }
+
+          responseData.credits = {
+            deducted: deductResult.credits_deducted,
+            remaining: deductResult.credits_remaining
+          };
+        }
+      } catch (e) {
+        console.error('⚠️ Credit deduction error:', e);
+      }
+    }
+
+    // Update user usage tracking (pages) AFTER processing (independent from credits)
     if (userId && pageCount > 0) {
       try {
-        console.log(`📊 Updating usage for user ${userId}: +${pageCount} pages`);
         const { error: updateError } = await supabase.rpc('increment_user_usage', {
           user_id_param: userId,
           pages_to_add: pageCount
         });
 
-        if (updateError) {
-          console.error('⚠️ Failed to update user usage:', updateError);
-        } else {
-          console.log(`✅ User ${userId} usage updated by ${pageCount} pages for medical content`);
-        }
+        if (updateError) console.error('⚠️ Failed to update user usage:', updateError);
       } catch (usageError) {
         console.error('⚠️ Usage update error:', usageError);
-        // Don't fail the main request due to usage tracking errors
       }
     }
 
-    // Log successful processing
-    console.log(`✅ Med Student Mode processing completed successfully for action: ${action}`);
-
-    return successResponse({ 
+    return jsonResponse({
+      success: true,
       medicalMode: true,
       contentQuality: validation.score,
-      ...responseData 
+      validationFeedback: validation.feedback,
+      ...responseData
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('💥 Med Student Mode Edge Function error:', error);
-    return errorResponse(
-      `Medical processing server error: ${error instanceof Error ? error.message : String(error)}. Please try again with your medical content`,
-      500
-    );
+    return jsonResponse({
+      error: `Medical processing server error: ${error?.message || String(error)}`,
+      hint: 'Please try again with your medical content'
+    }, 500);
   }
 });

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Sparkles, Loader2, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { handleApiError, isOffline, handleOfflineError } from '../../utils/errorHandler';
 import { ErrorLogger } from '../../utils/errorLogger';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -92,43 +91,76 @@ export const AIQuestionGenerator: React.FC<AIQuestionGeneratorProps> = ({
 
       const result = await response.json();
 
-      ErrorLogger.debug('Backend response received', { component: 'AIQuestionGenerator', action: 'handleGenerateQuestions', hasSuccess: 'success' in result, successValue: result.success,
-        hasQuestions: 'questions' in result,
-        questionCount: result.questions?.length,
-        hasQuestionCount: 'questionCount' in result
+      ErrorLogger.debug('Backend response received', {
+        component: 'AIQuestionGenerator',
+        action: 'handleGenerateQuestions',
+        metadata: {
+          hasSuccess: 'success' in result,
+          successValue: result.success,
+          hasQuestions: 'questions' in result,
+          questionCount: result.questions?.length,
+          hasQuestionCount: 'questionCount' in result,
+        },
       });
 
       if (!result.success) {
         const errorMsg = result.error || 'Question generation was not successful';
         const error = new Error(errorMsg);
-        ErrorLogger.error(error, { component: 'AIQuestionGenerator', action: 'generateQuestions', topic, subject, questionCount, difficulty });
+        ErrorLogger.error(error, {
+          component: 'AIQuestionGenerator',
+          action: 'generateQuestions',
+          metadata: { topic, subject, questionCount, difficulty },
+        });
         throw error;
       }
 
       if (!result.questions || !Array.isArray(result.questions)) {
         const error = new Error('Invalid response: questions array is missing or malformed');
-        ErrorLogger.error(error, { component: 'AIQuestionGenerator', action: 'generateQuestions', topic, subject, result });
+        ErrorLogger.error(error, {
+          component: 'AIQuestionGenerator',
+          action: 'generateQuestions',
+          metadata: { topic, subject, result },
+        });
         throw error;
       }
 
       if (result.questions.length === 0) {
         const error = new Error('No questions were generated. Please try again.');
-        ErrorLogger.error(error, { component: 'AIQuestionGenerator', action: 'generateQuestions', topic, subject, questionCount });
+        ErrorLogger.error(error, {
+          component: 'AIQuestionGenerator',
+          action: 'generateQuestions',
+          metadata: { topic, subject, questionCount },
+        });
         throw error;
       }
 
-      ErrorLogger.info('Validation passed. Questions generated', { component: 'AIQuestionGenerator', action: 'handleGenerateQuestions', questionCount: result.questions.length, firstQuestion: result.questions[0] });
+      ErrorLogger.info('Validation passed. Questions generated', {
+        component: 'AIQuestionGenerator',
+        action: 'handleGenerateQuestions',
+        metadata: {
+          questionCount: result.questions.length,
+          firstQuestion: result.questions[0],
+        },
+      });
 
       setProgress(100);
 
       setTimeout(() => {
-        ErrorLogger.debug('Passing questions to parent component', { component: 'AIQuestionGenerator', action: 'handleGenerateQuestions', questionCount: result.questions.length });
+        ErrorLogger.debug('Passing questions to parent component', {
+          component: 'AIQuestionGenerator',
+          action: 'handleGenerateQuestions',
+          metadata: { questionCount: result.questions.length },
+        });
         onQuestionsGenerated(result.questions);
       }, 500);
 
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
-      ErrorLogger.error(error, { component: 'AIQuestionGenerator', action: 'generateQuestions', topic, subject, questionCount, difficulty });
+      ErrorLogger.error(error, {
+        component: 'AIQuestionGenerator',
+        action: 'generateQuestions',
+        metadata: { topic, subject, questionCount, difficulty },
+      });
       let errorMessage = 'Failed to generate questions';
       if (err instanceof Error) {
         errorMessage = err.message;
@@ -154,7 +186,7 @@ export const AIQuestionGenerator: React.FC<AIQuestionGeneratorProps> = ({
         <p className="text-gray-600 dark:text-gray-400">Let AI create questions about any topic</p>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8">
         {!generating ? (
           <div className="space-y-6">
             {/* Topic Input */}
@@ -252,7 +284,7 @@ export const AIQuestionGenerator: React.FC<AIQuestionGeneratorProps> = ({
             <div className="max-w-md mx-auto mb-4">
               <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                 <div
-                  className={`h-full ${getThemeGradient('ui')} transition-all duration-500 ease-out`}
+                  className={`h-full ${getThemeGradient('ui')} transition-colors duration-150 ease-out`}
                   style={{ width: `${progress}%` }}
                 />
               </div>
@@ -267,7 +299,7 @@ export const AIQuestionGenerator: React.FC<AIQuestionGeneratorProps> = ({
 
       {/* Tips Section */}
       {!generating && (
-        <div className={`mt-6 ${getThemeGradient('bg')} rounded-xl p-6`}>
+        <div className={`mt-6 ${getThemeGradient('bg')} rounded-md p-6`}>
           <h4 className="font-bold text-gray-900 dark:text-gray-100 mb-3 flex items-center space-x-2">
             <Sparkles className="h-5 w-5 text-purple-600 dark:text-purple-400" />
             <span>Tips for Better Questions</span>

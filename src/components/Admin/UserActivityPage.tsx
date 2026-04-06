@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useToast } from '../Toast/Toast';
 import { ErrorLogger } from '../../utils/errorLogger';
 import { LoadingSkeleton } from '../Common/LoadingSkeleton';
-import { Activity, Clock, TrendingUp, Users, Calendar, Eye } from 'lucide-react';
+import { Activity, Clock, TrendingUp, Users, Calendar, Eye, X } from 'lucide-react';
 import { useDebounce } from '../../hooks/useDebounce';
 
 interface UserActivity {
@@ -69,10 +69,11 @@ export const UserActivityPage: React.FC = React.memo(() => {
         .in('user_id', userIds);
 
       if (sessionsError) {
-        ErrorLogger.warn(sessionsError instanceof Error ? sessionsError : new Error(String(sessionsError)), {
+        const error = sessionsError instanceof Error ? sessionsError : new Error(String(sessionsError));
+        ErrorLogger.warn('Failed to fetch study sessions', {
           component: 'UserActivityPage',
           action: 'fetchActivities',
-          step: 'fetchSessions'
+          metadata: { step: 'fetchSessions', error: error.message }
         });
       }
 
@@ -87,10 +88,11 @@ export const UserActivityPage: React.FC = React.memo(() => {
         .gte('created_at', sevenDaysAgo.toISOString());
 
       if (historyError) {
-        ErrorLogger.warn(historyError instanceof Error ? historyError : new Error(String(historyError)), {
+        const error = historyError instanceof Error ? historyError : new Error(String(historyError));
+        ErrorLogger.warn('Failed to fetch user history', {
           component: 'UserActivityPage',
           action: 'fetchActivities',
-          step: 'fetchHistory'
+          metadata: { step: 'fetchHistory', error: error.message }
         });
       }
 
@@ -101,10 +103,11 @@ export const UserActivityPage: React.FC = React.memo(() => {
         .in('user_id', userIds);
 
       if (libraryError) {
-        ErrorLogger.warn(libraryError instanceof Error ? libraryError : new Error(String(libraryError)), {
+        const error = libraryError instanceof Error ? libraryError : new Error(String(libraryError));
+        ErrorLogger.warn('Failed to fetch library items', {
           component: 'UserActivityPage',
           action: 'fetchActivities',
-          step: 'fetchLibrary'
+          metadata: { step: 'fetchLibrary', error: error.message }
         });
       }
 
@@ -129,7 +132,7 @@ export const UserActivityPage: React.FC = React.memo(() => {
       });
 
       // Get last login from admin_users for admin users, or estimate from sessions
-      const { data: adminUsers, error: adminError } = await supabase
+      const { data: adminUsers } = await supabase
         .from('admin_users')
         .select('id, last_login_at')
         .in('id', userIds);
@@ -196,25 +199,25 @@ export const UserActivityPage: React.FC = React.memo(() => {
       const userIds = (profiles || []).map(p => p.id);
 
       // Get active users
-      const { data: sessionsToday, error: todayError } = await supabase
+      const { data: sessionsToday } = await supabase
         .from('study_sessions')
         .select('user_id')
         .in('user_id', userIds)
         .gte('completed_at', today.toISOString());
 
-      const { data: sessionsWeek, error: weekError } = await supabase
+      const { data: sessionsWeek } = await supabase
         .from('study_sessions')
         .select('user_id')
         .in('user_id', userIds)
         .gte('completed_at', weekAgo.toISOString());
 
-      const { data: sessionsMonth, error: monthError } = await supabase
+      const { data: sessionsMonth } = await supabase
         .from('study_sessions')
         .select('user_id')
         .in('user_id', userIds)
         .gte('completed_at', monthAgo.toISOString());
 
-      const { data: allSessions, error: allSessionsError } = await supabase
+      const { data: allSessions } = await supabase
         .from('study_sessions')
         .select('duration_minutes')
         .in('user_id', userIds);
@@ -268,7 +271,11 @@ export const UserActivityPage: React.FC = React.memo(() => {
       });
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      ErrorLogger.error(err, { component: 'UserActivityPage', action: 'fetchUserDetails', userId });
+      ErrorLogger.error(err, { 
+        component: 'UserActivityPage', 
+        action: 'fetchUserDetails', 
+        metadata: { userId } 
+      });
     } finally {
       setDetailsLoading(false);
     }
@@ -288,7 +295,7 @@ export const UserActivityPage: React.FC = React.memo(() => {
   );
 
   if (loading) {
-    return <LoadingSkeleton type="table" count={10} className="mt-6" />;
+    return <LoadingSkeleton type="table" count={10} className="mt-8" />;
   }
 
   return (
@@ -299,8 +306,8 @@ export const UserActivityPage: React.FC = React.memo(() => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+        <div className="bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-md p-6 border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-2">
             <Users className="h-5 w-5 text-blue-500" />
           </div>
@@ -308,7 +315,7 @@ export const UserActivityPage: React.FC = React.memo(() => {
           <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.total_users}</p>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+        <div className="bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-md p-6 border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-2">
             <Activity className="h-5 w-5 text-green-500" />
           </div>
@@ -316,7 +323,7 @@ export const UserActivityPage: React.FC = React.memo(() => {
           <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.active_today}</p>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+        <div className="bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-md p-6 border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-2">
             <Calendar className="h-5 w-5 text-purple-500" />
           </div>
@@ -324,7 +331,7 @@ export const UserActivityPage: React.FC = React.memo(() => {
           <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.active_this_week}</p>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+        <div className="bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-md p-6 border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-2">
             <TrendingUp className="h-5 w-5 text-orange-500" />
           </div>
@@ -332,7 +339,7 @@ export const UserActivityPage: React.FC = React.memo(() => {
           <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.active_this_month}</p>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+        <div className="bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-md p-6 border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-2">
             <Clock className="h-5 w-5 text-red-500" />
           </div>
@@ -342,15 +349,15 @@ export const UserActivityPage: React.FC = React.memo(() => {
       </div>
 
       {/* Search */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
-        <div className="mb-6">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow border border-gray-200 dark:border-gray-700 p-6">
+        <div className="mb-8">
           <div className="relative">
             <input
               type="text"
               placeholder="Search users by email or name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 dark:text-white"
+              className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
             />
             <Activity className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
           </div>
@@ -359,7 +366,7 @@ export const UserActivityPage: React.FC = React.memo(() => {
         {/* Activity Table */}
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-slate-700">
+            <thead className="bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-slate-700">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">User</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Last Login</th>
@@ -370,10 +377,10 @@ export const UserActivityPage: React.FC = React.memo(() => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Actions</th>
               </tr>
             </thead>
-            <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] divide-y divide-gray-200 dark:divide-gray-700">
               {filteredActivities.map((activity) => (
-                <tr key={activity.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                  <td className="px-6 py-4 whitespace-nowrap">
+                <tr key={activity.id} className="hover:bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:hover:bg-slate-700/50">
+                  <td className="px-6 py-6 whitespace-nowrap">
                     <div>
                       <div className="text-sm font-medium text-gray-900 dark:text-white">{activity.email}</div>
                       {activity.display_name && (
@@ -381,24 +388,24 @@ export const UserActivityPage: React.FC = React.memo(() => {
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                  <td className="px-6 py-6 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
                     {activity.last_login_at
                       ? new Date(activity.last_login_at).toLocaleString()
                       : 'Never'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                  <td className="px-6 py-6 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {activity.total_sessions}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                  <td className="px-6 py-6 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {Math.round(activity.total_study_time / 60)}h {activity.total_study_time % 60}m
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                  <td className="px-6 py-6 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {activity.recent_actions}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                  <td className="px-6 py-6 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {activity.library_items}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-6 whitespace-nowrap">
                     <button
                       onClick={() => handleViewUser(activity)}
                       className="flex items-center space-x-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
@@ -422,9 +429,9 @@ export const UserActivityPage: React.FC = React.memo(() => {
 
       {/* User Details Modal */}
       {selectedUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-6">
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] border-b border-gray-200 dark:border-gray-700 px-6 py-6 flex items-center justify-between">
               <h3 className="text-xl font-bold text-gray-900 dark:text-white">
                 Activity Details: {selectedUser.email}
               </h3>
@@ -433,7 +440,7 @@ export const UserActivityPage: React.FC = React.memo(() => {
                   setSelectedUser(null);
                   setUserDetails(null);
                 }}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+                className="p-2 hover:bg-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:hover:bg-gray-700 rounded-lg transition"
               >
                 <X className="h-5 w-5 text-gray-500 dark:text-gray-400" />
               </button>
@@ -451,7 +458,7 @@ export const UserActivityPage: React.FC = React.memo(() => {
                     <div className="space-y-2">
                       {userDetails.sessions.length > 0 ? (
                         userDetails.sessions.map((session: any) => (
-                          <div key={session.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+                          <div key={session.id} className="bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-gray-700 rounded-lg p-3">
                             <div className="flex justify-between">
                               <span className="text-sm font-medium text-gray-900 dark:text-white">{session.session_type}</span>
                               <span className="text-sm text-gray-600 dark:text-gray-400">{session.duration_minutes} min</span>
@@ -472,7 +479,7 @@ export const UserActivityPage: React.FC = React.memo(() => {
                     <div className="space-y-2">
                       {userDetails.history.length > 0 ? (
                         userDetails.history.map((item: any) => (
-                          <div key={item.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+                          <div key={item.id} className="bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-gray-700 rounded-lg p-3">
                             <div className="text-sm text-gray-900 dark:text-white">{item.action_type || 'Action'}</div>
                             <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                               {new Date(item.created_at).toLocaleString()}
@@ -490,7 +497,7 @@ export const UserActivityPage: React.FC = React.memo(() => {
                     <div className="space-y-2">
                       {userDetails.library.length > 0 ? (
                         userDetails.library.map((item: any) => (
-                          <div key={item.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+                          <div key={item.id} className="bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-gray-700 rounded-lg p-3">
                             <div className="text-sm font-medium text-gray-900 dark:text-white">{item.title || 'Untitled'}</div>
                             <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                               {new Date(item.created_at).toLocaleString()}

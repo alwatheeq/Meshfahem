@@ -8,7 +8,7 @@ export const EnvValidator: React.FC<{ children: React.ReactNode }> = ({ children
   if (!supabaseUrl || !supabaseAnonKey) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-50 to-red-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full">
+        <div className="bg-white rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-8 max-w-md w-full">
           <div className="flex items-center justify-center mb-6">
             <div className="bg-red-100 p-3 rounded-full">
               <AlertCircle className="h-12 w-12 text-red-600" />

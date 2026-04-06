@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Edit2, Check, X, Save } from 'lucide-react';
 import { useToast } from '../Toast/Toast';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface Question {
   question: string;
@@ -113,7 +114,7 @@ export const ManualQuestionBuilder: React.FC<ManualQuestionBuilderProps> = ({
       </div>
 
       {/* Question Form */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 mb-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-6 mb-6">
         <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">
           {editingIndex !== null ? 'Edit Question' : 'Add New Question'}
         </h3>
@@ -221,7 +222,7 @@ export const ManualQuestionBuilder: React.FC<ManualQuestionBuilderProps> = ({
 
       {/* Questions List */}
       {questions.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 mb-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm p-6 mb-6">
           <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">
             Questions ({questions.length})
           </h3>
@@ -299,7 +300,7 @@ export const ManualQuestionBuilder: React.FC<ManualQuestionBuilderProps> = ({
       {/* Save Dialog */}
       {showSaveDialog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-6 max-w-md w-full">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-lg p-6 max-w-md w-full">
             <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Save Question Set?</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">
               Would you like to save these questions for future use?

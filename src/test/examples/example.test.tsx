@@ -1,5 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '../utils/test-utils';
+import { describe, it, expect } from 'vitest';
 
 // Example test file - replace with actual component tests
 describe('Example Test', () => {

@@ -4,16 +4,20 @@ import { handleCorsPreflight } from '../_shared/cors.ts';
 import { jsonResponse, errorResponse } from '../_shared/response.ts';
 import { validateMethod } from '../_shared/validation.ts';
 
-const DEFAULT_MODEL = 'sonar-pro';
+const DEFAULT_MODEL = 'claude-3-haiku-20240307';
 const MAX_TOKENS = 4096;
 
-async function callPerplexity(messages: Array<{ role: string; content: string }>, model: string, maxTokens: number) {
-  const apiKey = Deno.env.get('PREPLIXITY_API_KEY');
+async function callClaude(
+  systemPrompt: string,
+  messages: Array<{ role: string; content: string }>,
+  model: string,
+  maxTokens: number
+) {
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) {
-    return { error: 'Missing PREPLIXITY_API_KEY environment variable' };
+    return { error: 'Missing ANTHROPIC_API_KEY environment variable' };
   }
 
-  // Enforce token limit
   const safeMaxTokens = Math.min(maxTokens, MAX_TOKENS);
   if (safeMaxTokens < maxTokens) {
     console.warn(`⚠️ Token limit capped from ${maxTokens} to ${safeMaxTokens}`);
@@ -23,64 +27,56 @@ async function callPerplexity(messages: Array<{ role: string; content: string }>
   const timeoutId = setTimeout(() => controller.abort(), 50000);
 
   try {
-    const response = await fetch('https://api.perplexity.ai/chat/completions', {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         model,
         max_tokens: safeMaxTokens,
-        messages: messages
+        system: systemPrompt,
+        // Claude requires alternating user/assistant roles; filter out any system entries
+        messages: messages.filter(m => m.role === 'user' || m.role === 'assistant'),
       }),
-      signal: controller.signal
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      clearTimeout(timeoutId);
       const errorText = await response.text();
-      return { 
-        error: `Perplexity API error ${response.status}: ${errorText}` 
-      };
+      return { error: `Anthropic API error ${response.status}: ${errorText}` };
     }
 
     const data = await response.json();
-    
-    // Validate response structure
-    if (!data?.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
-      clearTimeout(timeoutId);
-      return { error: 'Perplexity API returned invalid response structure' };
-    }
-    
-    const output = data.choices[0]?.message?.content || '';
-    
-    // Validate that we got a response
-    if (!output || output.trim().length === 0) {
-      clearTimeout(timeoutId);
-      return { error: 'Perplexity API returned empty response' };
-    }
-    
-    const inputTokens = data?.usage?.prompt_tokens || 0;
-    const outputTokens = data?.usage?.completion_tokens || 0;
-    const totalTokens = data?.usage?.total_tokens || (inputTokens + outputTokens);
 
-    clearTimeout(timeoutId);
+    if (!data?.content || !Array.isArray(data.content) || data.content.length === 0) {
+      return { error: 'Anthropic API returned invalid response structure' };
+    }
+
+    const output = data.content[0]?.text || '';
+    if (!output || output.trim().length === 0) {
+      return { error: 'Anthropic API returned empty response' };
+    }
+
+    const inputTokens = data?.usage?.input_tokens || 0;
+    const outputTokens = data?.usage?.output_tokens || 0;
+    const totalTokens = inputTokens + outputTokens;
+
     return { output, tokens: { input: inputTokens, output: outputTokens, total: totalTokens } };
   } catch (error) {
     clearTimeout(timeoutId);
     if (error.name === 'AbortError') {
       return { error: 'Request timeout - API took too long to respond' };
     }
-    return {
-      error: `Request failed: ${error.message}`
-    };
+    return { error: `Request failed: ${error.message}` };
   }
 }
 
 function buildSystemPrompt(summaryText: string, originalText: string | null, topics: string[], medicalMode: boolean): string {
-  // Check if this is a general assistant query (no specific content)
-  // Only use the explicit phrase so content summaries of 10–99 chars get the content-specific prompt
   const isGeneralAssistant = summaryText.includes('General assistant');
 
   if (isGeneralAssistant) {
@@ -103,12 +99,11 @@ GUIDELINES:
 Respond naturally and helpfully.`;
   }
 
-  // Truncate original text if too long (max 10,000 chars)
-  const truncatedOriginalText = originalText && originalText.length > 10000 
+  const truncatedOriginalText = originalText && originalText.length > 10000
     ? originalText.substring(0, 10000) + '... (truncated)'
     : originalText;
 
-  const prompt = `You are an AI assistant helping a student understand their study material. Your role is to provide clear, educational explanations and answer questions about the content.
+  return `You are an AI assistant helping a student understand their study material. Your role is to provide clear, educational explanations and answer questions about the content.
 
 CONTEXT:
 - Summary: ${summaryText}
@@ -133,8 +128,6 @@ ${medicalMode ? '- Emphasize clinical relevance and high-yield information' : ''
 - If asked about something not in the content, politely say you can only help with the provided material
 
 Respond naturally and helpfully.`;
-
-  return prompt;
 }
 
 Deno.serve(async (req) => {
@@ -143,7 +136,6 @@ Deno.serve(async (req) => {
   try {
     console.log(`[chat-assistant] ${req.method} request received at ${new Date().toISOString()}`);
 
-    // Handle CORS preflight requests
     if (req.method === 'OPTIONS') {
       return handleCorsPreflight();
     }
@@ -153,44 +145,42 @@ Deno.serve(async (req) => {
       return methodError;
     }
 
-    // Verify environment variables
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const perplexityKey = Deno.env.get('PREPLIXITY_API_KEY');
+    const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY');
 
     if (!supabaseUrl || !supabaseKey) {
       console.error('[chat-assistant] Missing Supabase credentials');
       return errorResponse('Server configuration error: Missing Supabase credentials', 500);
     }
 
-    if (!perplexityKey) {
-      console.error('[chat-assistant] Missing Perplexity API key');
-      return errorResponse('Server configuration error: Missing Perplexity API key', 500);
+    if (!anthropicKey) {
+      console.error('[chat-assistant] Missing Anthropic API key');
+      return errorResponse('Server configuration error: Missing Anthropic API key', 500);
     }
 
     const { createClient } = await import('jsr:@supabase/supabase-js@2');
     const supabase = createClient(supabaseUrl, supabaseKey, {
       auth: {
         autoRefreshToken: false,
-        persistSession: false
-      }
+        persistSession: false,
+      },
     });
 
     const requestBody = await req.json();
-    const { 
-      message, 
-      conversation_id, 
-      summary_text, 
-      original_text, 
-      topics = [], 
+    const {
+      message,
+      conversation_id,
+      summary_text,
+      original_text,
+      topics = [],
       medical_mode = false,
       context_type = 'summary',
       context_id = null,
       model = DEFAULT_MODEL,
-      maxTokens = 2000
+      maxTokens = 2000,
     } = requestBody;
 
-    // Extract user ID from the request
     const authHeader = req.headers.get('Authorization');
     let userId = null;
     let isAdmin = false;
@@ -201,7 +191,6 @@ Deno.serve(async (req) => {
         const { data: { user } } = await supabase.auth.getUser(token);
         userId = user?.id;
 
-        // Check if user is admin
         if (userId) {
           const { data: profile } = await supabase
             .from('user_profiles')
@@ -220,7 +209,6 @@ Deno.serve(async (req) => {
       return errorResponse('Authentication required', 401);
     }
 
-    // Validate message input
     if (!message || typeof message !== 'string' || message.trim().length < 1) {
       return errorResponse('Message is required', 400);
     }
@@ -229,7 +217,6 @@ Deno.serve(async (req) => {
       return errorResponse('Message is too long (max 5000 characters)', 400);
     }
 
-    // Validate summary text first (before calling .includes() to avoid TypeError when summary_text is undefined)
     if (!summary_text || typeof summary_text !== 'string') {
       return errorResponse('Summary text is required', 400);
     }
@@ -238,13 +225,12 @@ Deno.serve(async (req) => {
       return errorResponse('Summary text is required', 400);
     }
 
-    // Check credit balance for non-admin users before processing
     if (!isAdmin) {
       try {
         const { data: creditCheck, error: creditError } = await supabase
           .rpc('check_sufficient_credits', {
             p_user_id: userId,
-            p_estimated_credits: 3 // Estimate minimum credits needed for chat
+            p_estimated_credits: 3,
           });
 
         if (creditError) {
@@ -263,10 +249,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Get or create conversation
     let conversationId = conversation_id;
     if (!conversationId) {
-      // Check if conversation already exists for this context
       let existingConv = null;
       if (context_id) {
         const { data: existing, error: findError } = await supabase
@@ -285,10 +269,8 @@ Deno.serve(async (req) => {
       }
 
       if (existingConv) {
-        // Use existing conversation
         conversationId = existingConv.id;
       } else {
-        // Create new conversation
         const { data: newConversation, error: convError } = await supabase
           .from('chatbot_conversations')
           .insert({
@@ -298,7 +280,7 @@ Deno.serve(async (req) => {
             summary_text: summary_text,
             original_text: original_text || null,
             topics: topics || [],
-            medical_mode: medical_mode || false
+            medical_mode: medical_mode || false,
           })
           .select()
           .single();
@@ -311,7 +293,6 @@ Deno.serve(async (req) => {
         conversationId = newConversation.id;
       }
     } else {
-      // Verify conversation belongs to user
       const { data: existingConv, error: convCheckError } = await supabase
         .from('chatbot_conversations')
         .select('id, user_id')
@@ -324,7 +305,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Get conversation history (last 10 messages for context)
     const { data: previousMessages, error: historyError } = await supabase
       .from('chatbot_messages')
       .select('role, content')
@@ -336,7 +316,6 @@ Deno.serve(async (req) => {
       console.error('Failed to fetch conversation history:', historyError);
     }
 
-    // Get conversation context
     const { data: conversation, error: convError } = await supabase
       .from('chatbot_conversations')
       .select('summary_text, original_text, topics, medical_mode')
@@ -347,83 +326,65 @@ Deno.serve(async (req) => {
       return errorResponse('Failed to load conversation context', 500);
     }
 
-    // Build messages array for API (Perplexity uses OpenAI-compatible format)
-    const messages: Array<{ role: string; content: string }> = [];
-
-    // Add system prompt with context
     const systemPrompt = buildSystemPrompt(
       conversation.summary_text,
       conversation.original_text,
       conversation.topics || [],
       conversation.medical_mode || false
     );
-    messages.push({
-      role: 'system',
-      content: systemPrompt
-    });
 
-    // Add previous messages for context
+    // Build messages array — Claude requires only user/assistant roles
+    const messages: Array<{ role: string; content: string }> = [];
+
     if (previousMessages && previousMessages.length > 0) {
       previousMessages.forEach(msg => {
-        messages.push({
-          role: msg.role,
-          content: msg.content
-        });
+        if (msg.role === 'user' || msg.role === 'assistant') {
+          messages.push({ role: msg.role, content: msg.content });
+        }
       });
     }
 
-    // Add current user message
-    messages.push({
-      role: 'user',
-      content: message
-    });
+    messages.push({ role: 'user', content: message });
 
-    // Save user message to database
     const { error: userMsgError } = await supabase
       .from('chatbot_messages')
       .insert({
         conversation_id: conversationId,
         role: 'user',
         content: message,
-        tokens_used: 0 // Will be updated after API call
+        tokens_used: 0,
       });
 
     if (userMsgError) {
       console.error('Failed to save user message:', userMsgError);
     }
 
-    // Call Perplexity API
-    console.log(`[chat-assistant] Calling Perplexity API with ${messages.length} messages`);
-    const result = await callPerplexity(messages, model, maxTokens);
+    console.log(`[chat-assistant] Calling Claude API with ${messages.length} messages (model: ${model})`);
+    const result = await callClaude(systemPrompt, messages, model, maxTokens);
 
     if ('error' in result) {
       console.error('[chat-assistant] API error:', result.error);
       return errorResponse(result.error, 500);
     }
 
-    // Deduct credits for authenticated non-admin users
     if (!isAdmin && result.tokens) {
       try {
         const { data: deductResult, error: deductError } = await supabase
           .rpc('deduct_credits_atomic', {
             p_user_id: userId,
             p_tokens_used: result.tokens.total,
-            p_operation_type: 'chat_assistant'
+            p_operation_type: 'chat_assistant',
           });
 
         if (deductError) {
           console.error('Failed to deduct credits:', deductError);
         } else if (deductResult) {
           console.log(`✅ Credits deducted: ${deductResult.credits_deducted}, remaining: ${deductResult.credits_remaining}`);
-          
-          // Check if warning thresholds were hit
+
           if (deductResult.notify_at_1000 || deductResult.notify_at_500 || deductResult.notify_at_250) {
             const total = deductResult.credits_total ?? 2500;
             const percentage = total > 0 ? Math.round((deductResult.credits_remaining / total) * 100) : 0;
-            const message = `You have ${deductResult.credits_remaining} credits remaining (${percentage}% left). They will refresh on ${new Date(deductResult.cycle_end).toLocaleDateString()}.`;
-            
-            // Insert notification (you may want to handle this differently)
-            console.log('⚠️ Low credits warning:', message);
+            console.log(`⚠️ Low credits warning: ${deductResult.credits_remaining} credits remaining (${percentage}% left)`);
           }
         }
       } catch (usageError) {
@@ -431,14 +392,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Save assistant message to database
     const { data: assistantMessage, error: assistantMsgError } = await supabase
       .from('chatbot_messages')
       .insert({
         conversation_id: conversationId,
         role: 'assistant',
         content: result.output,
-        tokens_used: result.tokens.total
+        tokens_used: result.tokens.total,
       })
       .select()
       .single();
@@ -447,10 +407,8 @@ Deno.serve(async (req) => {
       console.error('Failed to save assistant message:', assistantMsgError);
     }
 
-    // Update user message with token count (approximate)
-    // Find the most recent user message for this conversation
     if (result.tokens) {
-      const estimatedUserTokens = Math.ceil(message.length / 4); // Rough estimate
+      const estimatedUserTokens = Math.ceil(message.length / 4);
       const { data: userMessages } = await supabase
         .from('chatbot_messages')
         .select('id')
@@ -475,7 +433,7 @@ Deno.serve(async (req) => {
       message: result.output,
       conversation_id: conversationId,
       tokens: result.tokens,
-      message_id: assistantMessage?.id
+      message_id: assistantMessage?.id,
     });
 
   } catch (error) {
@@ -483,4 +441,3 @@ Deno.serve(async (req) => {
     return errorResponse(`Internal server error: ${error.message}`, 500);
   }
 });
-

@@ -15,13 +15,13 @@ interface PersistentSubscriptionModalProps {
 export const PersistentSubscriptionModal: React.FC<PersistentSubscriptionModalProps> = ({
   isOpen,
   onDismiss,
-  featureName,
+  featureName: _featureName,
   featureTitle,
   benefits
 }) => {
   const navigate = useNavigate();
-  const { t } = useI18n();
-  const { getThemeGradient } = useTheme();
+  const { t: _t } = useI18n();
+  const { getThemeGradient: _getThemeGradient } = useTheme();
 
   if (!isOpen) return null;
 
@@ -41,18 +41,18 @@ export const PersistentSubscriptionModal: React.FC<PersistentSubscriptionModalPr
     >
       <div className="absolute inset-0 bg-black bg-opacity-70 backdrop-blur-md"></div>
 
-      <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden animate-scaleIn">
-        <div className={`${getThemeGradient('ui')} p-6 text-white relative`}>
+      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-lg max-w-lg w-full overflow-hidden animate-scaleIn border border-gray-100 dark:border-gray-700">
+        <div className="bg-gray-900 dark:bg-gray-100 p-6 text-white dark:text-gray-900 relative">
           <button
             onClick={onDismiss}
-            className="absolute top-4 right-4 p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-all duration-200 group"
+            className="absolute top-4 right-4 p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors duration-150 group"
             aria-label="Close"
           >
             <X className="h-5 w-5 group-hover:rotate-90 transition-transform duration-200" />
           </button>
 
           <div className="flex items-center space-x-3 mb-2">
-            <div className="bg-white bg-opacity-20 p-3 rounded-xl backdrop-blur-sm">
+            <div className="bg-white bg-opacity-20 p-3 rounded-md backdrop-blur-sm">
               <Crown className="h-8 w-8" />
             </div>
             <div>
@@ -90,7 +90,7 @@ export const PersistentSubscriptionModal: React.FC<PersistentSubscriptionModalPr
           <div className="flex flex-col space-y-3">
             <button
               onClick={handleViewPlans}
-              className={`w-full py-3 px-4 ${getThemeGradient('ui')} text-white rounded-lg font-semibold hover:opacity-90 transition-all duration-200 transform hover:scale-105 shadow-lg flex items-center justify-center space-x-2`}
+              className="w-full py-3 px-4 bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 rounded-md font-semibold hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors duration-150 shadow flex items-center justify-center space-x-2"
             >
               <span>View Plans & Pricing</span>
               <ArrowRight className="h-5 w-5" />

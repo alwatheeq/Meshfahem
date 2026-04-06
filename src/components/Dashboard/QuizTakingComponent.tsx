@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, CheckCircle, XCircle, ArrowRight, ArrowLeft, Flag, AlertCircle, Languages } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, ArrowRight, ArrowLeft, Flag, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { useI18n } from '../../contexts/I18nContext';
 import { useToast } from '../Toast/Toast';
-import { handleApiError, handleSupabaseError, isOffline, handleOfflineError } from '../../utils/errorHandler';
+import { handleApiError, handleSupabaseError } from '../../utils/errorHandler';
 import { ErrorLogger } from '../../utils/errorLogger';
+import { ReadAloudButton } from './ReadAloud/ReadAloudButton';
 
 interface Question {
   index: number;
@@ -30,7 +31,7 @@ export const QuizTakingComponent: React.FC<QuizTakingProps> = ({ quizId, onCompl
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [timeLimit, setTimeLimit] = useState<number | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
-  const [startTime, setStartTime] = useState<Date>(new Date());
+  const [startTime] = useState<Date>(new Date());
   const [isSubmitted, setIsSubmitted] = useState(false);
   interface QuizResults {
     correctCount: number;
@@ -72,7 +73,7 @@ export const QuizTakingComponent: React.FC<QuizTakingProps> = ({ quizId, onCompl
     if (!user) return;
 
     try {
-      ErrorLogger.debug('Fetching quiz data', { component: 'QuizTakingComponent', action: 'fetchQuizData', quizId });
+      ErrorLogger.debug('Fetching quiz data', { component: 'QuizTakingComponent', action: 'fetchQuizData', metadata: { quizId } });
       const { data, error } = await supabase
         .from('quiz_sessions')
         .select('quiz_title, time_limit_minutes, questions_json, quiz_language, available_languages, translated_questions_json')
@@ -81,7 +82,7 @@ export const QuizTakingComponent: React.FC<QuizTakingProps> = ({ quizId, onCompl
 
       if (error) {
         const err = error instanceof Error ? error : new Error(String(error));
-        ErrorLogger.error(err, { component: 'QuizTakingComponent', action: 'loadQuiz', quizSessionId });
+        ErrorLogger.error(err, { component: 'QuizTakingComponent', action: 'loadQuiz', metadata: { quizId } });
         throw error;
       }
 
@@ -89,13 +90,11 @@ export const QuizTakingComponent: React.FC<QuizTakingProps> = ({ quizId, onCompl
         throw new Error('Quiz not found');
       }
 
-      ErrorLogger.debug('Quiz data loaded', { component: 'QuizTakingComponent', action: 'fetchQuizData', quizId: data.id, quizTitle: data.quiz_title,
-        questionCount: data.question_count
-      });
+      ErrorLogger.debug('Quiz data loaded', { component: 'QuizTakingComponent', action: 'fetchQuizData', metadata: { quizId, quizTitle: data.quiz_title } });
 
       if (!data.questions_json || !Array.isArray(data.questions_json) || data.questions_json.length === 0) {
         const error = new Error(t('quiz.no_questions_error'));
-        ErrorLogger.error(error, { component: 'QuizTakingComponent', action: 'loadQuiz', quizSessionId, questionsJson: data.questions_json });
+        ErrorLogger.error(error, { component: 'QuizTakingComponent', action: 'loadQuiz', metadata: { quizId } });
         throw error;
       }
 
@@ -104,13 +103,13 @@ export const QuizTakingComponent: React.FC<QuizTakingProps> = ({ quizId, onCompl
       setCurrentLanguage(data.quiz_language || 'en');
       setAvailableLanguages(data.available_languages || ['en']);
       setTranslatedQuestions(data.translated_questions_json || {});
-      ErrorLogger.debug('Questions loaded', { component: 'QuizTakingComponent', action: 'fetchQuizData', questionCount: questions.length });
+      ErrorLogger.debug('Questions loaded', { component: 'QuizTakingComponent', action: 'fetchQuizData', metadata: { questionCount: questions.length } });
 
       for (let i = 0; i < questions.length; i++) {
         const q = questions[i];
         if (!q.question || !q.options || !Array.isArray(q.options) || q.options.length < 2) {
           const error = new Error(`Question ${i + 1} is invalid or incomplete.`);
-          ErrorLogger.error(error, { component: 'QuizTakingComponent', action: 'loadQuiz', quizSessionId, questionIndex: i, question: q });
+          ErrorLogger.error(error, { component: 'QuizTakingComponent', action: 'loadQuiz', metadata: { quizId, questionIndex: i } });
           throw error;
         }
       }
@@ -122,7 +121,7 @@ export const QuizTakingComponent: React.FC<QuizTakingProps> = ({ quizId, onCompl
         setTimeLimit(totalSeconds);
         setTimeRemaining(totalSeconds);
       }
-      ErrorLogger.info('Quiz initialized successfully', { component: 'QuizTakingComponent', action: 'fetchQuizData', quizId, questionCount: questions.length });
+      ErrorLogger.info('Quiz initialized successfully', { component: 'QuizTakingComponent', action: 'fetchQuizData', metadata: { quizId, questionCount: questions.length } });
     } catch (error) {
       const errorMessage = handleApiError(error, { component: 'QuizTakingComponent', action: 'fetchQuizData', metadata: { quizId } });
       ErrorLogger.error(error instanceof Error ? error : new Error(String(error)), { component: 'QuizTakingComponent', action: 'fetchQuizData', metadata: { quizId } });
@@ -226,13 +225,13 @@ export const QuizTakingComponent: React.FC<QuizTakingProps> = ({ quizId, onCompl
     const scorePercentage = (correctCount / questions.length) * 100;
 
     try {
-      ErrorLogger.debug('Ensuring user profile exists', { component: 'QuizTakingComponent', action: 'handleSubmit', quizId, userId: user.id });
+      ErrorLogger.debug('Ensuring user profile exists', { component: 'QuizTakingComponent', action: 'handleSubmit', userId: user.id, metadata: { quizId } });
       const profileReady = await ensureUserProfile();
       if (!profileReady) {
-        ErrorLogger.warn('Could not verify user profile, but continuing with quiz submission', { component: 'QuizTakingComponent', action: 'handleSubmit', quizId, userId: user.id });
+        ErrorLogger.warn('Could not verify user profile, but continuing with quiz submission', { component: 'QuizTakingComponent', action: 'handleSubmit', userId: user.id, metadata: { quizId } });
       }
 
-      ErrorLogger.debug('Submitting quiz attempt', { component: 'QuizTakingComponent', action: 'handleSubmit', quiz_session_id: quizId, user_id: user.id, answers_count: Object.keys(answers).length, score_percentage: scorePercentage, correct_count: correctCount, incorrect_count: incorrectCount, unanswered_count: unansweredCount, time_taken_seconds: timeTaken });
+      ErrorLogger.debug('Submitting quiz attempt', { component: 'QuizTakingComponent', action: 'handleSubmit', userId: user.id, metadata: { quizId, answersCount: Object.keys(answers).length, scorePercentage, correctCount, incorrectCount, unansweredCount, timeTaken } });
 
       const { data, error } = await supabase
         .from('quiz_attempts')
@@ -256,7 +255,7 @@ export const QuizTakingComponent: React.FC<QuizTakingProps> = ({ quizId, onCompl
         throw new Error(errorMessage);
       }
 
-      ErrorLogger.info('Quiz attempt saved successfully', { component: 'QuizTakingComponent', action: 'handleSubmit', quizId, attemptId: data.id });
+      ErrorLogger.info('Quiz attempt saved successfully', { component: 'QuizTakingComponent', action: 'handleSubmit', metadata: { quizId, attemptId: data.id } });
 
       setResults({
         correctCount,
@@ -316,7 +315,7 @@ export const QuizTakingComponent: React.FC<QuizTakingProps> = ({ quizId, onCompl
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
         <div className="max-w-4xl mx-auto">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-8">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow p-8">
             <div className="text-center mb-8">
               <div className={`text-6xl font-bold mb-4 ${getScoreColor(results.scorePercentage)}`}>
                 {Math.round(results.scorePercentage)}%
@@ -430,7 +429,7 @@ export const QuizTakingComponent: React.FC<QuizTakingProps> = ({ quizId, onCompl
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
       <div className="max-w-4xl mx-auto">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 mb-4">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow p-6 mb-4">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{quizTitle}</h2>
@@ -461,7 +460,7 @@ export const QuizTakingComponent: React.FC<QuizTakingProps> = ({ quizId, onCompl
 
           <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mb-4">
             <div
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              className="bg-blue-600 h-2 rounded-full transition-colors duration-150"
               style={{ width: `${progress}%` }}
             ></div>
           </div>
@@ -471,24 +470,35 @@ export const QuizTakingComponent: React.FC<QuizTakingProps> = ({ quizId, onCompl
           </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-8">
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-6">
-            {currentQuestion.question}
-          </h3>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow p-8">
+          <div className="flex items-start gap-2 mb-6">
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 flex-1">
+              {currentQuestion.question}
+            </h3>
+            <ReadAloudButton text={currentQuestion.question} />
+          </div>
 
           <div className="space-y-3 mb-8">
             {currentQuestion.options.map((option, index) => (
-              <button
+              <div
                 key={index}
+                role="button"
+                tabIndex={0}
                 onClick={() => handleAnswerSelect(option)}
-                className={`w-full p-4 text-left rounded-lg border-2 transition-all ${
+                onKeyDown={(e) => e.key === 'Enter' && handleAnswerSelect(option)}
+                className={`w-full p-4 text-left rounded-lg border-2 transition-all cursor-pointer ${
                   answers[currentQuestionIndex] === option
                     ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-500'
                     : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'
                 }`}
               >
-                <span className="text-gray-900 dark:text-gray-100">{option}</span>
-              </button>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-900 dark:text-gray-100 flex-1">{option}</span>
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <ReadAloudButton text={option} className="ml-2 flex-shrink-0" />
+                  </span>
+                </div>
+              </div>
             ))}
           </div>
 
@@ -531,7 +541,7 @@ export const QuizTakingComponent: React.FC<QuizTakingProps> = ({ quizId, onCompl
           </div>
         </div>
 
-        <div className="mt-4 bg-white dark:bg-gray-800 rounded-xl shadow p-4">
+        <div className="mt-4 bg-white dark:bg-gray-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow p-4">
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{t('quiz.question_progress_label')}</p>
           <div className="flex flex-wrap gap-2">
             {questions.map((_, index) => (

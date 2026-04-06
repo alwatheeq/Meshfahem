@@ -4,6 +4,7 @@ import { useI18n } from '../../contexts/I18nContext';
 import { useMouseProximity } from '../../hooks/useMouseProximity';
 import { useUserPreferences } from '../../contexts/UserPreferencesContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useTTS } from '../../hooks/useTTS';
 
 interface SidebarProps {
   currentView: 'main' | 'history' | 'library' | 'informational' | 'feedback' | 'profile' | 'quiz' | 'eduplay' | 'academics' | 'study-rooms';
@@ -18,9 +19,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isSidebarOpen,
   toggleSidebar,
 }) => {
-  const { t } = useI18n();
+  const { t, dir, language } = useI18n();
+  const isRtl = dir === 'rtl';
   const { preferences, loading: _preferencesLoading } = useUserPreferences();
   const { getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
+  const { speak, stop } = useTTS({ lang: language || 'en-US' });
   const [isHovered, setIsHovered] = React.useState(false);
   const [isMobile, setIsMobile] = React.useState(false);
   const [isPinned, setIsPinned] = React.useState(() => {
@@ -146,8 +149,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <div
-      className={`fixed top-0 left-0 bottom-0 ${getThemeCardBg()} border-r ${getThemeCardBorder()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm transition-all duration-300 ease-in-out z-20 ${
-        isMobile && !isSidebarOpen ? '-translate-x-full' : ''
+      className={`fixed top-0 bottom-0 ${isRtl ? 'right-0' : 'left-0'} ${getThemeCardBg()} ${isRtl ? 'border-l' : 'border-r'} ${getThemeCardBorder()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm transition-all duration-300 ease-in-out z-20 ${
+        isMobile && !isSidebarOpen ? (isRtl ? 'translate-x-full' : '-translate-x-full') : ''
       } ${shouldBeOpen ? 'w-64' : 'w-16'}`}
       onMouseEnter={() => !isMobile && setIsHovered(true)}
       onMouseLeave={() => !isMobile && setIsHovered(false)}
@@ -205,11 +208,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     type="button"
                     data-sidebar-item={item.id}
                     onClick={() => !isDisabled && onNavigate(item.id)}
+                    onMouseEnter={() => preferences?.tts_hover_enabled === true && speak(item.label)}
+                    onMouseLeave={() => stop()}
                     disabled={isDisabled}
                     className={`
                       flex items-center transition-colors duration-150 text-left
                       ${shouldBeOpen
-                        ? 'w-full space-x-3 px-3 py-3 rounded-md'
+                        ? 'w-full space-x-3 rtl:space-x-reverse px-3 py-3 rounded-md'
                         : 'rounded-md'
                       }
                       ${isDisabled
@@ -221,8 +226,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           ? `${getThemeSubtle('ui')} ${getThemeTextPrimary()} ${getThemeCardBorder()}`
                           : `w-8 h-8 ${getThemeSubtle('ui')} ${getThemeTextPrimary()} justify-center`
                         : shouldBeOpen
-                          ? `${getThemeTextSecondary()} hover:opacity-60 hover:opacity-80`
-                          : `w-8 h-8 ${getThemeTextSecondary()} hover:opacity-60 hover:opacity-80 justify-center`
+                          ? `${getThemeTextSecondary()} hover:opacity-80`
+                          : `w-8 h-8 ${getThemeTextSecondary()} hover:opacity-80 justify-center`
                       }
                       ${isDisabled ? 'hover:bg-transparent dark:hover:bg-transparent' : ''}
                     `}
@@ -239,7 +244,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     />
                     {shouldBeOpen && (
                       <div className="flex-1 min-w-0 transition-opacity duration-300 ease-in-out">
-                        <div className={`font-medium flex items-center gap-2 ${isActive && !isDisabled ? getThemeTextPrimary() : getThemeTextPrimary()}`}>
+                        <div className={`font-medium flex items-center gap-2 ${getThemeTextPrimary()}`}>
                           {item.label}
                           {isDisabled && (
                             <span className={`text-xs px-2 py-0.5 ${getThemeSubtle('ui')} ${getThemeTextSecondary()} rounded-full`}>

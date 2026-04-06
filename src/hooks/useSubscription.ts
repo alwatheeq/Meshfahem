@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
+import { useI18n } from '../contexts/I18nContext';
 import { handleSupabaseError, isOffline } from '../utils/errorHandler';
 import { ErrorLogger } from '../utils/errorLogger';
 
@@ -42,6 +43,7 @@ interface CachedSubscription {
 
 export const useSubscription = () => {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -298,13 +300,13 @@ export const useSubscription = () => {
   const isTrialUser = (): boolean => {
     if (user?.role === 'admin') return false;
     if (!subscription) return false;
-    return subscription.subscription_tier === 'trial_1day' || subscription.subscription_tier === 'trial_7day';
+    return subscription.subscription_tier === 'trial_7day';
   };
 
   const isPaidUser = (): boolean => {
     if (user?.role === 'admin') return true;
     if (!subscription) return false;
-    return ['monthly', 'quarterly', 'biannual'].includes(subscription.subscription_tier);
+    return ['monthly', 'quarterly', 'biannual', 'standard'].includes(subscription.subscription_tier);
   };
 
   const getDaysRemaining = (): number => {
@@ -326,19 +328,13 @@ export const useSubscription = () => {
   };
 
   const getTierDisplayName = (): string => {
-    if (!subscription) return 'No Subscription';
+    if (!subscription) return t('subscription_tiers.none');
 
-    const tierNames: Record<string, string> = {
-      trial_1day: '1-Day Trial',
-      trial_7day: '7-Day Trial',
-      monthly: 'Monthly',
-      quarterly: 'Quarterly',
-      biannual: 'Biannual',
-      standard: 'Standard',
-      none: 'No Subscription'
-    };
-
-    return tierNames[subscription.subscription_tier] || 'Unknown';
+    const tier = subscription.subscription_tier;
+    const key = `subscription_tiers.${tier}`;
+    const translated = t(key);
+    // t() returns the key itself when not found — fall back to the tier string
+    return translated === key ? tier : translated;
   };
 
   const getTierColor = (): string => {

@@ -112,7 +112,7 @@ export const FavoriteButton: React.FC<FavoriteButtonProps> = ({
       disabled={isLoading}
       className={`
         ${buttonSizeClasses[size]}
-        flex items-center space-x-1 rounded-lg transition-all duration-200
+        flex items-center space-x-1 rounded-lg transition-colors duration-150
         ${isFavorited
           ? 'bg-red-100 text-red-600 hover:bg-red-200 dark:bg-red-900 dark:text-red-300 dark:hover:bg-red-800'
           : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'

@@ -1,42 +1,59 @@
+/// <reference path="../_shared/deno.d.ts" />
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-import { handleCorsPreflight } from '../_shared/cors.ts';
-import { jsonResponse, errorResponse, successResponse } from '../_shared/response.ts';
-import { authenticateUser, getSupabaseClient } from '../_shared/auth.ts';
-import { validateMethod, parseJsonBody, validateRequiredFields, validateNonEmptyString } from '../_shared/validation.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.54.0';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      ...corsHeaders
+    }
+  });
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return handleCorsPreflight();
+    return new Response(null, { headers: corsHeaders });
   }
 
-  const methodError = validateMethod(req, ['POST']);
-  if (methodError) {
-    return methodError;
+  if (req.method !== 'POST') {
+    return jsonResponse({ error: 'Method not allowed' }, 405);
   }
 
-  const supabaseAdmin = getSupabaseClient();
+  const supabaseAdmin = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    {
+      auth: {
+        persistSession: false,
+      },
+    }
+  );
 
   try {
-    const bodyResult = await parseJsonBody<{
-      action: string;
-      folder_id?: string;
-      folder_name?: string;
-      invitee_email?: string;
-      permission_level?: string;
-      collaborator_user_id?: string;
-    }>(req);
-    if (bodyResult.error) {
-      return bodyResult.error;
+    const requestBody = await req.json();
+    const { action, folder_id, folder_name, invitee_email, permission_level, collaborator_user_id } = requestBody;
+
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return jsonResponse({ error: 'Authorization required' }, 401);
     }
 
-    const { action, folder_id, folder_name, invitee_email, permission_level, collaborator_user_id } = bodyResult.data;
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
 
-    const authResult = await authenticateUser(req, true);
-    if (authResult.error || !authResult.user) {
-      return errorResponse(authResult.error || 'Unauthorized', 401);
+    if (userError || !user) {
+      return jsonResponse({ error: 'Invalid authorization' }, 401);
     }
 
-    const currentUserId = authResult.user.id;
+    const currentUserId = user.id;
 
     // Helper to check user's permission level for a folder
     const getUserPermission = async (fId: string, uId: string) => {
@@ -68,13 +85,12 @@ serve(async (req) => {
 
     switch (action) {
       case 'create': {
-        const folderNameError = validateNonEmptyString(folder_name, 'folder_name');
-        if (folderNameError) {
-          return errorResponse(folderNameError, 400);
+        if (!folder_name) {
+          return jsonResponse({ error: 'Folder name is required' }, 400);
         }
-        
+
         console.log('Creating shared folder:', { folder_name, user_id: currentUserId });
-        
+
         const { data, error } = await supabaseAdmin
           .from('user_folders')
           .insert({
@@ -87,7 +103,7 @@ serve(async (req) => {
 
         if (error) {
           console.error('Error creating shared folder:', error);
-          return errorResponse('Failed to create shared folder', 500);
+          return jsonResponse({ error: 'Failed to create shared folder' }, 500);
         }
 
         console.log('Shared folder created successfully:', data);
@@ -107,32 +123,23 @@ serve(async (req) => {
           console.error('Error adding owner as collaborator:', collabError);
           // Attempt to delete the folder if collaborator creation fails
           await supabaseAdmin.from('user_folders').delete().eq('id', data.id);
-          return errorResponse('Failed to initialize shared folder', 500);
+          return jsonResponse({ error: 'Failed to initialize shared folder' }, 500);
         }
 
         console.log('Owner added as collaborator successfully');
-        return successResponse({ folder: data, message: 'Shared folder created successfully' });
+        return jsonResponse({ success: true, folder: data, message: 'Shared folder created successfully' });
       }
 
       case 'invite': {
-        const missingFields = validateRequiredFields(
-          { folder_id, invitee_email, permission_level },
-          ['folder_id', 'invitee_email', 'permission_level']
-        );
-        if (missingFields) {
-          return errorResponse(missingFields, 400);
+        if (!folder_id || !invitee_email || !permission_level) {
+          return jsonResponse({ error: 'Folder ID, invitee email, and permission level are required' }, 400);
         }
 
-        const emailError = validateNonEmptyString(invitee_email, 'invitee_email');
-        if (emailError) {
-          return errorResponse(emailError, 400);
-        }
-
-        const isOwner = await isFolderOwner(folder_id!, currentUserId);
-        const currentUserPerm = await getUserPermission(folder_id!, currentUserId);
+        const isOwner = await isFolderOwner(folder_id, currentUserId);
+        const currentUserPerm = await getUserPermission(folder_id, currentUserId);
 
         if (!isOwner && currentUserPerm !== 'admin') {
-          return errorResponse('Only folder owners or admins can invite collaborators', 403);
+          return jsonResponse({ error: 'Only folder owners or admins can invite collaborators' }, 403);
         }
 
         const { data: inviteeUser, error: inviteeError } = await supabaseAdmin
@@ -142,15 +149,15 @@ serve(async (req) => {
           .single();
 
         if (inviteeError || !inviteeUser) {
-          return errorResponse('Invitee user not found', 404);
+          return jsonResponse({ error: 'Invitee user not found' }, 404);
         }
 
         const { data, error } = await supabaseAdmin
           .from('folder_collaborators')
           .insert({
-            folder_id: folder_id!,
+            folder_id,
             user_id: inviteeUser.id,
-            permission_level: permission_level!,
+            permission_level,
             status: 'pending',
             invited_by_user_id: currentUserId,
           })
@@ -159,60 +166,52 @@ serve(async (req) => {
 
         if (error) {
           if (error.code === '23505') { // Unique violation
-            return errorResponse('User already invited or is a collaborator', 409);
+            return jsonResponse({ error: 'User already invited or is a collaborator' }, 409);
           }
           console.error('Error inviting collaborator:', error);
-          return errorResponse('Failed to invite collaborator', 500);
+          return jsonResponse({ error: 'Failed to invite collaborator' }, 500);
         }
 
         // TODO: Send email notification to invitee
 
-        return successResponse({ invitation: data, message: 'Invitation sent successfully' });
+        return jsonResponse({ success: true, invitation: data, message: 'Invitation sent successfully' });
       }
 
       case 'update_permission': {
-        const missingFields = validateRequiredFields(
-          { folder_id, collaborator_user_id, permission_level },
-          ['folder_id', 'collaborator_user_id', 'permission_level']
-        );
-        if (missingFields) {
-          return errorResponse(missingFields, 400);
+        if (!folder_id || !collaborator_user_id || !permission_level) {
+          return jsonResponse({ error: 'Folder ID, collaborator user ID, and new permission level are required' }, 400);
         }
 
-        const isOwner = await isFolderOwner(folder_id!, currentUserId);
-        const currentUserPerm = await getUserPermission(folder_id!, currentUserId);
+        const isOwner = await isFolderOwner(folder_id, currentUserId);
+        const currentUserPerm = await getUserPermission(folder_id, currentUserId);
 
         if (!isOwner && currentUserPerm !== 'admin') {
-          return errorResponse('Only folder owners or admins can update permissions', 403);
+          return jsonResponse({ error: 'Only folder owners or admins can update permissions' }, 403);
         }
 
         const { data, error } = await supabaseAdmin
           .from('folder_collaborators')
-          .update({ permission_level: permission_level! })
-          .eq('folder_id', folder_id!)
-          .eq('user_id', collaborator_user_id!)
+          .update({ permission_level })
+          .eq('folder_id', folder_id)
+          .eq('user_id', collaborator_user_id)
           .select()
           .single();
 
         if (error) {
           console.error('Error updating permission:', error);
-          return errorResponse('Failed to update collaborator permission', 500);
+          return jsonResponse({ error: 'Failed to update collaborator permission' }, 500);
         }
 
-        return successResponse({ collaborator: data, message: 'Collaborator permission updated' });
+        return jsonResponse({ success: true, collaborator: data, message: 'Collaborator permission updated' });
       }
 
       case 'remove_collaborator': {
-        const missingFields = validateRequiredFields(
-          { folder_id, collaborator_user_id },
-          ['folder_id', 'collaborator_user_id']
-        );
-        if (missingFields) {
-          return errorResponse(missingFields, 400);
+        if (!folder_id || !collaborator_user_id) {
+          return jsonResponse({ error: 'Folder ID and collaborator user ID are required' }, 400);
         }
 
-        const isOwner = await isFolderOwner(folder_id!, currentUserId);
-        const currentUserPerm = await getUserPermission(folder_id!, currentUserId);
+        const isOwner = await isFolderOwner(folder_id, currentUserId);
+        const currentUserPerm = await getUserPermission(folder_id, currentUserId);
 
         // Allow self-removal or removal by owner/admin
         if (collaborator_user_id === currentUserId) {
@@ -220,40 +219,40 @@ serve(async (req) => {
           const { error } = await supabaseAdmin
             .from('folder_collaborators')
             .delete()
-            .eq('folder_id', folder_id!)
+            .eq('folder_id', folder_id)
             .eq('user_id', currentUserId);
 
           if (error) {
             console.error('Error removing self from folder:', error);
-            return errorResponse('Failed to remove self from folder', 500);
+            return jsonResponse({ error: 'Failed to remove self from folder' }, 500);
           }
-          return successResponse({ message: 'Successfully removed from folder' });
+          return jsonResponse({ success: true, message: 'Successfully removed from folder' });
         } else if (!isOwner && currentUserPerm !== 'admin') {
-          return errorResponse('Only folder owners or admins can remove other collaborators', 403);
+          return jsonResponse({ error: 'Only folder owners or admins can remove other collaborators' }, 403);
         }
 
         const { error } = await supabaseAdmin
           .from('folder_collaborators')
           .delete()
-          .eq('folder_id', folder_id!)
-          .eq('user_id', collaborator_user_id!);
+          .eq('folder_id', folder_id)
+          .eq('user_id', collaborator_user_id);
 
         if (error) {
           console.error('Error removing collaborator:', error);
-          return errorResponse('Failed to remove collaborator', 500);
+          return jsonResponse({ error: 'Failed to remove collaborator' }, 500);
         }
 
-        return successResponse({ message: 'Collaborator removed successfully' });
+        return jsonResponse({ success: true, message: 'Collaborator removed successfully' });
       }
 
       default:
-        return errorResponse('Invalid action', 400);
+        return jsonResponse({ error: 'Invalid action' }, 400);
     }
   } catch (error) {
     console.error('Edge Function error:', error);
-    return errorResponse(
-      `Server error: ${error instanceof Error ? error.message : String(error)}`,
-      500
-    );
+    return jsonResponse({
+      error: 'Server error',
+      details: (error as any)?.message || String(error)
+    }, 500);
   }
 });

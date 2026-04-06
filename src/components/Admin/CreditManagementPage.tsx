@@ -7,7 +7,7 @@ import { LoadingSkeleton } from '../Common/LoadingSkeleton';
 import { useAuth } from '../../hooks/useAuth';
 import { useConfirm } from '../../hooks/useConfirm';
 import { usePrompt } from '../../hooks/usePrompt';
-import { Coins, Search, Plus, Minus, TrendingUp, Download, Eye } from 'lucide-react';
+import { Coins, Search, Plus, Minus, TrendingUp, Download } from 'lucide-react';
 
 interface UserCredit {
   id: string;
@@ -41,7 +41,7 @@ export const CreditManagementPage: React.FC = React.memo(() => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
-  const [selectedUser, setSelectedUser] = useState<UserCredit | null>(null);
+  const [_selectedUser, _setSelectedUser] = useState<UserCredit | null>(null);
   const [adjustingUserId, setAdjustingUserId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -155,21 +155,34 @@ export const CreditManagementPage: React.FC = React.memo(() => {
       if (error) throw error;
 
       // Log admin action
-      await supabase.rpc('log_admin_action', {
-        p_action_type: 'UPDATE',
-        p_table_name: 'user_profiles',
-        p_record_id: userId,
-        p_old_values: { credits_remaining: currentCredits },
-        p_new_values: { credits_remaining: newCredits },
-        p_description: `Admin ${adminUser.email} ${action} ${amount} credits for ${userEmail}. New total: ${newCredits}`
-      }).catch(err => ErrorLogger.warn('Failed to log action', { component: 'CreditManagementPage', action: 'adjustCredits', userId, error: err instanceof Error ? err : new Error(String(err)) }));
+      try {
+        await supabase.rpc('log_admin_action', {
+          p_action_type: 'UPDATE',
+          p_table_name: 'user_profiles',
+          p_record_id: userId,
+          p_old_values: { credits_remaining: currentCredits },
+          p_new_values: { credits_remaining: newCredits },
+          p_description: `Admin ${adminUser.email} ${action} ${amount} credits for ${userEmail}. New total: ${newCredits}`
+        });
+      } catch (logErr: unknown) {
+        const logError = logErr instanceof Error ? logErr : new Error(String(logErr));
+        ErrorLogger.warn('Failed to log action', { 
+          component: 'CreditManagementPage', 
+          action: 'adjustCredits', 
+          metadata: { userId, error: logError.message } 
+        });
+      }
 
       toast.success(`Credits adjusted successfully! New total: ${newCredits}`);
       await fetchUsers();
       await fetchStats();
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      ErrorLogger.error(err, { component: 'CreditManagementPage', action: 'adjustCredits', userId });
+      ErrorLogger.error(err, { 
+        component: 'CreditManagementPage', 
+        action: 'adjustCredits', 
+        metadata: { userId } 
+      });
       toast.error('Failed to adjust credits');
     } finally {
       setAdjustingUserId(null);
@@ -212,7 +225,7 @@ export const CreditManagementPage: React.FC = React.memo(() => {
   );
 
   if (loading) {
-    return <LoadingSkeleton type="table" count={10} className="mt-6" />;
+    return <LoadingSkeleton type="table" count={10} className="mt-8" />;
   }
 
   return (
@@ -224,7 +237,7 @@ export const CreditManagementPage: React.FC = React.memo(() => {
         </div>
         <button
           onClick={exportCreditsToCSV}
-          className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+          className="flex items-center space-x-2 px-5 py-2.5 bg-green-600 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-white rounded-lg hover:bg-green-700 transition"
         >
           <Download className="h-4 w-4" />
           <span>Export CSV</span>
@@ -232,8 +245,8 @@ export const CreditManagementPage: React.FC = React.memo(() => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-md p-6 border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-2">
             <Coins className="h-5 w-5 text-blue-500" />
           </div>
@@ -241,7 +254,7 @@ export const CreditManagementPage: React.FC = React.memo(() => {
           <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.total_credits.toLocaleString()}</p>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+        <div className="bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-md p-6 border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-2">
             <TrendingUp className="h-5 w-5 text-green-500" />
           </div>
@@ -249,7 +262,7 @@ export const CreditManagementPage: React.FC = React.memo(() => {
           <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.users_with_credits}</p>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+        <div className="bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-md p-6 border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-2">
             <Minus className="h-5 w-5 text-orange-500" />
           </div>
@@ -257,7 +270,7 @@ export const CreditManagementPage: React.FC = React.memo(() => {
           <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.users_low_credits}</p>
         </div>
 
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+        <div className="bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] rounded-md p-6 border border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-2">
             <Coins className="h-5 w-5 text-purple-500" />
           </div>
@@ -267,8 +280,8 @@ export const CreditManagementPage: React.FC = React.memo(() => {
       </div>
 
       {/* Users Table */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
-        <div className="mb-6">
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow border border-gray-200 dark:border-gray-700 p-6">
+        <div className="mb-8">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
@@ -276,14 +289,14 @@ export const CreditManagementPage: React.FC = React.memo(() => {
               placeholder="Search users by email or name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 dark:text-white"
+              className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-700 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:text-white"
             />
           </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-slate-700">
+            <thead className="bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-slate-700">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">User</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Credits Remaining</th>
@@ -292,13 +305,13 @@ export const CreditManagementPage: React.FC = React.memo(() => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase">Actions</th>
               </tr>
             </thead>
-            <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-gray-700">
+            <tbody className="bg-white dark:bg-slate-800 shadow-[0_2px_8px_rgba(0,0,0,0.08)] divide-y divide-gray-200 dark:divide-gray-700">
               {filteredUsers.map((user) => {
                 const creditsRemaining = user.credits_remaining || 0;
                 const isLow = creditsRemaining < 100;
                 return (
-                  <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
-                    <td className="px-6 py-4 whitespace-nowrap">
+                  <tr key={user.id} className="hover:bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:hover:bg-slate-700/50">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <div>
                         <div className="text-sm font-medium text-gray-900 dark:text-white">{user.email}</div>
                         {user.display_name && (
@@ -306,22 +319,22 @@ export const CreditManagementPage: React.FC = React.memo(() => {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <span className={`text-sm font-semibold ${
                         isLow ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'
                       }`}>
                         {creditsRemaining.toLocaleString()}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                    <td className="px-6 py-6 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                       {(user.credits_total || 0).toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                    <td className="px-6 py-6 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
                       {user.credits_cycle_end
                         ? new Date(user.credits_cycle_end).toLocaleDateString()
                         : 'N/A'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-6 whitespace-nowrap">
                       <button
                         onClick={() => handleAdjustCredits(user.id, user.email, creditsRemaining)}
                         disabled={adjustingUserId === user.id}

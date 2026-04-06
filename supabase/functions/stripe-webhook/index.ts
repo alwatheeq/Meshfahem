@@ -124,13 +124,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   const trialEndDate = subscription.trial_end ? new Date(subscription.trial_end * 1000) : null;
 
   const billingCycleStart = startDate;
+  // Stripe current_period_end reflects interval × interval_count (1/3/6 months)
   let billingCycleEnd: Date;
-
   if (planType === 'trial_1day' || planType === 'trial_7day') {
     billingCycleEnd = trialEndDate || endDate;
   } else {
-    billingCycleEnd = new Date(startDate);
-    billingCycleEnd.setDate(billingCycleEnd.getDate() + 30);
+    billingCycleEnd = endDate;
   }
 
   const meta = subscription.metadata || {};
@@ -172,6 +171,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     {
       p_user_id: userId,
       p_subscription_tier: planType,
+      p_force_refill: true,
     }
   );
 
@@ -185,11 +185,17 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   await supabase.from("notifications").insert({
     user_id: userId,
     notification_type: "subscription_renewed",
-    message: `Welcome! Your ${planType} subscription is now active with a 7-day free trial.`,
+    message:
+      planType === "standard"
+        ? "Your Standard subscription is now active."
+        : `Your ${planType} subscription is now active.`,
     action_url: "/profile/subscription",
   });
 
-  const creditsDesc = planType === "standard" ? `1500 tools, ${zegoHours * 100} Zego credits` : "1500 tools, 1000 Zego credits";
+  // zegoHours and chatBlocks in metadata are totals (included base + any extras)
+  const creditsDesc = planType === "standard"
+    ? `1500 tools, 500 chat, ${zegoHours * 60} Zego credits (${zegoHours} hr, 1 cr/min)`
+    : "1500 tools, 500 chat, 1000 Zego credits";
   console.log(`Subscription created for user ${userId} with ${tokenLimit} token limit and ${creditsDesc}`);
 }
 

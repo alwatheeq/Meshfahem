@@ -4,19 +4,26 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useI18n } from '../../contexts/I18nContext';
-import { PRICING, formatCurrency, isStripeEnabled } from '../../utils/subscriptionHelpers';
+import {
+  PRICING,
+  formatCurrency,
+  isStripeEnabled,
+  STANDARD_BASE_USD_BY_MONTHS,
+  normalizeStandardBillingMonths,
+} from '../../utils/subscriptionHelpers';
 
 const STANDARD_FEATURES = [
-  'Summaries & flashcards',
-  'Quiz generation',
-  'Save to library',
-  'Goal tracking & achievements',
+  '1,500 credits for tools & services (1.5M tokens)',
+  '500 credits for AI Chat included (500k tokens)',
+  '600 credits for Study Room included (10 hours)',
+  'Summaries, flashcards & quiz generation',
+  'Save to library with goal tracking',
   'Multi-language support',
 ];
 
 const MAX_ZEGO_HOURS = 100;
 const MAX_CHAT_BLOCKS = 100;
-const MIN_AI_BLOCKS = 5; // 500k tokens = $0.50 minimum when adding AI
+const MIN_AI_BLOCKS = 5; // minimum extra block when adding more AI chat (5 × 100k = 500k tokens)
 
 export const PricingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -34,8 +41,9 @@ export const PricingPage: React.FC = () => {
   const [showPromoInput, setShowPromoInput] = useState(false);
   const [zegoHours, setZegoHours] = useState(0);
   const [chatBlocks, setChatBlocks] = useState(0);
+  const [billingMonths, setBillingMonths] = useState<1 | 3 | 6>(1);
 
-  const basePrice = PRICING.standard;
+  const basePrice = STANDARD_BASE_USD_BY_MONTHS[billingMonths];
   const zegoTotal = zegoHours * PRICING.zegoPerHour;
   const chatTotal = chatBlocks * PRICING.chatPer100kTokens;
   const addonsTotal = zegoTotal + chatTotal;
@@ -50,6 +58,7 @@ export const PricingPage: React.FC = () => {
       plan: 'standard',
       zego_hours: String(zegoHours),
       chat_blocks: String(chatBlocks),
+      billing_months: String(billingMonths),
     });
     if (promoCode) params.set('promo', promoCode);
     navigate(`/checkout?${params.toString()}`);
@@ -124,11 +133,26 @@ export const PricingPage: React.FC = () => {
           className={`rounded-2xl ${getThemeCardBg()} ${getThemeCardBorder()} border shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm overflow-hidden mb-8`}
         >
           <div className={`p-6 ${getThemeSubtle('ui')} rounded-t-2xl`}>
+            <label htmlFor="billing-months" className={`block text-sm font-medium ${getThemeTextSecondary()} mb-2`}>
+              {t('pricing.billing_term_label')}
+            </label>
+            <select
+              id="billing-months"
+              value={billingMonths}
+              onChange={(e) => setBillingMonths(normalizeStandardBillingMonths(parseInt(e.target.value, 10)))}
+              className={`w-full max-w-md mb-4 px-3 py-2 rounded-lg border ${getThemeCardBorder()} ${getThemeCardBg()} ${getThemeTextPrimary()}`}
+            >
+              <option value={1}>{t('pricing.billing_every_1')}</option>
+              <option value={3}>{t('pricing.billing_every_3')}</option>
+              <option value={6}>{t('pricing.billing_every_6')}</option>
+            </select>
             <div className="flex items-baseline gap-2 flex-wrap">
               <span className={`text-3xl font-bold ${getThemeTextPrimary()}`}>
                 {formatCurrency(basePrice)}
               </span>
-              <span className={getThemeTextSecondary()}> {t('pricing.per_month')}</span>
+              <span className={getThemeTextSecondary()}>
+                {billingMonths === 1 ? t('pricing.per_month') : t('pricing.per_billing_period')}
+              </span>
             </div>
             <p className={`mt-1 text-sm ${getThemeTextSecondary()}`}>
               {t('pricing.core_features_hint')}
@@ -152,7 +176,7 @@ export const PricingPage: React.FC = () => {
             {t('pricing.optional_addons')}
           </h2>
 
-          {/* Zegocloud */}
+          {/* Extra Zegocloud hours */}
           <div
             className={`rounded-xl ${getThemeCardBg()} ${getThemeCardBorder()} border p-5 shadow-sm`}
           >
@@ -196,7 +220,7 @@ export const PricingPage: React.FC = () => {
             )}
           </div>
 
-          {/* AI Chat */}
+          {/* Extra AI Chat tokens */}
           <div
             className={`rounded-xl ${getThemeCardBg()} ${getThemeCardBorder()} border p-5 shadow-sm`}
           >
@@ -262,7 +286,7 @@ export const PricingPage: React.FC = () => {
               </div>
             )}
             <div className="flex justify-between font-semibold pt-2 border-t border-gray-200 dark:border-gray-700">
-              <span className={getThemeTextPrimary()}>{t('pricing.total_per_month')}</span>
+              <span className={getThemeTextPrimary()}>{t('pricing.total_per_billing_period')}</span>
               <span className={getThemeTextPrimary()}>
                 {formatCurrency(totalPrice)}
                 {!isStripeEnabled() && (

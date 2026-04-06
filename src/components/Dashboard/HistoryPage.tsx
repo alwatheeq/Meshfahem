@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { History, FileText, Calendar, ChevronRight, AlertCircle, RefreshCw, X, BookOpen, Tag, Clock, Stethoscope } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { History, FileText, Calendar, AlertCircle, RefreshCw, Tag, Clock, Stethoscope } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useI18n } from '../../contexts/I18nContext';
 import { supabase } from '../../lib/supabase';
 import { useTheme } from '../../contexts/ThemeContext';
 import { handleApiError, handleSupabaseError, isOffline, handleOfflineError } from '../../utils/errorHandler';
 import { ErrorLogger } from '../../utils/errorLogger';
-import { SummaryDisplay } from './SummaryDisplay';
-import { FlashcardViewer } from './FlashcardViewer';
-import { useChatContext } from '../../contexts/ChatContext';
+import { usePageTutorial } from '../../hooks/usePageTutorial';
+import { PageTutorial } from '../Onboarding/PageTutorial';
 
 interface HistoryEntry {
   id: string;
@@ -22,16 +22,19 @@ interface HistoryEntry {
   expires_at: string;
 }
 
-export const HistoryPage: React.FC = React.memo(() => {
+interface HistoryPageProps {
+  onViewHistoryEntry?: (entry: HistoryEntry) => void;
+}
+
+export const HistoryPage: React.FC<HistoryPageProps> = React.memo(({ onViewHistoryEntry }) => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { t } = useI18n();
-  const { getThemeGradient } = useTheme();
-  const { setChatContext, clearChatContext } = useChatContext();
+  const { getThemeGradient, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
   const { shouldShowTutorial, showTutorial, isTutorialOpen, completeTutorial, skipTutorial, config: tutorialConfig } = usePageTutorial('history');
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedItemForView, setSelectedItemForView] = useState<HistoryEntry | null>(null);
   const [sortOption, setSortOption] = useState<string>('created_at_desc');
 
   useEffect(() => {
@@ -122,36 +125,13 @@ export const HistoryPage: React.FC = React.memo(() => {
     });
   };
 
-  const handleViewContent = (entry: HistoryEntry) => {
-    setSelectedItemForView(entry);
-    // Set chat context when viewing history item
-    if (entry) {
-      const isMedical = entry.original_file_name?.toLowerCase().includes('medical') ||
-        entry.topics?.some(topic => ['cardiology', 'neurology', 'medicine', 'clinical'].some(med => topic.toLowerCase().includes(med)));
-      setChatContext({
-        summaryText: entry.summary_text || '',
-        originalText: entry.original_text_content || '',
-        topics: entry.topics || [],
-        medicalMode: isMedical,
-        contextType: 'history_item',
-        contextId: entry.id,
-      });
-    }
-  };
-
-  const closeDetailView = () => {
-    setSelectedItemForView(null);
-    // Clear chat context when modal closes
-    clearChatContext();
-  };
-
   if (loading) {
     return (
       <div className="w-full">
-        <div className="bg-white rounded-2xl shadow-xl p-8 dark:bg-gray-800 dark:shadow-none">
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] p-8 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm ${getThemeCardBorder()}`}>
           <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-3 dark:border-blue-400"></div>
-            <span className="text-gray-600">{t('history.loading_history')}</span>
+            <div className={`animate-spin rounded-full h-8 w-8 border-b-2 ${getThemeTextMuted()} mr-3`}></div>
+            <span className={getThemeTextSecondary()}>{t('history.loading_history')}</span>
           </div>
         </div>
       </div>
@@ -161,14 +141,14 @@ export const HistoryPage: React.FC = React.memo(() => {
   if (error) {
     return (
       <div className="w-full">
-        <div className="bg-white rounded-2xl shadow-xl p-8 dark:bg-gray-800 dark:shadow-none">
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] p-8 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm ${getThemeCardBorder()}`}>
           <div className="text-center py-12">
             <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">{t('history.error_loading')}</h3>
-            <p className="text-gray-600 mb-4">{error}</p>
+            <h3 className={`text-lg font-semibold ${getThemeTextPrimary()} mb-2`}>{t('history.error_loading')}</h3>
+            <p className={`${getThemeTextSecondary()} mb-4`}>{error}</p>
             <button
               onClick={() => fetchHistory()}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-150 mx-auto"
+              className={`flex items-center space-x-2 px-4 py-2 ${getThemeGradient('ui')} text-white hover:opacity-90 transition duration-150 mx-auto rounded-lg`}
             >
               <RefreshCw className="h-4 w-4" />
               <span>{t('history.try_again')}</span>
@@ -182,34 +162,34 @@ export const HistoryPage: React.FC = React.memo(() => {
   return (
     <div className="w-full overflow-hidden">
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2 dark:text-gray-100">{t('history.generation_history')}</h2>
-        <p className="text-lg text-gray-600 dark:text-gray-300">
+        <h2 className={`text-3xl font-bold ${getThemeTextPrimary()} mb-2`}>{t('history.generation_history')}</h2>
+        <p className={`text-lg ${getThemeTextSecondary()}`}>
           {t('history.history_desc')}
         </p>
       </div>
 
       {/* Sorting Controls */}
-      <div className="bg-white rounded-2xl shadow-xl p-6 mb-6 dark:bg-gray-800 dark:shadow-none">
+      <div className="bg-white rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] p-6 mb-6 dark:bg-gray-800 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm border border-gray-100 dark:border-gray-700">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className={`${getThemeGradient('ui')} p-2 rounded-lg`}>
               <History className="h-5 w-5 text-white" />
             </div>
             <div> {/* Apply dark mode classes to sort options text */}
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('history.sort_options')}</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">{t('history.sort_desc')}</p>
+              <h3 className={`text-lg font-semibold ${getThemeTextPrimary()}`}>{t('history.sort_options')}</h3>
+              <p className={`text-sm ${getThemeTextMuted()}`}>{t('history.sort_desc')}</p>
             </div>
           </div>
           
           <div className="flex items-center space-x-3"> {/* Apply dark mode classes to sort by label and select */}
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-200">{t('history.sort_by')}</label>
+            <label className={`text-sm font-medium ${getThemeTextSecondary()}`}>{t('history.sort_by')}</label>
             <select
               value={sortOption}
               onChange={(e) => {
                 ErrorLogger.debug('Sort option changed', { component: 'HistoryPage', action: 'handleSortChange', newSortOption: e.target.value });
                 setSortOption(e.target.value);
               }}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-700 dark:text-gray-100"
+              className={`px-3 py-2 ${getThemeCardBorder()} rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent ${getThemeCardBg()} ${getThemeTextPrimary()}`}
             >
               <option value="created_at_desc">{t('history.creation_newest')}</option>
               <option value="created_at_asc">{t('history.creation_oldest')}</option>
@@ -221,11 +201,11 @@ export const HistoryPage: React.FC = React.memo(() => {
       </div>
 
       {historyEntries.length === 0 ? (
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+        <div className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] p-8 dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm ${getThemeCardBorder()}`}>
           <div className="text-center py-12">
-            <History className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2 dark:text-gray-100">{t('history.no_history')}</h3>
-            <p className="text-gray-600 dark:text-gray-300">
+            <History className={`h-12 w-12 ${getThemeTextMuted()} mx-auto mb-4`} />
+            <h3 className={`text-lg font-semibold ${getThemeTextPrimary()} mb-2`}>{t('history.no_history')}</h3>
+            <p className={getThemeTextSecondary()}>
               {t('history.process_first')}
             </p>
           </div>
@@ -233,14 +213,14 @@ export const HistoryPage: React.FC = React.memo(() => {
       ) : (
         <div className="space-y-4">
           {historyEntries.map((entry) => (
-            <div key={entry.id} className="bg-white rounded-2xl shadow-xl overflow-hidden dark:bg-gray-800 dark:shadow-none">
+            <div key={entry.id} className={`${getThemeCardBg()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm overflow-hidden dark:shadow-none`}>
               <div className="p-6">
                 <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
                   <div className="flex items-center space-x-3">
                     <div className={`p-2 rounded-lg ${
                       entry.original_file_name?.toLowerCase().includes('medical') ||
                       entry.topics?.some(topic => ['cardiology', 'neurology', 'medicine', 'clinical'].some(med => topic.toLowerCase().includes(med)))
-                        ? 'bg-gradient-to-r from-red-500 to-pink-600 dark:from-red-600 dark:to-pink-700'
+                        ? 'bg-red-50 dark:bg-red-900/20 dark:from-red-600 dark:to-pink-700'
                         : getThemeGradient('ui')
                     }`}>
                       {entry.original_file_name?.toLowerCase().includes('medical') ||
@@ -251,7 +231,7 @@ export const HistoryPage: React.FC = React.memo(() => {
                       )}
                     </div>
                     <div> {/* Apply dark mode classes to entry details */}
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                      <h3 className={`text-lg font-semibold ${getThemeTextPrimary()}`}>
                         {entry.original_file_name || t('common.unknown')}
                         {(entry.original_file_name?.toLowerCase().includes('medical') ||
                           entry.topics?.some(topic => ['cardiology', 'neurology', 'medicine', 'clinical'].some(med => topic.toLowerCase().includes(med)))) && (
@@ -260,7 +240,7 @@ export const HistoryPage: React.FC = React.memo(() => {
                           </span>
                         )}
                       </h3>
-                      <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
+                      <div className={`flex items-center space-x-4 text-sm ${getThemeTextMuted()}`}>
                         <div className="flex items-center">
                           <Calendar className="h-4 w-4 mr-1" />
                           {formatDate(entry.created_at)}
@@ -276,7 +256,7 @@ export const HistoryPage: React.FC = React.memo(() => {
                   </div>
 
                   <button
-                    onClick={() => handleViewContent(entry)}
+                    onClick={() => onViewHistoryEntry ? onViewHistoryEntry(entry) : navigate(`/view/history/${entry.id}`)}
                     className={`px-3 py-2 text-white ${getThemeGradient('ui')} text-white hover:opacity-90 transition duration-150 text-sm font-medium whitespace-nowrap`}
                   >
                     {t('history.view_content')}
@@ -287,7 +267,7 @@ export const HistoryPage: React.FC = React.memo(() => {
                 {entry.topics && entry.topics.length > 0 && (
                   <div className="mb-4">
                     <div className="flex items-start space-x-2">
-                      <Tag className="h-4 w-4 text-gray-400 flex-shrink-0 mt-1" />
+                      <Tag className={`h-4 w-4 ${getThemeTextMuted()} flex-shrink-0 mt-1`} />
                       <div className="flex flex-wrap gap-2 min-w-0">
                         {entry.topics.map((topic, index) => (
                           <span
@@ -311,8 +291,8 @@ export const HistoryPage: React.FC = React.memo(() => {
                 </div>
 
                 <div className="mb-4"> {/* Apply dark mode classes to summary preview */}
-                  <h4 className="text-sm font-medium text-gray-700 mb-2 dark:text-gray-200">{t('history.summary_preview')}</h4>
-                  <p className="text-gray-600 bg-gray-50 rounded-lg p-3 dark:bg-gray-900 dark:text-gray-300">
+                  <h4 className={`text-sm font-medium ${getThemeTextSecondary()} mb-2`}>{t('history.summary_preview')}</h4>
+                  <p className={`${getThemeTextSecondary()} ${getThemeSubtle('bg')} rounded-lg p-3`}>
                     {entry.summary_text.length > 150 
                       ? entry.summary_text.substring(0, 150) + '...'
                       : entry.summary_text
@@ -322,68 +302,6 @@ export const HistoryPage: React.FC = React.memo(() => {
               </div>
             </div>
           ))}
-        </div>
-      )}
-
-      {/* Detail View Modal */}
-      {selectedItemForView && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col dark:bg-gray-800 dark:shadow-none">
-            {/* Modal Header */}
-            <div className="p-6 border-b border-gray-200 flex items-center justify-between flex-shrink-0 dark:border-gray-700">
-              <div className="flex items-center space-x-3">
-                <div className={`${getThemeGradient('ui')} p-2 rounded-lg`}>
-                  <History className="h-6 w-6 text-white" />
-                </div>
-                <div> {/* Apply dark mode classes to modal header text */}
-                  <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-                    {selectedItemForView.original_file_name || t('history.pasted_text')}
-                  </h2>
-                  <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
-                    <div className="flex items-center">
-                      <Calendar className="h-4 w-4 mr-1" />
-                      {formatDate(selectedItemForView.created_at)}
-                    </div>
-                    <span className="capitalize">
-                      {selectedItemForView.original_input_type === 'file' ? t('history.file_upload') : t('history.text_input')}
-                    </span>
-                    <span>
-                      {selectedItemForView.flashcards_json.length} {selectedItemForView.flashcards_json.length === 1 ? t('common.flashcard') : t('common.flashcards')}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              
-              <button
-                onClick={closeDetailView}
-                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition duration-150"
-              >
-                <X className="h-6 w-6" />
-              medicalMode={selectedItemForView.original_file_name?.toLowerCase().includes('medical') ||
-                selectedItemForView.topics?.some(topic => ['cardiology', 'neurology', 'medicine', 'clinical'].some(med => topic.toLowerCase().includes(med)))}
-              </button>
-            </div>
-            {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-8">
-              <SummaryDisplay 
-                summaryChunks={[selectedItemForView.summary_text]}
-                flashcards={selectedItemForView.flashcards_json}
-                medicalMode={selectedItemForView.original_file_name?.toLowerCase().includes('medical') ||
-                  selectedItemForView.topics?.some(topic => ['cardiology', 'neurology', 'medicine', 'clinical'].some(med => topic.toLowerCase().includes(med)))}
-                originalText={selectedItemForView.original_text_content || ''}
-                topics={selectedItemForView.topics || []}
-                onPublishToLibrary={() => Promise.resolve(true)}
-                onReset={closeDetailView}
-              />
-              
-              {selectedItemForView.flashcards_json.length > 0 && (
-                <FlashcardViewer 
-                  flashcards={selectedItemForView.flashcards_json}
-                />
-              )}
-              
-            </div>
-          </div>
         </div>
       )}
 

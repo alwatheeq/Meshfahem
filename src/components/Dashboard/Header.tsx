@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, User, LogOut, Sun, Moon, Coins } from 'lucide-react';
+import { FileText, User, LogOut, Sun, Moon, HandCoins, Shield } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useI18n } from '../../contexts/I18nContext';
 import { useCredits } from '../../contexts/CreditContext';
@@ -8,11 +8,12 @@ import { AVAILABLE_LANGUAGES } from '../../utils/translation';
 import { NotificationCenter } from './NotificationCenter';
 import { useSubscription } from '../../hooks/useSubscription';
 import { ErrorLogger } from '../../utils/errorLogger';
+import { getToolsCreditsPlanCap } from '../../utils/subscriptionHelpers';
 
 export const Header: React.FC = () => {
   const { user, signOut } = useAuth();
   const { language, setLanguage, t, theme, setTheme } = useI18n();
-  const { balance: creditBalance } = useCredits();
+  const { balance: creditBalance, loading: creditsLoading } = useCredits();
   const { getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
   const {
     subscription,
@@ -29,7 +30,7 @@ export const Header: React.FC = () => {
   const daysInCycle = getDaysRemainingInCycle();
 
   const toolRemaining = creditBalance?.credits_remaining ?? 0;
-  const toolTotal = creditBalance?.credits_total ?? 1500;
+  const toolPlanCap = getToolsCreditsPlanCap(subscription);
   const zegoRemaining = creditBalance?.zego_credits_remaining ?? 0;
   const zegoTotal = creditBalance?.zego_credits_total ?? 0;
 
@@ -47,7 +48,8 @@ export const Header: React.FC = () => {
 
   const combinedRemaining = toolRemaining + (zegoTotal > 0 ? zegoRemaining : 0) + (hasAiAddon ? aiChatCreditsRemaining : 0);
 
-  const toolProgress = toolTotal > 0 ? Math.min((toolRemaining / toolTotal) * 100, 100) : 0;
+  const toolProgress =
+    toolPlanCap > 0 ? Math.min(100, (toolRemaining / toolPlanCap) * 100) : 0;
   const zegoProgress = zegoTotal > 0 ? Math.min((zegoRemaining / zegoTotal) * 100, 100) : 0;
 
   // Map tier colors to complete Tailwind classes (required for JIT compiler)
@@ -116,9 +118,9 @@ export const Header: React.FC = () => {
   return (
     <header className={`${getThemeCardBg()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm border-b ${getThemeCardBorder()} dark:shadow-none sticky top-0 z-50`}>
       <div className="w-full px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center h-16">
-          {/* Left: Logo + Meshfahem */}
-          <div className="flex items-center space-x-3 flex-shrink-0">
+        <div className="flex items-center h-16 rtl:flex-row-reverse">
+          {/* Logo + App name */}
+          <div className="flex items-center space-x-3 rtl:space-x-reverse flex-shrink-0">
             <div className={`${getThemeSubtle('ui')} p-2 rounded-md ${getThemeCardBorder()}`}>
               <FileText className={`h-6 w-6 ${getThemeTextPrimary()}`} />
             </div>
@@ -128,24 +130,27 @@ export const Header: React.FC = () => {
           {/* Middle: Tagline */}
           <div className="flex-1 flex justify-center px-2 sm:px-4 min-w-0">
             <p className={`text-xs sm:text-sm ${getThemeTextSecondary()} italic text-center whitespace-nowrap truncate`}>
-              This is just the beginning, there is better to come
+              {t('header.tagline')}
             </p>
           </div>
 
           {/* Right: Credit bar + notifications + profile */}
-          <div className="flex items-center space-x-2 sm:space-x-3 lg:space-x-6 flex-shrink-0">
+          <div className="flex items-center space-x-2 sm:space-x-3 lg:space-x-6 rtl:space-x-reverse flex-shrink-0">
             {/* Credit Balance Display */}
-            {creditBalance && (creditBalance.credits_total > 0 || zegoTotal > 0 || hasAiAddon) && (
+            {user && !creditsLoading && creditBalance && (
               <div className="relative" ref={creditsDropdownRef}>
                 <button
+                  type="button"
                   onClick={() => setShowCreditsDropdown(!showCreditsDropdown)}
                   className={`flex items-center space-x-2 ${getThemeCardBg()} ${getThemeCardBorder()} border rounded-full px-3 py-1.5 shadow-sm hover:opacity-80 transition-opacity`}
                 >
                   <div className={`${getThemeSubtle('ui')} rounded-full p-1 flex items-center justify-center`}>
-                    <Coins className={`h-4 w-4 ${getThemeTextPrimary()}`} />
+                    <HandCoins className={`h-4 w-4 ${getThemeTextPrimary()}`} aria-hidden />
                   </div>
                   <div className="flex flex-col items-start translate-y-px">
-                    <span className={`text-[10px] font-bold uppercase tracking-wide ${getThemeTextSecondary()} leading-none`}>Credits</span>
+                    <span className={`text-[10px] font-bold uppercase tracking-wide ${getThemeTextSecondary()} leading-none`}>
+                      {t('header.credits_label')}
+                    </span>
                     <span className={`text-[13px] font-bold ${getThemeTextPrimary()} leading-none`}>
                       {combinedRemaining.toLocaleString()}
                     </span>
@@ -158,76 +163,87 @@ export const Header: React.FC = () => {
                     <div className="flex flex-col space-y-4">
                       {/* Tools & Services */}
                       <div className="flex flex-col space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold tracking-wide text-green-700 uppercase">
-                            Tools &amp; Services
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-xs font-bold tracking-wide uppercase ${getThemeTextPrimary()}`}>
+                            {t('header.credits_tools_services')}
                           </span>
-                          <span className="text-xs font-semibold text-green-700">
-                            {toolRemaining.toLocaleString()} / {toolTotal.toLocaleString()}
+                          <span className={`text-xs font-semibold shrink-0 ${getThemeTextSecondary()}`}>
+                            {toolRemaining.toLocaleString()} / {toolPlanCap.toLocaleString()}
                           </span>
                         </div>
                         <div className={`relative w-full h-2 ${getThemeSubtle('ui')} rounded-full overflow-hidden`}>
                           <div
-                            className="absolute inset-y-0 left-0 rounded-full bg-green-500 transition-all duration-200 ease-out"
+                            className="absolute inset-y-0 left-0 rounded-full bg-emerald-500 dark:bg-emerald-600 transition-all duration-200 ease-out"
                             style={{ width: `${toolProgress}%` }}
                           />
                         </div>
                       </div>
 
-                      {zegoTotal > 0 && (
-                        <>
-                          <div className="h-px w-full bg-gray-200 dark:bg-gray-700" />
-                          {/* Study Room Credits */}
-                          <div className="flex flex-col space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold tracking-wide text-blue-700 dark:text-blue-400 uppercase">
-                                Study Room
-                              </span>
-                              <span className="text-xs font-semibold text-blue-700 dark:text-blue-400">
-                                {zegoRemaining.toLocaleString()} / {zegoTotal.toLocaleString()}
-                              </span>
-                            </div>
-                            <div className={`relative w-full h-2 ${getThemeSubtle('ui')} rounded-full overflow-hidden`}>
-                              <div
-                                className="absolute inset-y-0 left-0 rounded-full bg-blue-500 transition-all duration-200 ease-out"
-                                style={{ width: `${zegoProgress}%` }}
-                              />
-                            </div>
-                          </div>
-                        </>
-                      )}
+                      <div className="h-px w-full bg-gray-200 dark:bg-gray-700" />
 
-                      {hasAiAddon && (
-                        <>
-                          <div className="h-px w-full bg-gray-200 dark:bg-gray-700" />
-                          {/* AI Chat Assistant Credits */}
-                          <div className="flex flex-col space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold tracking-wide text-purple-700 dark:text-purple-400 uppercase">
-                                AI Chat Assistant
-                              </span>
-                              <span className="text-xs font-semibold text-purple-700 dark:text-purple-400">
-                                {aiChatCreditsRemaining.toLocaleString()} / {aiChatCreditsTotal.toLocaleString()}
-                              </span>
-                            </div>
-                            <div className={`relative w-full h-2 ${getThemeSubtle('ui')} rounded-full overflow-hidden`}>
-                              <div
-                                className="absolute inset-y-0 left-0 rounded-full bg-purple-500 transition-all duration-200 ease-out"
-                                style={{ width: `${aiChatCreditsTotal > 0 ? (aiChatCreditsRemaining / aiChatCreditsTotal) * 100 : 0}%` }}
-                              />
-                            </div>
+                      {/* Study Room — always visible; no "/total" unless user purchased minutes */}
+                      <div className="flex flex-col space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-xs font-bold tracking-wide uppercase ${getThemeTextPrimary()}`}>
+                            {t('header.credits_study_room')}
+                          </span>
+                          <span className={`text-xs font-semibold shrink-0 ${getThemeTextSecondary()}`}>
+                            {zegoTotal > 0
+                              ? `${zegoRemaining.toLocaleString()} / ${zegoTotal.toLocaleString()}`
+                              : '0'}
+                          </span>
+                        </div>
+                        {zegoTotal > 0 && (
+                          <div className={`relative w-full h-2 ${getThemeSubtle('ui')} rounded-full overflow-hidden`}>
+                            <div
+                              className="absolute inset-y-0 left-0 rounded-full bg-sky-500 dark:bg-sky-600 transition-all duration-200 ease-out"
+                              style={{ width: `${zegoProgress}%` }}
+                            />
                           </div>
-                        </>
-                      )}
+                        )}
+                      </div>
+
+                      <div className="h-px w-full bg-gray-200 dark:bg-gray-700" />
+
+                      {/* AI Chat Assistant — always visible */}
+                      <div className="flex flex-col space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-xs font-bold tracking-wide uppercase ${getThemeTextPrimary()}`}>
+                            {t('header.credits_ai_assistant')}
+                          </span>
+                          <span className={`text-xs font-semibold shrink-0 ${getThemeTextSecondary()}`}>
+                            {hasAiAddon && aiChatCreditsTotal > 0
+                              ? `${aiChatCreditsRemaining.toLocaleString()} / ${aiChatCreditsTotal.toLocaleString()}`
+                              : '0'}
+                          </span>
+                        </div>
+                        {!hasAiAddon && (
+                          <p className={`text-[11px] leading-snug ${getThemeTextMuted()}`}>
+                            {t('header.credits_ai_addon_hint')}
+                          </p>
+                        )}
+                        {hasAiAddon && aiChatCreditsTotal > 0 && (
+                          <div className={`relative w-full h-2 ${getThemeSubtle('ui')} rounded-full overflow-hidden`}>
+                            <div
+                              className="absolute inset-y-0 left-0 rounded-full bg-violet-500 dark:bg-violet-600 transition-all duration-200 ease-out"
+                              style={{
+                                width: `${Math.min(100, (aiChatCreditsRemaining / aiChatCreditsTotal) * 100)}%`
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
 
                       <div className="h-px w-full bg-gray-200 dark:bg-gray-700" />
 
                       {/* Cycle Reset Info */}
-                      <div className="flex justify-between items-center text-xs">
-                        <span className={getThemeTextSecondary()}>Cycle Resets In:</span>
-                        <div className={`flex items-center space-x-1 px-2 py-0.5 ${getThemeSubtle('ui')} rounded-full`}>
-                          <div className={`w-1.5 h-1.5 bg-gray-400 rounded-full`}></div>
-                          <span className={`font-semibold ${getThemeTextPrimary()}`}>{daysInCycle} days</span>
+                      <div className="flex justify-between items-center text-xs gap-2">
+                        <span className={getThemeTextSecondary()}>{t('header.credits_cycle_resets')}</span>
+                        <div className={`flex items-center space-x-1 px-2 py-0.5 ${getThemeSubtle('ui')} rounded-full shrink-0`}>
+                          <div className="w-1.5 h-1.5 bg-gray-400 rounded-full" />
+                          <span className={`font-semibold ${getThemeTextPrimary()}`}>
+                            {t('header.credits_days_remaining', { count: daysInCycle })}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -260,7 +276,7 @@ export const Header: React.FC = () => {
                     <p className={`text-sm font-medium ${getThemeTextPrimary()}`}>
                       {user?.name || user?.email?.split('@')[0]}
                     </p>
-                    <span className={`px-2 py-0.5 rounded text-xs font-semibold ${tierClasses.bg} ${tierClasses.text} ${tierClasses.darkBg} ${tierClasses.darkText}`}>
+                    <span className={`text-xs font-semibold ${tierClasses.text} ${tierClasses.darkText}`}>
                       {getTierDisplayName()}
                     </span>
                   </div>
@@ -325,6 +341,16 @@ export const Header: React.FC = () => {
 
                   {/* Profile Actions */}
                   <div className="p-2">
+                    {user?.role === 'admin' && (
+                      <a
+                        href="/admin/dashboard"
+                        onClick={() => setShowProfileDropdown(false)}
+                        className="w-full flex items-center space-x-3 px-3 py-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-md transition-colors duration-150"
+                      >
+                        <Shield className="h-4 w-4" />
+                        <span className="text-sm font-medium">{t('header.admin_portal')}</span>
+                      </a>
+                    )}
                     <button
                       onClick={() => {
                         window.dispatchEvent(new CustomEvent('navigateToProfile'));
@@ -333,7 +359,7 @@ export const Header: React.FC = () => {
                       className={`w-full flex items-center space-x-3 px-3 py-2 ${getThemeTextSecondary()} hover:opacity-60 rounded-md transition-colors duration-150`}
                     >
                       <User className="h-4 w-4" />
-                      <span className="text-sm font-medium">Profile</span>
+                      <span className="text-sm font-medium">{t('header.profile')}</span>
                     </button>
                     <button
                       onClick={() => {

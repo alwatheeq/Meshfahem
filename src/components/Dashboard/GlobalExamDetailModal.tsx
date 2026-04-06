@@ -62,7 +62,7 @@ export const GlobalExamDetailModal: React.FC<GlobalExamDetailModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fadeIn">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden animate-scaleIn">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] border border-gray-100 dark:shadow-lg max-w-3xl w-full max-h-[90vh] overflow-hidden animate-scaleIn">
         <div className={`${getThemeGradient('ui')} p-6 text-white relative`}>
           <button
             onClick={onClose}
@@ -175,7 +175,7 @@ export const GlobalExamDetailModal: React.FC<GlobalExamDetailModalProps> = ({
             </button>
             <button
               onClick={handleStartPractice}
-              className={`flex-1 px-6 py-3 ${getThemeGradient('ui')} text-white rounded-lg font-semibold hover:opacity-90 transition transform hover:scale-105 shadow-lg flex items-center justify-center space-x-2`}
+              className={`flex-1 px-6 py-3 ${getThemeGradient('ui')} text-white rounded-lg font-semibold hover:opacity-90 transition transform  shadow flex items-center justify-center space-x-2`}
             >
               <span>Start Practice</span>
               <ChevronRight className="h-5 w-5" />

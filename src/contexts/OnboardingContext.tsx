@@ -5,19 +5,53 @@ import { handleSupabaseError, isOffline } from '../utils/errorHandler';
 import { ErrorLogger } from '../utils/errorLogger';
 import { PageName } from '../components/Onboarding/tutorialConfigs';
 
+/** Thrown when marking a page tutorial complete while offline (caller should show offline message). */
+export const TUTORIAL_COMPLETE_OFFLINE_CODE = 'TUTORIAL_COMPLETE_OFFLINE';
+
+/** Thrown when recording a skip while offline. */
+export const TUTORIAL_SKIP_OFFLINE_CODE = 'TUTORIAL_SKIP_OFFLINE';
+
+export interface PageTutorialStatus {
+  completed: boolean;
+  skipCount: number;
+}
+
+export function pageTutorialShouldShow(status: PageTutorialStatus | undefined): boolean {
+  if (!status) return false;
+  return !status.completed && status.skipCount < 2;
+}
+
+const PAGE_NAMES: PageName[] = [
+  'dashboard',
+  'library',
+  'quiz',
+  'eduplay',
+  'study-rooms',
+  'history',
+  'informational',
+  'feedback',
+  'profile',
+  'academics',
+];
+
+function makeEmptyPageTutorialCache(): Record<PageName, PageTutorialStatus> {
+  const init: Partial<Record<PageName, PageTutorialStatus>> = {};
+  for (const p of PAGE_NAMES) {
+    init[p] = { completed: false, skipCount: 0 };
+  }
+  return init as Record<PageName, PageTutorialStatus>;
+}
+
 export interface OnboardingContextType {
-  // Dashboard overview
   isDashboardTutorialCompleted: boolean;
   completeDashboardTutorial: () => Promise<void>;
-  
-  // Page-specific tutorials
+
   isPageTutorialCompleted: (pageName: PageName) => Promise<boolean>;
   completePageTutorial: (pageName: PageName) => Promise<void>;
-  
-  // Loading states
+  recordPageTutorialSkip: (pageName: PageName) => Promise<number>;
+
   loading: boolean;
-  // Cache for synchronous tutorial status checks
-  pageTutorialCache: Record<PageName, boolean>;
+  pageTutorialCache: Record<PageName, PageTutorialStatus>;
 }
 
 export const OnboardingContext = createContext<OnboardingContextType | undefined>(undefined);
@@ -25,27 +59,14 @@ export const OnboardingContext = createContext<OnboardingContextType | undefined
 export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [isDashboardCompleted, setIsDashboardCompleted] = useState(false);
-  const [pageTutorialCache, setPageTutorialCache] = useState<Record<PageName, boolean>>({
-    dashboard: false,
-    library: false,
-    quiz: false,
-    eduplay: false,
-    'study-rooms': false,
-    history: false,
-    informational: false,
-    feedback: false,
-    profile: false,
-    academics: false,
-  });
-  // Use ref to store latest cache value for stable callback
+  const [pageTutorialCache, setPageTutorialCache] = useState<Record<PageName, PageTutorialStatus>>(
+    () => makeEmptyPageTutorialCache()
+  );
   const pageTutorialCacheRef = useRef(pageTutorialCache);
   const [loading, setLoading] = useState(true);
-  // Use ref for loading to avoid stale closures in callbacks
   const loadingRef = useRef(loading);
-  // Track if initial load has completed at least once
   const initialLoadCompletedRef = useRef(false);
 
-  // Keep refs in sync with state
   useEffect(() => {
     pageTutorialCacheRef.current = pageTutorialCache;
   }, [pageTutorialCache]);
@@ -107,19 +128,7 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
   const loadPageTutorialStatus = useCallback(async () => {
     if (!user) return;
 
-    // Initialize empty cache - this ensures cache is always in a known state
-    const emptyCache: Record<PageName, boolean> = {
-      dashboard: false,
-      library: false,
-      quiz: false,
-      eduplay: false,
-      'study-rooms': false,
-      history: false,
-      informational: false,
-      feedback: false,
-      profile: false,
-      academics: false,
-    };
+    const emptyCache = makeEmptyPageTutorialCache();
 
     if (isOffline()) {
       ErrorLogger.warn('Offline detected, initializing cache to empty state', {
@@ -127,19 +136,76 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
         action: 'loadPageTutorialStatus',
         userId: user.id,
       });
-      // Initialize cache to empty state when offline (fail-safe: don't show tutorials)
       pageTutorialCacheRef.current = emptyCache;
       setPageTutorialCache(emptyCache);
       return;
     }
 
+    // Helper to build the cache from rows that may or may not include skip_count
+    const buildCache = (rows: Array<{ page_name: string; completed_at: string | null; skip_count?: number | null }>) => {
+      const next = makeEmptyPageTutorialCache();
+      rows.forEach((item) => {
+        const name = item.page_name as PageName;
+        if (name in next) {
+          const skipCount =
+            typeof item.skip_count === 'number' && !Number.isNaN(item.skip_count)
+              ? item.skip_count
+              : 0;
+          next[name] = { completed: !!item.completed_at, skipCount };
+        }
+      });
+      return next;
+    };
+
     try {
+      // Primary: include skip_count (requires migration 20260325120000 to be applied)
       const { data, error } = await supabase
         .from('user_page_tutorials')
-        .select('page_name')
+        .select('page_name, completed_at, skip_count')
         .eq('user_id', user.id);
 
       if (error) {
+        // If skip_count column doesn't exist yet, fall back to selecting without it
+        const isMissingColumn =
+          error.message?.includes('skip_count') ||
+          error.message?.includes('column') ||
+          error.message?.includes('schema cache');
+
+        if (isMissingColumn) {
+          ErrorLogger.warn('skip_count column missing, falling back to basic select', {
+            component: 'OnboardingContext',
+            action: 'loadPageTutorialStatus',
+            userId: user.id,
+            metadata: { errorMsg: error.message },
+          });
+
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('user_page_tutorials')
+            .select('page_name, completed_at')
+            .eq('user_id', user.id);
+
+          if (fallbackError) {
+            ErrorLogger.error(fallbackError, {
+              component: 'OnboardingContext',
+              action: 'loadPageTutorialStatus',
+              userId: user.id,
+            });
+            pageTutorialCacheRef.current = emptyCache;
+            setPageTutorialCache(emptyCache);
+          } else {
+            const next = buildCache(fallbackData ?? []);
+            pageTutorialCacheRef.current = next;
+            setPageTutorialCache(next);
+            ErrorLogger.debug('Page tutorial cache loaded (fallback, no skip_count)', {
+              component: 'OnboardingContext',
+              action: 'loadPageTutorialStatus',
+              userId: user.id,
+              metadata: { rows: fallbackData?.length ?? 0 },
+            });
+          }
+          return;
+        }
+
         handleSupabaseError(error, {
           component: 'OnboardingContext',
           action: 'loadPageTutorialStatus',
@@ -150,52 +216,17 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
           action: 'loadPageTutorialStatus',
           userId: user.id,
         });
-        // Even on error, initialize cache to empty state (fail-safe)
-        // This prevents tutorials from showing incorrectly when database query fails
         pageTutorialCacheRef.current = emptyCache;
         setPageTutorialCache(emptyCache);
-        ErrorLogger.debug('Cache initialized to empty state due to error', {
-          component: 'OnboardingContext',
-          action: 'loadPageTutorialStatus',
-          userId: user.id,
-        });
       } else {
-        // Always update cache, even if data is empty (no completed tutorials)
-        const completedPages: Record<PageName, boolean> = {
-          dashboard: false,
-          library: false,
-          quiz: false,
-          eduplay: false,
-          'study-rooms': false,
-          history: false,
-          informational: false,
-          feedback: false,
-          profile: false,
-          academics: false,
-        };
-
-        // If we have data, mark completed pages as true
-        if (data && data.length > 0) {
-          data.forEach((item) => {
-            if (item.page_name in completedPages) {
-              completedPages[item.page_name as PageName] = true;
-            }
-          });
-        }
-
-        // Update ref FIRST, then state, to ensure ref is ready when isPageTutorialCompleted is called
-        // This prevents race conditions where the ref isn't updated when checked
-        pageTutorialCacheRef.current = completedPages;
-        setPageTutorialCache(completedPages);
-        
+        const next = buildCache(data ?? []);
+        pageTutorialCacheRef.current = next;
+        setPageTutorialCache(next);
         ErrorLogger.debug('Page tutorial cache loaded', {
           component: 'OnboardingContext',
           action: 'loadPageTutorialStatus',
           userId: user.id,
-          metadata: {
-            completedPages: Object.entries(completedPages).filter(([_, completed]) => completed).map(([page]) => page),
-            totalCompleted: Object.values(completedPages).filter(Boolean).length,
-          },
+          metadata: { rows: data?.length ?? 0 },
         });
       }
     } catch (error) {
@@ -205,18 +236,11 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
         action: 'loadPageTutorialStatus',
         userId: user.id,
       });
-      // Even on exception, initialize cache to empty state (fail-safe)
       pageTutorialCacheRef.current = emptyCache;
       setPageTutorialCache(emptyCache);
-      ErrorLogger.debug('Cache initialized to empty state due to exception', {
-        component: 'OnboardingContext',
-        action: 'loadPageTutorialStatus',
-        userId: user.id,
-      });
     }
   }, [user]);
 
-  // Load dashboard + page tutorial status when user changes
   useEffect(() => {
     initialLoadCompletedRef.current = false;
 
@@ -312,9 +336,7 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
   const isPageTutorialCompleted = useCallback(async (pageName: PageName): Promise<boolean> => {
     if (!user) return false;
 
-    // Check cache first - synchronous check
-    // If cache shows completed, return immediately
-    if (pageTutorialCacheRef.current[pageName]) {
+    if (pageTutorialCacheRef.current[pageName]?.completed) {
       ErrorLogger.debug('Tutorial found in cache as completed', {
         component: 'OnboardingContext',
         action: 'isPageTutorialCompleted',
@@ -323,22 +345,18 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
       return true;
     }
 
-    // If loading is still in progress, wait for it to complete
-    // This is a fallback for any code that might call this function directly
     if (loadingRef.current) {
       ErrorLogger.debug('Context still loading, waiting before checking database', {
         component: 'OnboardingContext',
         action: 'isPageTutorialCompleted',
         metadata: { pageName },
       });
-      // Wait for loading to complete - check every 50ms up to 1 second
       let attempts = 0;
-      const maxAttempts = 20; // 20 * 50ms = 1 second max wait
+      const maxAttempts = 20;
       while (loadingRef.current && attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         attempts++;
-        // Check cache again after each wait
-        if (pageTutorialCacheRef.current[pageName]) {
+        if (pageTutorialCacheRef.current[pageName]?.completed) {
           ErrorLogger.debug('Tutorial found in cache after wait', {
             component: 'OnboardingContext',
             action: 'isPageTutorialCompleted',
@@ -349,7 +367,6 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
       }
     }
 
-    // If not in cache and loading is complete, check database as fallback
     if (isOffline()) {
       ErrorLogger.warn('Offline detected', {
         component: 'OnboardingContext',
@@ -363,7 +380,7 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
     try {
       const { data, error } = await supabase
         .from('user_page_tutorials')
-        .select('id')
+        .select('completed_at, skip_count')
         .eq('user_id', user.id)
         .eq('page_name', pageName)
         .maybeSingle();
@@ -384,26 +401,26 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
         return false;
       }
 
-      const isCompleted = !!data;
-      
+      const completed = !!data?.completed_at;
+      const skipCount =
+        typeof data?.skip_count === 'number' && !Number.isNaN(data.skip_count) ? data.skip_count : 0;
+
       ErrorLogger.debug('Tutorial completion status from database', {
         component: 'OnboardingContext',
         action: 'isPageTutorialCompleted',
-        metadata: { pageName, isCompleted },
+        metadata: { pageName, completed, skipCount },
       });
-      
-      // Update cache and ref synchronously to prevent race conditions
+
       setPageTutorialCache((prev) => {
         const updated = {
           ...prev,
-          [pageName]: isCompleted,
+          [pageName]: { completed, skipCount },
         };
-        // Update ref immediately, don't wait for useEffect
         pageTutorialCacheRef.current = updated;
         return updated;
       });
 
-      return isCompleted;
+      return completed;
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       ErrorLogger.error(err, {
@@ -414,20 +431,18 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
       });
       return false;
     }
-    // Note: loading is checked inside the function but not in deps to keep callback stable
-     
   }, [user]);
 
   const completePageTutorial = async (pageName: PageName) => {
     if (!user) return;
 
-    // Update cache and ref synchronously BEFORE async database call to prevent race conditions
+    const prior = pageTutorialCacheRef.current[pageName] ?? { completed: false, skipCount: 0 };
+
     setPageTutorialCache((prev) => {
       const updated = {
         ...prev,
-        [pageName]: true,
+        [pageName]: { completed: true, skipCount: 0 },
       };
-      // Update ref immediately, don't wait for useEffect
       pageTutorialCacheRef.current = updated;
       return updated;
     });
@@ -439,22 +454,42 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
         userId: user.id,
         metadata: { pageName },
       });
-      return;
+      setPageTutorialCache((prev) => {
+        const updated = { ...prev, [pageName]: prior };
+        pageTutorialCacheRef.current = updated;
+        return updated;
+      });
+      throw new Error(TUTORIAL_COMPLETE_OFFLINE_CODE);
     }
 
     try {
-      const { error } = await supabase
+      const upsertPayload: Record<string, unknown> = {
+        user_id: user.id,
+        page_name: pageName,
+        completed_at: new Date().toISOString(),
+        skip_count: 0,
+      };
+
+      let { error } = await supabase
         .from('user_page_tutorials')
-        .upsert(
-          {
-            user_id: user.id,
-            page_name: pageName,
-            completed_at: new Date().toISOString(),
-          },
-          {
-            onConflict: 'user_id,page_name',
-          }
-        );
+        .upsert(upsertPayload, { onConflict: 'user_id,page_name' });
+
+      // If skip_count column doesn't exist yet, retry without it
+      if (error && (error.message?.includes('skip_count') || error.message?.includes('column'))) {
+        ErrorLogger.warn('skip_count column missing in completePageTutorial, retrying without it', {
+          component: 'OnboardingContext',
+          action: 'completePageTutorial',
+          userId: user.id,
+          metadata: { pageName },
+        });
+        const { error: fallbackError } = await supabase
+          .from('user_page_tutorials')
+          .upsert(
+            { user_id: user.id, page_name: pageName, completed_at: new Date().toISOString() },
+            { onConflict: 'user_id,page_name' }
+          );
+        error = fallbackError;
+      }
 
       if (error) {
         handleSupabaseError(error, {
@@ -469,11 +504,9 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
           userId: user.id,
           metadata: { pageName },
         });
-        // Don't revert cache on error - tutorial should stay marked as completed (optimistic update)
         throw error;
       }
 
-      // Verify that the record was actually saved to the database
       const { data: verifyData, error: verifyError } = await supabase
         .from('user_page_tutorials')
         .select('id')
@@ -495,36 +528,101 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
           userId: user.id,
           metadata: { pageName },
         });
-      } else {
-        ErrorLogger.debug('Tutorial completion verified in database', {
-          component: 'OnboardingContext',
-          action: 'completePageTutorial',
-          userId: user.id,
-          metadata: { pageName, recordId: verifyData.id },
-        });
       }
 
       ErrorLogger.info('Page tutorial completed', {
         component: 'OnboardingContext',
         action: 'completePageTutorial',
         userId: user.id,
-        metadata: { 
+        metadata: {
           pageName,
-          cacheUpdated: pageTutorialCacheRef.current[pageName],
           verified: !!verifyData,
         },
       });
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
+      await loadPageTutorialStatus();
       ErrorLogger.error(err, {
         component: 'OnboardingContext',
         action: 'completePageTutorial',
         userId: user.id,
         metadata: { pageName },
       });
-      // Don't revert cache on error - tutorial should stay marked as completed
       throw err;
     }
+  };
+
+
+  const recordPageTutorialSkip = async (pageName: PageName): Promise<number> => {
+    if (!user) return 0;
+
+    if (isOffline()) {
+      throw new Error(TUTORIAL_SKIP_OFFLINE_CODE);
+    }
+
+    const { data, error } = await supabase.rpc('increment_user_page_tutorial_skip', {
+      p_page_name: pageName,
+    });
+
+    let skipCount = 0;
+
+    if (error) {
+      // RPC doesn't exist yet (migration not applied) — fall back to a permanent dismiss upsert
+      const isRpcMissing =
+        error.message?.includes('function') ||
+        error.message?.includes('increment_user_page_tutorial_skip') ||
+        error.code === '42883' ||
+        error.code === 'PGRST202';
+
+      if (isRpcMissing) {
+        ErrorLogger.warn('increment_user_page_tutorial_skip RPC missing, falling back to upsert dismiss', {
+          component: 'OnboardingContext',
+          action: 'recordPageTutorialSkip',
+          userId: user.id,
+          metadata: { pageName },
+        });
+
+        // Permanently dismiss the tutorial so it never shows again
+        await supabase
+          .from('user_page_tutorials')
+          .upsert(
+            { user_id: user.id, page_name: pageName, completed_at: new Date().toISOString() },
+            { onConflict: 'user_id,page_name' }
+          );
+
+        // Return 2 so suppressAfterFirstSkipSession fires in usePageTutorial
+        skipCount = 2;
+      } else {
+        handleSupabaseError(error, {
+          component: 'OnboardingContext',
+          action: 'recordPageTutorialSkip',
+          userId: user.id,
+          metadata: { pageName },
+        });
+        ErrorLogger.error(error, {
+          component: 'OnboardingContext',
+          action: 'recordPageTutorialSkip',
+          userId: user.id,
+          metadata: { pageName },
+        });
+        throw error;
+      }
+    } else {
+      const newSkip = typeof data === 'number' ? data : Number(data);
+      skipCount = Number.isFinite(newSkip) ? newSkip : 0;
+    }
+
+    setPageTutorialCache((prev) => {
+      const prevRow = prev[pageName] ?? { completed: false, skipCount: 0 };
+      const updated = {
+        ...prev,
+        [pageName]: { completed: prevRow.completed || skipCount >= 2, skipCount },
+      };
+      pageTutorialCacheRef.current = updated;
+      return updated;
+    });
+
+    return skipCount;
   };
 
   return (
@@ -534,6 +632,7 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
         completeDashboardTutorial,
         isPageTutorialCompleted,
         completePageTutorial,
+        recordPageTutorialSkip,
         loading,
         pageTutorialCache,
       }}
@@ -542,4 +641,3 @@ export const OnboardingProvider: React.FC<{ children: ReactNode }> = ({ children
     </OnboardingContext.Provider>
   );
 };
-

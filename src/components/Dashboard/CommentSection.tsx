@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, Send, ChevronDown, ChevronUp, MoreVertical, Edit2, Trash2, X } from 'lucide-react';
+import { MessageSquare, Send, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { ErrorLogger } from '../../utils/errorLogger';
@@ -29,7 +29,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
 }) => {
   const { user } = useAuth();
   const { confirm, ConfirmModal } = useConfirm();
-  const { getThemeGradient } = useTheme();
+  const { getThemeGradient, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -84,7 +84,11 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       }
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      ErrorLogger.error(err, { component: 'CommentSection', action: 'fetchComments', itemId });
+      ErrorLogger.error(err, { 
+        component: 'CommentSection', 
+        action: 'fetchComments', 
+        metadata: { itemId } 
+      });
     }
   };
 
@@ -133,7 +137,12 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       await fetchComments();
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      ErrorLogger.error(err, { component: 'CommentSection', action: 'handleSubmitComment', itemId, userId: user?.id });
+      ErrorLogger.error(err, { 
+        component: 'CommentSection', 
+        action: 'handleSubmitComment', 
+        userId: user?.id,
+        metadata: { itemId } 
+      });
     } finally {
       setLoading(false);
     }
@@ -160,7 +169,12 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       await fetchComments();
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      ErrorLogger.error(err, { component: 'CommentSection', action: 'handleReply', itemId, parentId, userId: user?.id });
+      ErrorLogger.error(err, { 
+        component: 'CommentSection', 
+        action: 'handleReply', 
+        userId: user?.id,
+        metadata: { itemId, parentId } 
+      });
     } finally {
       setLoading(false);
     }
@@ -184,7 +198,12 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       await fetchComments();
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      ErrorLogger.error(err, { component: 'CommentSection', action: 'handleEditComment', itemId, commentId, userId: user?.id });
+      ErrorLogger.error(err, { 
+        component: 'CommentSection', 
+        action: 'handleEditComment', 
+        userId: user?.id,
+        metadata: { itemId, commentId } 
+      });
     } finally {
       setLoading(false);
     }
@@ -213,7 +232,12 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       await fetchComments();
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      ErrorLogger.error(err, { component: 'CommentSection', action: 'handleDeleteComment', itemId, commentId, userId: user?.id });
+      ErrorLogger.error(err, { 
+        component: 'CommentSection', 
+        action: 'handleDeleteComment', 
+        userId: user?.id,
+        metadata: { itemId, commentId } 
+      });
     } finally {
       setLoading(false);
     }
@@ -252,7 +276,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     const isOwner = user?.id === comment.user_id;
 
     return (
-      <div className={`${depth > 0 ? 'ml-8 pl-4 border-l-2 border-gray-200 dark:border-gray-700' : ''}`}>
+      <div className={`${depth > 0 ? `ml-8 pl-4 border-l-2 ${getThemeCardBorder()}` : ''}`}>
         <div className="py-3">
           <div className="flex items-start space-x-3">
             <div className="flex-shrink-0">
@@ -263,14 +287,14 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center space-x-2 mb-1">
-                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                <span className={`text-sm font-medium ${getThemeTextPrimary()}`}>
                   {comment.user_email}
                 </span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">
+                <span className={`text-xs ${getThemeTextMuted()}`}>
                   {formatDate(comment.created_at)}
                 </span>
                 {comment.is_edited && (
-                  <span className="text-xs text-gray-400 italic dark:text-gray-500">
+                  <span className={`text-xs ${getThemeTextMuted()} italic`}>
                     (edited)
                   </span>
                 )}
@@ -282,7 +306,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                     value={editText}
                     onChange={(e) => setEditText(e.target.value)}
                     maxLength={2000}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                    className={`w-full px-3 py-2 ${getThemeCardBorder()} rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm ${getThemeCardBg()} ${getThemeTextPrimary()}`}
                     rows={3}
                   />
                   <div className="flex items-center space-x-2">
@@ -298,7 +322,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                         setEditingComment(null);
                         setEditText('');
                       }}
-                      className="px-3 py-1 bg-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-400 dark:bg-gray-600 dark:text-gray-200"
+                      className={`px-3 py-1 ${getThemeSubtle('ui')} ${getThemeTextSecondary()} rounded-lg text-sm hover:opacity-60`}
                     >
                       Cancel
                     </button>
@@ -306,7 +330,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                 </div>
               ) : (
                 <>
-                  <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                  <p className={`text-sm ${getThemeTextSecondary()} whitespace-pre-wrap`}>
                     {comment.comment_text}
                   </p>
 
@@ -327,7 +351,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                             setEditingComment(comment.id);
                             setEditText(comment.comment_text);
                           }}
-                          className="text-xs text-gray-600 hover:text-gray-800 font-medium dark:text-gray-400"
+                          className={`text-xs ${getThemeTextSecondary()} hover:opacity-80 font-medium`}
                         >
                           Edit
                         </button>
@@ -343,7 +367,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                     {hasReplies && (
                       <button
                         onClick={() => toggleThread(comment.id)}
-                        className="text-xs text-gray-600 hover:text-gray-800 font-medium flex items-center space-x-1 dark:text-gray-400"
+                        className={`text-xs ${getThemeTextSecondary()} hover:opacity-80 font-medium flex items-center space-x-1`}
                       >
                         {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                         <span>{comment.replies!.length} {comment.replies!.length === 1 ? 'reply' : 'replies'}</span>
@@ -360,7 +384,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                     onChange={(e) => setReplyText(e.target.value)}
                     placeholder="Write a reply..."
                     maxLength={2000}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400"
+                    className={`w-full px-3 py-2 ${getThemeCardBorder()} rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm ${getThemeCardBg()} ${getThemeTextPrimary()}`}
                     rows={2}
                   />
                   <div className="flex items-center space-x-2">
@@ -376,7 +400,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                         setReplyingTo(null);
                         setReplyText('');
                       }}
-                      className="px-3 py-1 bg-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-400 dark:bg-gray-600 dark:text-gray-200"
+                      className={`px-3 py-1 ${getThemeSubtle('ui')} ${getThemeTextSecondary()} rounded-lg text-sm hover:opacity-60`}
                     >
                       Cancel
                     </button>
@@ -400,8 +424,8 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
 
   if (!user) {
     return (
-      <div className="border-t border-gray-200 dark:border-gray-700 pt-6 mt-6">
-        <div className="flex items-center space-x-2 text-gray-500 dark:text-gray-400">
+      <div className={`border-t ${getThemeCardBorder()} pt-6 mt-6`}>
+        <div className={`flex items-center space-x-2 ${getThemeTextMuted()}`}>
           <MessageSquare className="h-5 w-5" />
           <span className="text-sm">Sign in to view and post comments</span>
         </div>
@@ -410,11 +434,11 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   }
 
   return (
-    <div className="border-t border-gray-200 dark:border-gray-700 pt-6 mt-6">
+    <div className={`border-t ${getThemeCardBorder()} pt-6 mt-6`}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-2">
-          <MessageSquare className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          <MessageSquare className={`h-5 w-5 ${getThemeTextSecondary()}`} />
+          <h3 className={`text-lg font-semibold ${getThemeTextPrimary()}`}>
             Comments ({commentCount})
           </h3>
         </div>
@@ -422,7 +446,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
         <select
           value={sortOrder}
           onChange={(e) => setSortOrder(e.target.value as 'newest' | 'oldest')}
-          className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+          className={`px-3 py-1 text-sm ${getThemeCardBorder()} rounded-lg focus:ring-2 focus:ring-blue-500 ${getThemeCardBg()} ${getThemeTextPrimary()}`}
         >
           <option value="newest">Newest First</option>
           <option value="oldest">Oldest First</option>
@@ -435,11 +459,11 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
           onChange={(e) => setNewComment(e.target.value)}
           placeholder="Write a comment..."
           maxLength={2000}
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:placeholder-gray-400"
+          className={`w-full px-4 py-3 ${getThemeCardBorder()} rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none ${getThemeCardBg()} ${getThemeTextPrimary()}`}
           rows={3}
         />
         <div className="flex items-center justify-between mt-2">
-          <span className="text-xs text-gray-500 dark:text-gray-400">
+          <span className={`text-xs ${getThemeTextMuted()}`}>
             {newComment.length}/2000
           </span>
           <button
@@ -455,7 +479,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
 
       <div className="space-y-1">
         {comments.length === 0 ? (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+          <div className={`text-center py-8 ${getThemeTextMuted()}`}>
             <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-50" />
             <p>No comments yet. Be the first to comment!</p>
           </div>

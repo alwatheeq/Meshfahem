@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { ChevronLeft, ChevronRight, RotateCcw, Eye, EyeOff, Download, Shuffle, BookOpen, CheckCircle, BarChart, CreditCard as Edit3, List, FileText, HelpCircle, Stethoscope, GraduationCap, Heart } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RotateCcw, Eye, EyeOff, Download, Shuffle, BookOpen, CheckCircle, BarChart, CreditCard as Edit3, List, FileText, HelpCircle, Stethoscope } from 'lucide-react';
 import { useI18n, I18nContext } from '../../contexts/I18nContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../contexts/ThemeContext';
 import { recordFlashcardStudy, recordFlashcardRating } from '../../utils/studyTracking';
+import { ReadAloudButton } from './ReadAloud/ReadAloudButton';
 
 interface Flashcard {
   front: string;
@@ -402,7 +403,7 @@ const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, me
   };
 
   const exportAsTxt = () => {
-    const content = `${t('common.flashcards').toUpperCase()}\n${'='.repeat(50)}\n\n${flashcards.map((card, index) => `${t('common.card')} ${index + 1}:\nQ: ${card.front}\nA: ${card.back}`).join('\n\n')}`;
+    const content = `${t('common.flashcards').toUpperCase()}\n${'='.repeat(50)}\n\n${flashcards.map((card, index) => `${t('flashcards.card')} ${index + 1}:\nQ: ${card.front}\nA: ${card.back}`).join('\n\n')}`;
     
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
@@ -498,7 +499,7 @@ const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, me
             {flashcards.map((card, index) => (
               <div key={index} className={`border ${getThemeCardBorder()} rounded-lg p-4`}>
                 <div className="flex justify-between items-start mb-2">
-                  <span className={`text-sm font-medium ${getThemeTextMuted()}`}>{t('common.card')} {index + 1}</span>
+                  <span className={`text-sm font-medium ${getThemeTextMuted()}`}>{t('flashcards.card')} {index + 1}</span>
                 </div>
                 <div className="space-y-2">
                   <div>
@@ -567,23 +568,24 @@ const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, me
             </div>
           </div>
           
-          <div className="flex items-center space-x-2">
-            {/* Study Mode Selector */}
-            <div className={`flex items-center space-x-1 ${getThemeSubtle('ui')} rounded-lg p-1`}>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Study Mode Selector — pill tabs */}
+            <div className={`flex items-center gap-0.5 ${getThemeSubtle('bg')} rounded-full p-1`}>
               {(['flip', 'type_answer', 'multiple_choice', 'fill_in_blanks', 'true_false'] as StudyMode[]).map((mode) => {
                 const Icon = getStudyModeIcon(mode);
+                const isActive = currentStudyMode === mode;
                 return (
                   <button
                     key={mode}
                     onClick={() => handleStudyModeChange(mode)}
-                    className={`p-2 rounded-md transition duration-150 ${
-                      currentStudyMode === mode
-                        ? `${getThemeCardBg()} text-blue-600 shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-sm dark:text-blue-400 dark:shadow-none`
-                        : `${getThemeTextMuted()} hover:opacity-80`
+                    className={`p-1.5 rounded-full transition-colors ${
+                      isActive
+                        ? `${getThemeCardBg()} shadow-sm text-blue-600 dark:text-blue-400`
+                        : `${getThemeTextMuted()} hover:bg-black/5 dark:hover:bg-white/5`
                     }`}
                     title={getStudyModeLabel(mode)}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="h-3.5 w-3.5" />
                   </button>
                 );
               })}
@@ -591,47 +593,43 @@ const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, me
 
             {/* Export Dropdown */}
             <div className="relative group">
-              <button className={`flex items-center space-x-2 px-3 py-1.5 text-sm border rounded-lg transition duration-150 ${
-                medicalMode
-                  ? 'text-red-600 hover:text-red-800 border-red-300 hover:bg-red-50 dark:border-red-600 dark:hover:bg-red-900 dark:text-red-400 dark:hover:text-red-200'
-                  : 'text-green-600 hover:text-green-800 border-green-300 hover:bg-green-50 dark:border-green-600 dark:hover:bg-green-900 dark:text-green-400 dark:hover:text-green-200'
-              }`}>
-                <Download className="h-4 w-4" />
-                <span>{medicalMode ? '📋 Export Medical Cards' : t('common.export')}</span>
+              <button className={`flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-full transition-colors ${getThemeCardBorder()} ${getThemeTextSecondary()} hover:bg-black/5 dark:hover:bg-white/5`}>
+                <Download className="h-3.5 w-3.5" />
+                <span>{t('flashcards.export')}</span>
               </button>
-              
-              <div className={`absolute right-0 mt-1 w-40 ${getThemeCardBg()} ${getThemeCardBorder()} rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-colors duration-150 z-10 dark:shadow-none`}>
-                <button
-                  onClick={exportAsCSV}
-                  className={`w-full text-left px-4 py-2 text-sm ${getThemeTextSecondary()} hover:opacity-60 rounded-t-lg`}
-                >
-                  {medicalMode ? 'Export for Anki' : t('flashcards.export_csv')}
-                </button>
-                <button
-                  onClick={exportAsTxt}
-                  className={`w-full text-left px-4 py-2 text-sm ${getThemeTextSecondary()} hover:opacity-60 rounded-b-lg`}
-                >
-                  {medicalMode ? 'Export Study Guide' : t('flashcards.export_txt')}
-                </button>
+
+              <div className={`absolute right-0 mt-1 w-40 ${getThemeCardBg()} border ${getThemeCardBorder()} rounded-xl shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-10`}>
+                <div className="p-1">
+                  <button
+                    onClick={exportAsCSV}
+                    className={`w-full text-left px-3 py-2 text-sm ${getThemeTextSecondary()} hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors`}
+                  >
+                    {medicalMode ? 'Export for Anki' : t('flashcards.export_csv')}
+                  </button>
+                  <button
+                    onClick={exportAsTxt}
+                    className={`w-full text-left px-3 py-2 text-sm ${getThemeTextSecondary()} hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors`}
+                  >
+                    {medicalMode ? 'Export Study Guide' : t('flashcards.export_txt')}
+                  </button>
+                </div>
               </div>
             </div>
 
             {currentStudyMode === 'flip' ? (
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={shuffleCards}
-                  className="flex items-center space-x-2 px-3 py-1.5 text-sm text-orange-600 hover:text-orange-800 border border-orange-300 rounded-lg hover:bg-orange-50 transition duration-150 dark:border-orange-600 dark:hover:bg-orange-900 dark:text-orange-400 dark:hover:text-orange-200"
-                >
-                  <Shuffle className="h-4 w-4" />
-                  <span>{t('flashcards.restart')}</span>
-                </button>
-              </div>
+              <button
+                onClick={shuffleCards}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-full transition-colors ${getThemeCardBorder()} ${getThemeTextSecondary()} hover:bg-black/5 dark:hover:bg-white/5`}
+              >
+                <Shuffle className="h-3.5 w-3.5" />
+                <span>{t('flashcards.restart')}</span>
+              </button>
             ) : (
               <button
                 onClick={() => setShowAll(true)}
-                className="flex items-center space-x-2 px-3 py-1.5 text-sm text-purple-600 hover:text-purple-800 transition duration-150 dark:text-purple-400 dark:hover:text-purple-200"
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-full transition-colors ${getThemeCardBorder()} ${getThemeTextSecondary()} hover:bg-black/5 dark:hover:bg-white/5`}
               >
-                <Eye className="h-4 w-4" />
+                <Eye className="h-3.5 w-3.5" />
                 <span>{t('flashcards.view_all')}</span>
               </button>
             )}
@@ -679,48 +677,64 @@ const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, me
             {/* Flip Mode */}
             {currentStudyMode === 'flip' && !studySessionComplete && (
               <div
-                className={`relative w-full h-80 cursor-pointer transition-transform duration-500 transform-style-preserve-3d ${
+                className={`relative w-full h-72 cursor-pointer transition-transform duration-500 transform-style-preserve-3d ${
                   flipped ? 'rotate-y-180' : ''
                 }`}
                 onClick={() => setFlipped(!flipped)}
               >
-                <div className={`absolute inset-0 w-full h-full backface-hidden rounded-md p-6 flex items-center justify-center text-white ${
-                  medicalMode
-                    ? 'bg-gradient-to-br from-red-500 to-pink-600 dark:from-red-600 dark:to-pink-700'
-                    : getThemeGradient('ui')
+                {/* Front face */}
+                <div className={`absolute inset-0 w-full h-full backface-hidden rounded-2xl overflow-hidden flex flex-col ${getThemeCardBg()} border-2 ${
+                  medicalMode ? 'border-red-100 dark:border-red-900' : 'border-blue-100 dark:border-blue-900/50'
                 }`}>
-                  <div className="text-center">
-                    {medicalMode && (
-                      <div className="flex justify-center mb-3">
-                        <div className="bg-white bg-opacity-20 p-2 rounded-lg">
-                          <GraduationCap className="h-6 w-6 text-white" />
-                        </div>
-                      </div>
-                    )}
-                    <p className="text-lg font-medium mb-3 leading-relaxed">{currentCard?.front}</p>
-                    <div className={`text-sm ${
-                      medicalMode ? 'text-red-100' : 'text-blue-100'
-                    }`}>
-                      {medicalMode ? '🩺 Click to reveal clinical answer' : t('flashcards.click_reveal')}
+                  {/* Accent bar */}
+                  <div className={`h-1 w-full flex-shrink-0 ${
+                    medicalMode
+                      ? 'bg-gradient-to-r from-red-400 to-pink-500'
+                      : 'bg-gradient-to-r from-blue-400 to-indigo-500'
+                  }`} />
+                  <div className="flex-1 flex items-center justify-center p-6 relative">
+                    <div
+                      className="absolute top-2 right-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ReadAloudButton
+                        text={currentCard?.front ?? ''}
+                      />
+                    </div>
+                    <div className="text-center">
+                      <p className={`text-xs font-medium uppercase tracking-widest mb-3 opacity-40 ${getThemeTextPrimary()}`}>
+                        {medicalMode ? 'Clinical Question' : t('flashcards.question') || 'Question'}
+                      </p>
+                      <p className={`text-base font-medium leading-relaxed ${getThemeTextPrimary()}`}>{currentCard?.front}</p>
+                      <p className={`text-xs mt-4 opacity-40 ${getThemeTextMuted()}`}>
+                        {medicalMode ? 'Tap to reveal clinical answer' : t('flashcards.click_reveal')}
+                      </p>
                     </div>
                   </div>
                 </div>
-                <div className={`absolute inset-0 w-full h-full backface-hidden rotate-y-180 rounded-md p-6 flex items-center justify-center text-white ${
-                  medicalMode
-                    ? 'bg-gradient-to-br from-emerald-600 to-teal-700 dark:from-emerald-700 dark:to-teal-800'
-                    : 'bg-gradient-to-br from-emerald-500 to-teal-600 dark:from-emerald-600 dark:to-teal-700'
+                {/* Back face */}
+                <div className={`absolute inset-0 w-full h-full backface-hidden rotate-y-180 rounded-2xl overflow-hidden flex flex-col ${getThemeCardBg()} border-2 ${
+                  medicalMode ? 'border-emerald-100 dark:border-emerald-900' : 'border-emerald-100 dark:border-emerald-900/50'
                 }`}>
-                  <div className="text-center">
-                    {medicalMode && (
-                      <div className="flex justify-center mb-3">
-                        <div className="bg-white bg-opacity-20 p-2 rounded-lg">
-                          <Heart className="h-6 w-6 text-white" />
-                        </div>
-                      </div>
-                    )}
-                    <p className="text-lg font-medium mb-3 leading-relaxed">{currentCard?.back}</p>
-                    <div className="text-green-100 text-sm">
-                      {medicalMode ? '🎯 Rate your clinical understanding' : t('flashcards.rate_understanding')}
+                  {/* Accent bar */}
+                  <div className="h-1 w-full flex-shrink-0 bg-gradient-to-r from-emerald-400 to-teal-500" />
+                  <div className="flex-1 flex items-center justify-center p-6 relative">
+                    <div
+                      className="absolute top-2 right-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ReadAloudButton
+                        text={currentCard?.back ?? ''}
+                      />
+                    </div>
+                    <div className="text-center">
+                      <p className={`text-xs font-medium uppercase tracking-widest mb-3 opacity-40 ${getThemeTextPrimary()}`}>
+                        {medicalMode ? 'Clinical Answer' : t('flashcards.answer') || 'Answer'}
+                      </p>
+                      <p className={`text-base font-medium leading-relaxed ${getThemeTextPrimary()}`}>{currentCard?.back}</p>
+                      <p className={`text-xs mt-4 opacity-40 ${getThemeTextMuted()}`}>
+                        {medicalMode ? 'Rate your clinical understanding' : t('flashcards.rate_understanding')}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -729,62 +743,31 @@ const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, me
 
             {/* Rating buttons for Flip Cards mode */}
             {currentStudyMode === 'flip' && flipped && !studySessionComplete && (
-              <div className="mt-6 flex justify-center space-x-3">
-                {medicalMode ? (
-                  <>
-                    <button
-                      onClick={() => handleStudyResponse('hard')}
-                      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition duration-150 text-sm dark:bg-red-600 dark:hover:bg-red-700"
-                    >
-                      🔴 Need Review
-                    </button>
-                    <button
-                      onClick={() => handleStudyResponse('good')}
-                      className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition duration-150 text-sm dark:bg-yellow-600 dark:hover:bg-yellow-700"
-                    >
-                      🟡 Understand
-                    </button>
-                    <button
-                      onClick={() => handleStudyResponse('easy')}
-                      className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition duration-150 text-sm dark:bg-green-600 dark:hover:bg-green-700"
-                    >
-                      🟢 Know Well
-                    </button>
-                    <button
-                      onClick={() => handleStudyResponse('learned')}
-                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-150 text-sm dark:bg-blue-600 dark:hover:bg-blue-700"
-                    >
-                      🔵 Mastered
-                    </button>
-                  </>
-                ) : (
-                  <>
+              <div className="mt-5 flex justify-center gap-2 flex-wrap">
                 <button
                   onClick={() => handleStudyResponse('hard')}
-                  className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition duration-150 text-sm dark:bg-red-600 dark:hover:bg-red-700"
+                  className="px-4 py-1.5 rounded-full text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
                 >
-                  {t('flashcards.hard')}
+                  {medicalMode ? 'Need Review' : t('flashcards.hard')}
                 </button>
                 <button
                   onClick={() => handleStudyResponse('good')}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-150 text-sm dark:bg-blue-600 dark:hover:bg-blue-700"
+                  className="px-4 py-1.5 rounded-full text-sm font-medium border border-blue-200 text-blue-600 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors"
                 >
-                  {t('flashcards.good')}
+                  {medicalMode ? 'Understand' : t('flashcards.good')}
                 </button>
                 <button
                   onClick={() => handleStudyResponse('easy')}
-                  className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition duration-150 text-sm dark:bg-green-600 dark:hover:bg-green-700"
+                  className="px-4 py-1.5 rounded-full text-sm font-medium border border-emerald-200 text-emerald-600 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-900/30 transition-colors"
                 >
-                  {t('flashcards.easy')}
+                  {medicalMode ? 'Know Well' : t('flashcards.easy')}
                 </button>
                 <button
                   onClick={() => handleStudyResponse('learned')}
-                  className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition duration-150 text-sm dark:bg-purple-600 dark:hover:bg-purple-700"
+                  className="px-4 py-1.5 rounded-full text-sm font-medium border border-purple-200 text-purple-600 hover:bg-purple-50 dark:border-purple-800 dark:text-purple-400 dark:hover:bg-purple-900/30 transition-colors"
                 >
-                  {t('flashcards.learned')}
+                  {medicalMode ? 'Mastered' : t('flashcards.learned')}
                 </button>
-                  </>
-                )}
               </div>
             )}
 
