@@ -1,19 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { supabase } from '../lib/supabase';
-import { handleSupabaseError, isOffline } from '../utils/errorHandler';
+import { useCreditStore, CreditBalance } from '../stores/creditStore';
 import { ErrorLogger } from '../utils/errorLogger';
 
-interface CreditBalance {
-  credits_remaining: number;
-  credits_total: number;
-  cycle_start: string | null;
-  cycle_end: string | null;
-  free_credits_claimed: boolean;
-  /** Study Room (Zego) pool: 1000/month, 1 credit = 1 minute */
-  zego_credits_remaining?: number;
-  zego_credits_total?: number;
-}
+// Re-export types for backward compatibility
+export type { CreditBalance };
 
 interface CreditContextType {
   balance: CreditBalance | null;
@@ -23,81 +14,35 @@ interface CreditContextType {
 
 const CreditContext = createContext<CreditContextType | undefined>(undefined);
 
+/**
+ * CreditProvider - thin wrapper around Zustand store for backward compatibility.
+ * Manages polling lifecycle based on auth state.
+ * Components can import useCredits (from here) or useCreditStore (from stores/) directly.
+ */
 export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [balance, setBalance] = useState<CreditBalance | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const fetchBalance = useCallback(async () => {
-    if (!user) {
-      setBalance(null);
-      setLoading(false);
-      return;
-    }
-
-    if (isOffline()) {
-      ErrorLogger.warn('Offline detected', { component: 'CreditContext', action: 'fetchBalance', userId: user.id });
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase.rpc('get_user_credit_balance', {
-        p_user_id: user.id
-      });
-
-      if (error) {
-        handleSupabaseError(error, { component: 'CreditContext', action: 'fetchBalance', userId: user.id });
-        ErrorLogger.error(error, { component: 'CreditContext', action: 'fetchBalance', userId: user.id });
-        return;
-      }
-
-      if (data && data.success) {
-        setBalance({
-          credits_remaining: data.credits_remaining,
-          credits_total: data.credits_total,
-          cycle_start: data.cycle_start,
-          cycle_end: data.cycle_end,
-          free_credits_claimed: data.free_credits_claimed,
-          zego_credits_remaining: data.zego_credits_remaining ?? 0,
-          zego_credits_total: data.zego_credits_total ?? 0
-        });
-      }
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      handleSupabaseError(error, { component: 'CreditContext', action: 'fetchBalance', userId: user.id });
-      ErrorLogger.error(error, { component: 'CreditContext', action: 'fetchBalance', userId: user.id });
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
-
-  const refreshBalance = useCallback(async () => {
-    await fetchBalance();
-  }, [fetchBalance]);
+  const { balance, loading, refreshBalance, startPolling, stopPolling, clearBalance } = useCreditStore();
 
   useEffect(() => {
     if (user) {
-      fetchBalance();
-      const interval = setInterval(fetchBalance, 30000);
-      return () => clearInterval(interval);
+      startPolling(user.id);
     } else {
-      setBalance(null);
-      setLoading(false);
+      clearBalance();
     }
-  }, [user, fetchBalance]);
+    return () => stopPolling();
+  }, [user, startPolling, stopPolling, clearBalance]);
 
   useEffect(() => {
     const handleCreditUpdate = () => {
-      ErrorLogger.debug('Credit update event received, refreshing balance', { component: 'CreditContext', action: 'handleCreditUpdate' });
+      ErrorLogger.debug('Credit update event received, refreshing balance', {
+        component: 'CreditContext',
+        action: 'handleCreditUpdate',
+      });
       refreshBalance();
     };
 
     window.addEventListener('creditUpdated', handleCreditUpdate);
-
-    return () => {
-      window.removeEventListener('creditUpdated', handleCreditUpdate);
-    };
+    return () => window.removeEventListener('creditUpdated', handleCreditUpdate);
   }, [refreshBalance]);
 
   return (

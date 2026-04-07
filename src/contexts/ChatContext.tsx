@@ -1,15 +1,8 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, ReactNode } from 'react';
+import { useChatStore, ChatContextData, ChatContextType } from '../stores/chatStore';
 
-export type ChatContextType = 'summary' | 'library_item' | 'history_item' | 'general';
-
-export interface ChatContextData {
-  summaryText: string | null;
-  originalText: string | null;
-  topics: string[];
-  medicalMode: boolean;
-  contextType: ChatContextType;
-  contextId: string | null;
-}
+// Re-export types for backward compatibility
+export type { ChatContextType, ChatContextData };
 
 interface ChatContextValue {
   context: ChatContextData;
@@ -17,39 +10,17 @@ interface ChatContextValue {
   clearChatContext: () => void;
 }
 
-const defaultContext: ChatContextData = {
-  summaryText: null,
-  originalText: null,
-  topics: [],
-  medicalMode: false,
-  contextType: 'general',
-  contextId: null,
-};
-
 const ChatContext = createContext<ChatContextValue | undefined>(undefined);
 
+/**
+ * ChatProvider - thin wrapper around Zustand store for backward compatibility.
+ * Components can import useChatContext (from here) or useChatStore (from stores/) directly.
+ */
 export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [context, setContext] = useState<ChatContextData>(defaultContext);
-
-  const setChatContext = (data: Partial<ChatContextData>) => {
-    setContext((prev) => ({
-      ...prev,
-      ...data,
-    }));
-  };
-
-  const clearChatContext = () => {
-    setContext(defaultContext);
-  };
+  const { context, setChatContext, clearChatContext } = useChatStore();
 
   return (
-    <ChatContext.Provider
-      value={{
-        context,
-        setChatContext,
-        clearChatContext,
-      }}
-    >
+    <ChatContext.Provider value={{ context, setChatContext, clearChatContext }}>
       {children}
     </ChatContext.Provider>
   );
@@ -62,4 +33,3 @@ export const useChatContext = (): ChatContextValue => {
   }
   return contextValue;
 };
-
