@@ -5,20 +5,58 @@ import { CONFIG } from './config.js';
 import { supabase } from '../lib/supabase';
 import { ErrorLogger } from './errorLogger';
 
+interface ValidationResult {
+  isValid: boolean;
+  error: string | null;
+}
+
+interface ExtractedTextResult {
+  text: string;
+  pageCount: number;
+  fileType: string;
+  fileName: string;
+  fileSize: number;
+  extractionMethod: string;
+}
+
+interface ExtractedImageResult extends ExtractedTextResult {
+  confidence: number | undefined;
+  language: string | undefined;
+  wordCount: number;
+}
+
+interface ExtractionResponseData {
+  text?: string;
+  pageCount?: number | string;
+  fileType?: string;
+  fileName?: string;
+  fileSize?: number;
+  extractionMethod?: string;
+  error?: string;
+}
+
+interface OcrResponseData extends ExtractionResponseData {
+  confidence?: number;
+  language?: string;
+  wordCount?: number;
+}
+
+type ProgressCallback = (percent: number, message: string) => void;
+
 /**
  * Validate uploaded file against requirements
- * @param {File} file - The uploaded file
- * @param {string} mode - Optional mode: 'file' for documents, 'ocr' for images, or undefined for default (file mode)
- * @returns {Object} - Validation result with isValid flag and error message
+ * @param file - The uploaded file
+ * @param mode - Optional mode: 'file' for documents, 'ocr' for images, or undefined for default (file mode)
+ * @returns Validation result with isValid flag and error message
  */
-export const validateFile = (file, mode = 'file') => {
+export const validateFile = (file: File | null, mode: string = 'file'): ValidationResult => {
   if (!file) {
     return { isValid: false, error: 'No file selected' };
   }
 
   // OCR mode validation (images only)
   if (mode === 'ocr') {
-    const allowedImageTypes = [
+    const allowedImageTypes: string[] = [
       'image/jpeg',
       'image/jpg',
       'image/png',
@@ -28,26 +66,26 @@ export const validateFile = (file, mode = 'file') => {
     ];
 
     if (!allowedImageTypes.includes(file.type)) {
-      return { 
-        isValid: false, 
-        error: 'Invalid file type for OCR. Please upload an image (JPG, PNG, BMP, TIFF, GIF).' 
+      return {
+        isValid: false,
+        error: 'Invalid file type for OCR. Please upload an image (JPG, PNG, BMP, TIFF, GIF).'
       };
     }
 
     // 10MB limit for images
-    const maxSizeBytes = 10 * 1024 * 1024;
+    const maxSizeBytes: number = 10 * 1024 * 1024;
     if (file.size > maxSizeBytes) {
-      return { 
-        isValid: false, 
-        error: 'File size exceeds 10MB limit for images.' 
+      return {
+        isValid: false,
+        error: 'File size exceeds 10MB limit for images.'
       };
     }
 
     // Basic file name validation
     if (file.name.length > 255) {
-      return { 
-        isValid: false, 
-        error: 'File name is too long.' 
+      return {
+        isValid: false,
+        error: 'File name is too long.'
       };
     }
 
@@ -57,26 +95,26 @@ export const validateFile = (file, mode = 'file') => {
   // File mode validation (documents only - default)
   // Check file type
   if (!CONFIG.ALLOWED_FILE_TYPES.includes(file.type)) {
-    return { 
-      isValid: false, 
-      error: 'Invalid file type. Please upload a PDF, PPTX, or DOCX file.' 
+    return {
+      isValid: false,
+      error: 'Invalid file type. Please upload a PDF, PPTX, or DOCX file.'
     };
   }
 
   // Check file size
-  const maxSizeBytes = CONFIG.MAX_FILE_SIZE_MB * 1024 * 1024;
+  const maxSizeBytes: number = CONFIG.MAX_FILE_SIZE_MB * 1024 * 1024;
   if (file.size > maxSizeBytes) {
-    return { 
-      isValid: false, 
-      error: `File size exceeds ${CONFIG.MAX_FILE_SIZE_MB}MB limit.` 
+    return {
+      isValid: false,
+      error: `File size exceeds ${CONFIG.MAX_FILE_SIZE_MB}MB limit.`
     };
   }
 
   // Basic file name validation
   if (file.name.length > 255) {
-    return { 
-      isValid: false, 
-      error: 'File name is too long.' 
+    return {
+      isValid: false,
+      error: 'File name is too long.'
     };
   }
 
@@ -85,10 +123,10 @@ export const validateFile = (file, mode = 'file') => {
 
 /**
  * Get file type name for user-friendly messages
- * @param {string} mimeType - File MIME type
- * @returns {string} - User-friendly file type name
+ * @param mimeType - File MIME type
+ * @returns User-friendly file type name
  */
-const getFileTypeName = (mimeType) => {
+const getFileTypeName = (mimeType: string): string => {
   switch (mimeType) {
     case 'application/pdf':
       return 'PDF';
@@ -103,10 +141,10 @@ const getFileTypeName = (mimeType) => {
 
 /**
  * Get image type name for user-friendly messages
- * @param {string} mimeType - Image MIME type
- * @returns {string} - User-friendly image type name
+ * @param mimeType - Image MIME type
+ * @returns User-friendly image type name
  */
-const getImageTypeName = (mimeType) => {
+const getImageTypeName = (mimeType: string): string => {
   switch (mimeType) {
     case 'image/jpeg':
     case 'image/jpg':
@@ -126,10 +164,10 @@ const getImageTypeName = (mimeType) => {
 
 /**
  * Get file type specific troubleshooting tips
- * @param {string} mimeType - File MIME type
- * @returns {string} - Troubleshooting guidance
+ * @param mimeType - File MIME type
+ * @returns Troubleshooting guidance
  */
-const getFileTypeTips = (mimeType) => {
+const getFileTypeTips = (mimeType: string): string => {
   switch (mimeType) {
     case 'application/vnd.openxmlformats-officedocument.presentationml.presentation':
       return '\n\nTips for PowerPoint files:\n- Ensure slides contain actual text (not just images)\n- Check that text boxes are not empty\n- Verify the file is not corrupted by opening it in PowerPoint\n- Try exporting as a new PPTX file';
@@ -145,17 +183,17 @@ const getFileTypeTips = (mimeType) => {
 /**
  * Extract text from uploaded file using Supabase Edge Function
  * Uses reliable fetch-based approach for consistent file upload handling
- * @param {File} file - The file to process
- * @param {Function} onProgress - Progress callback
- * @returns {Promise<Object>} - Extracted text and metadata
+ * @param file - The file to process
+ * @param onProgress - Progress callback
+ * @returns Extracted text and metadata
  */
-export const extractTextFromFile = async (file, onProgress) => {
-  const validation = validateFile(file);
+export const extractTextFromFile = async (file: File, onProgress: ProgressCallback): Promise<ExtractedTextResult> => {
+  const validation: ValidationResult = validateFile(file);
   if (!validation.isValid) {
-    throw new Error(validation.error);
+    throw new Error(validation.error!);
   }
 
-  const fileTypeName = getFileTypeName(file.type);
+  const fileTypeName: string = getFileTypeName(file.type);
   ErrorLogger.info('Starting file extraction', { component: 'fileProcessor', action: 'extractTextFromFile', fileName: file.name, fileType: fileTypeName, fileSize: file.size });
 
   onProgress(10, `Reading ${fileTypeName} file...`);
@@ -166,21 +204,21 @@ export const extractTextFromFile = async (file, onProgress) => {
     // Get active session for authentication
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
-      const error = new Error('No active session. Please log in again.');
+      const error: Error = new Error('No active session. Please log in again.');
       ErrorLogger.error(error, { component: 'fileProcessor', action: 'extractTextFromFile', fileName: file.name });
       throw error;
     }
     ErrorLogger.debug('Active session verified', { component: 'fileProcessor', action: 'extractTextFromFile', fileName: file.name });
 
     // Create FormData to send file to Edge Function
-    const formData = new FormData();
+    const formData: FormData = new FormData();
     formData.append('file', file);
 
     onProgress(40, `Extracting text from ${fileTypeName}...`);
 
     // Use direct fetch approach (same as quiz generation) for reliable file upload
-    const extractStartTime = Date.now();
-    const extractResponse = await fetch(
+    const extractStartTime: number = Date.now();
+    const extractResponse: Response = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/extract-text`,
       {
         method: 'POST',
@@ -190,22 +228,22 @@ export const extractTextFromFile = async (file, onProgress) => {
         body: formData,
       }
     );
-    const extractDuration = Date.now() - extractStartTime;
+    const extractDuration: number = Date.now() - extractStartTime;
     ErrorLogger.debug(`Extract-text function responded in ${(extractDuration / 1000).toFixed(2)}s`, { component: 'fileProcessor', action: 'extractTextFromFile', fileName: file.name, duration: extractDuration });
 
     if (!extractResponse.ok) {
-      let errorData = {};
-      let errorText = '';
-      
+      let errorData: Record<string, unknown> = {};
+      let errorText: string = '';
+
       try {
         errorText = await extractResponse.text();
         if (errorText) {
           errorData = JSON.parse(errorText);
         }
       } catch (parseErr) {
-        ErrorLogger.warn('Failed to parse error response', { 
-          component: 'fileProcessor', 
-          action: 'extractTextFromFile', 
+        ErrorLogger.warn('Failed to parse error response', {
+          component: 'fileProcessor',
+          action: 'extractTextFromFile',
           fileName: file.name,
           parseError: parseErr,
           rawErrorText: errorText?.substring(0, 500)
@@ -213,15 +251,15 @@ export const extractTextFromFile = async (file, onProgress) => {
         errorData = { error: errorText || extractResponse.statusText };
       }
 
-      let userFriendlyError = errorData.error || `Text extraction failed: ${extractResponse.statusText} (Status: ${extractResponse.status})`;
+      let userFriendlyError: string = (errorData.error as string) || `Text extraction failed: ${extractResponse.statusText} (Status: ${extractResponse.status})`;
 
       // Add file type specific tips to error message
       userFriendlyError += getFileTypeTips(file.type);
 
-      const error = new Error(userFriendlyError);
-      ErrorLogger.error(error, { 
-        component: 'fileProcessor', 
-        action: 'extractTextFromFile', 
+      const error: Error = new Error(userFriendlyError);
+      ErrorLogger.error(error, {
+        component: 'fileProcessor',
+        action: 'extractTextFromFile',
         fileName: file.name,
         fileType: file.type,
         fileSize: file.size,
@@ -234,23 +272,23 @@ export const extractTextFromFile = async (file, onProgress) => {
     }
 
     ErrorLogger.debug('Extract-text succeeded, parsing response', { component: 'fileProcessor', action: 'extractTextFromFile', fileName: file.name });
-    
-    let data;
+
+    let data: ExtractionResponseData;
     try {
-      const responseText = await extractResponse.text();
+      const responseText: string = await extractResponse.text();
       ErrorLogger.debug('Raw response received', { component: 'fileProcessor', action: 'extractTextFromFile', fileName: file.name, responseLength: responseText.length });
-      
+
       if (!responseText || responseText.trim().length === 0) {
         throw new Error('Empty response from extract-text function');
       }
-      
-      data = JSON.parse(responseText);
+
+      data = JSON.parse(responseText) as ExtractionResponseData;
       ErrorLogger.debug('Response parsed successfully', { component: 'fileProcessor', action: 'extractTextFromFile', fileName: file.name, hasText: !!data?.text });
     } catch (parseError) {
-      const err = parseError instanceof Error ? parseError : new Error(String(parseError));
-      ErrorLogger.error(err, { 
-        component: 'fileProcessor', 
-        action: 'extractTextFromFile', 
+      const err: Error = parseError instanceof Error ? parseError : new Error(String(parseError));
+      ErrorLogger.error(err, {
+        component: 'fileProcessor',
+        action: 'extractTextFromFile',
         fileName: file.name,
         step: 'parseResponse',
         status: extractResponse.status,
@@ -258,10 +296,10 @@ export const extractTextFromFile = async (file, onProgress) => {
       });
       throw new Error(`Failed to parse response from text extraction service: ${err.message}`);
     }
-    
-    ErrorLogger.info('Extraction results', { 
-      component: 'fileProcessor', 
-      action: 'extractTextFromFile', 
+
+    ErrorLogger.info('Extraction results', {
+      component: 'fileProcessor',
+      action: 'extractTextFromFile',
       fileName: file.name,
       textLength: data?.text?.length || 0,
       pageCount: data?.pageCount || 'unknown',
@@ -271,23 +309,23 @@ export const extractTextFromFile = async (file, onProgress) => {
     });
 
     if (!data) {
-      const error = new Error('Invalid response from text extraction service - no data received');
+      const error: Error = new Error('Invalid response from text extraction service - no data received');
       ErrorLogger.error(error, { component: 'fileProcessor', action: 'extractTextFromFile', fileName: file.name, responseData: data });
       throw error;
     }
 
     if (data.error) {
-      const error = new Error(data.error || 'Text extraction service returned an error');
+      const error: Error = new Error(data.error || 'Text extraction service returned an error');
       ErrorLogger.error(error, { component: 'fileProcessor', action: 'extractTextFromFile', fileName: file.name, errorDetails: data });
       throw error;
     }
 
     // Validate data structure before accessing properties
     if (!data.text || typeof data.text !== 'string') {
-      const error = new Error(data?.error || 'No text could be extracted from the file. The file may be corrupted, password-protected, or contain only images.');
-      ErrorLogger.error(error, { 
-        component: 'fileProcessor', 
-        action: 'extractTextFromFile', 
+      const error: Error = new Error(data?.error || 'No text could be extracted from the file. The file may be corrupted, password-protected, or contain only images.');
+      ErrorLogger.error(error, {
+        component: 'fileProcessor',
+        action: 'extractTextFromFile',
         fileName: file.name,
         responseData: data,
         textType: typeof data.text,
@@ -301,10 +339,10 @@ export const extractTextFromFile = async (file, onProgress) => {
 
     // Ensure text is a valid string before proceeding
     if (typeof data.text.length === 'undefined') {
-      const error = new Error('Extracted text is invalid - length property is undefined');
-      ErrorLogger.error(error, { 
-        component: 'fileProcessor', 
-        action: 'extractTextFromFile', 
+      const error: Error = new Error('Extracted text is invalid - length property is undefined');
+      ErrorLogger.error(error, {
+        component: 'fileProcessor',
+        action: 'extractTextFromFile',
         fileName: file.name,
         textType: typeof data.text,
         textValue: String(data.text).substring(0, 100)
@@ -316,7 +354,7 @@ export const extractTextFromFile = async (file, onProgress) => {
 
     // Validate the extracted text
     if (data.text.trim().length < 30) {
-      const wordCount = data.text.trim().split(/\s+/).filter(w => w.length > 0).length;
+      const wordCount: number = data.text.trim().split(/\s+/).filter((w: string) => w.length > 0).length;
       console.warn(`⚠️ [FILE-PROCESSOR] Insufficient text extracted: ${data.text.length} chars, ${wordCount} words`);
       throw new Error(
         `Insufficient text content found in the ${fileTypeName} file. ` +
@@ -326,12 +364,12 @@ export const extractTextFromFile = async (file, onProgress) => {
     }
 
     // Check page limit (ensure pageCount is a valid number)
-    const pageCount = typeof data.pageCount === 'number' ? data.pageCount : (data.pageCount ? parseInt(data.pageCount, 10) : 1);
+    const pageCount: number = typeof data.pageCount === 'number' ? data.pageCount : (data.pageCount ? parseInt(data.pageCount as string, 10) : 1);
     if (isNaN(pageCount)) {
       ErrorLogger.warn('Invalid pageCount, defaulting to 1', { component: 'fileProcessor', action: 'extractTextFromFile', fileName: file.name, pageCount: data.pageCount });
     }
-    const validPageCount = isNaN(pageCount) ? 1 : pageCount;
-    
+    const validPageCount: number = isNaN(pageCount) ? 1 : pageCount;
+
     if (validPageCount > CONFIG.MAX_SLIDES_PER_UPLOAD) {
       throw new Error(
         `Document exceeds ${CONFIG.MAX_SLIDES_PER_UPLOAD} page limit. ` +
@@ -339,7 +377,7 @@ export const extractTextFromFile = async (file, onProgress) => {
       );
     }
 
-    const wordCount = data.text.split(/\s+/).filter(w => w.length > 0).length;
+    const wordCount: number = data.text.split(/\s+/).filter((w: string) => w.length > 0).length;
     ErrorLogger.info('Text extraction complete', { component: 'fileProcessor', action: 'extractTextFromFile', fileName: file.name, wordCount, textLength: data.text.length });
     ErrorLogger.info('Text extraction validated', { component: 'fileProcessor', action: 'extractTextFromFile', fileName: file.name });
 
@@ -357,7 +395,7 @@ export const extractTextFromFile = async (file, onProgress) => {
     };
 
   } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error));
+    const err: Error = error instanceof Error ? error : new Error(String(error));
     ErrorLogger.error(err, { component: 'fileProcessor', action: 'extractTextFromFile', fileName: file.name });
 
     // Provide more specific error messages
@@ -380,23 +418,23 @@ export const extractTextFromFile = async (file, onProgress) => {
 
 /**
  * Extract text from image using OCR
- * @param {File} file - The image file to process
- * @param {Function} onProgress - Progress callback
- * @returns {Promise<Object>} - Extracted text and metadata
+ * @param file - The image file to process
+ * @param onProgress - Progress callback
+ * @returns Extracted text and metadata
  */
-export const extractTextFromImage = async (file, onProgress) => {
-  const validation = validateFile(file, 'ocr');
+export const extractTextFromImage = async (file: File, onProgress: ProgressCallback): Promise<ExtractedImageResult> => {
+  const validation: ValidationResult = validateFile(file, 'ocr');
   if (!validation.isValid) {
-    throw new Error(validation.error);
+    throw new Error(validation.error!);
   }
 
-  const imageTypeName = getImageTypeName(file.type);
-  ErrorLogger.info('Starting OCR extraction', { 
-    component: 'fileProcessor', 
-    action: 'extractTextFromImage', 
-    fileName: file.name, 
-    fileType: imageTypeName, 
-    fileSize: file.size 
+  const imageTypeName: string = getImageTypeName(file.type);
+  ErrorLogger.info('Starting OCR extraction', {
+    component: 'fileProcessor',
+    action: 'extractTextFromImage',
+    fileName: file.name,
+    fileType: imageTypeName,
+    fileSize: file.size
   });
 
   onProgress(10, `Preparing ${imageTypeName} for OCR...`);
@@ -405,21 +443,21 @@ export const extractTextFromImage = async (file, onProgress) => {
     // Get active session for authentication
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
-      const error = new Error('No active session. Please log in again.');
+      const error: Error = new Error('No active session. Please log in again.');
       ErrorLogger.error(error, { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name });
       throw error;
     }
     ErrorLogger.debug('Active session verified', { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name });
 
     // Create FormData to send file to Edge Function
-    const formData = new FormData();
+    const formData: FormData = new FormData();
     formData.append('file', file);
 
     onProgress(30, `Sending ${imageTypeName} for OCR processing...`);
 
     // Use direct fetch approach for reliable file upload
-    const ocrStartTime = Date.now();
-    const ocrResponse = await fetch(
+    const ocrStartTime: number = Date.now();
+    const ocrResponse: Response = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ocr-scan`,
       {
         method: 'POST',
@@ -429,26 +467,26 @@ export const extractTextFromImage = async (file, onProgress) => {
         body: formData,
       }
     );
-    const ocrDuration = Date.now() - ocrStartTime;
-    ErrorLogger.debug(`OCR function responded in ${(ocrDuration / 1000).toFixed(2)}s`, { 
-      component: 'fileProcessor', 
-      action: 'extractTextFromImage', 
-      fileName: file.name, 
-      duration: ocrDuration 
+    const ocrDuration: number = Date.now() - ocrStartTime;
+    ErrorLogger.debug(`OCR function responded in ${(ocrDuration / 1000).toFixed(2)}s`, {
+      component: 'fileProcessor',
+      action: 'extractTextFromImage',
+      fileName: file.name,
+      duration: ocrDuration
     });
 
     if (!ocrResponse.ok) {
-      let errorData = {};
-      let errorText = '';
+      let errorData: Record<string, unknown> = {};
+      let errorText: string = '';
       try {
         errorText = await ocrResponse.text();
         if (errorText) {
           errorData = JSON.parse(errorText);
         }
       } catch (parseErr) {
-        ErrorLogger.warn('Failed to parse error response', { 
-          component: 'fileProcessor', 
-          action: 'extractTextFromImage', 
+        ErrorLogger.warn('Failed to parse error response', {
+          component: 'fileProcessor',
+          action: 'extractTextFromImage',
           fileName: file.name,
           parseError: parseErr,
           rawErrorText: errorText?.substring(0, 500)
@@ -456,11 +494,11 @@ export const extractTextFromImage = async (file, onProgress) => {
         errorData = { error: errorText || ocrResponse.statusText };
       }
 
-      const errorMessage = errorData.error || `OCR processing failed: ${ocrResponse.statusText} (Status: ${ocrResponse.status})`;
-      const error = new Error(errorMessage);
-      ErrorLogger.error(error, { 
-        component: 'fileProcessor', 
-        action: 'extractTextFromImage', 
+      const errorMessage: string = (errorData.error as string) || `OCR processing failed: ${ocrResponse.statusText} (Status: ${ocrResponse.status})`;
+      const error: Error = new Error(errorMessage);
+      ErrorLogger.error(error, {
+        component: 'fileProcessor',
+        action: 'extractTextFromImage',
         fileName: file.name,
         fileType: file.type,
         fileSize: file.size,
@@ -473,23 +511,23 @@ export const extractTextFromImage = async (file, onProgress) => {
     }
 
     ErrorLogger.debug('OCR function succeeded, parsing response', { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name });
-    
-    let data;
+
+    let data: OcrResponseData;
     try {
-      const responseText = await ocrResponse.text();
+      const responseText: string = await ocrResponse.text();
       ErrorLogger.debug('Raw OCR response received', { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name, responseLength: responseText.length });
-      
+
       if (!responseText || responseText.trim().length === 0) {
         throw new Error('Empty response from OCR function');
       }
-      
-      data = JSON.parse(responseText);
+
+      data = JSON.parse(responseText) as OcrResponseData;
       ErrorLogger.debug('OCR response parsed successfully', { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name, hasText: !!data?.text });
     } catch (parseError) {
-      const err = parseError instanceof Error ? parseError : new Error(String(parseError));
-      ErrorLogger.error(err, { 
-        component: 'fileProcessor', 
-        action: 'extractTextFromImage', 
+      const err: Error = parseError instanceof Error ? parseError : new Error(String(parseError));
+      ErrorLogger.error(err, {
+        component: 'fileProcessor',
+        action: 'extractTextFromImage',
         fileName: file.name,
         step: 'parseResponse',
         status: ocrResponse.status,
@@ -497,10 +535,10 @@ export const extractTextFromImage = async (file, onProgress) => {
       });
       throw new Error(`Failed to parse response from OCR service: ${err.message}`);
     }
-    
-    ErrorLogger.info('OCR results', { 
-      component: 'fileProcessor', 
-      action: 'extractTextFromImage', 
+
+    ErrorLogger.info('OCR results', {
+      component: 'fileProcessor',
+      action: 'extractTextFromImage',
       fileName: file.name,
       textLength: data?.text?.length || 0,
       confidence: data?.confidence,
@@ -510,23 +548,23 @@ export const extractTextFromImage = async (file, onProgress) => {
     });
 
     if (!data) {
-      const error = new Error('Invalid response from OCR service - no data received');
+      const error: Error = new Error('Invalid response from OCR service - no data received');
       ErrorLogger.error(error, { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name, responseData: data });
       throw error;
     }
 
     if (data.error) {
-      const error = new Error(data.error || 'OCR service returned an error');
+      const error: Error = new Error(data.error || 'OCR service returned an error');
       ErrorLogger.error(error, { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name, errorDetails: data });
       throw error;
     }
 
     // Validate data structure before accessing properties
     if (!data.text || typeof data.text !== 'string') {
-      const error = new Error(data?.error || 'No text could be extracted from the image. The image may be too blurry, contain no text, or be in an unsupported language.');
-      ErrorLogger.error(error, { 
-        component: 'fileProcessor', 
-        action: 'extractTextFromImage', 
+      const error: Error = new Error(data?.error || 'No text could be extracted from the image. The image may be too blurry, contain no text, or be in an unsupported language.');
+      ErrorLogger.error(error, {
+        component: 'fileProcessor',
+        action: 'extractTextFromImage',
         fileName: file.name,
         responseData: data,
         textType: typeof data.text,
@@ -539,7 +577,7 @@ export const extractTextFromImage = async (file, onProgress) => {
 
     // Validate the extracted text
     if (data.text.trim().length < 10) {
-      const wordCount = data.text.trim().split(/\s+/).filter(w => w.length > 0).length;
+      const wordCount: number = data.text.trim().split(/\s+/).filter((w: string) => w.length > 0).length;
       console.warn(`⚠️ [FILE-PROCESSOR] Insufficient text extracted from image: ${data.text.length} chars, ${wordCount} words`);
       throw new Error(
         `Insufficient text content found in the ${imageTypeName} image. ` +
@@ -547,14 +585,14 @@ export const extractTextFromImage = async (file, onProgress) => {
       );
     }
 
-    const wordCount = data.text.split(/\s+/).filter(w => w.length > 0).length;
+    const wordCount: number = data.text.split(/\s+/).filter((w: string) => w.length > 0).length;
     ErrorLogger.info('OCR extraction complete', { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name, wordCount, textLength: data.text.length });
 
     onProgress(100, 'OCR extraction complete');
 
     return {
       text: data.text,
-      pageCount: data.pageCount || 1,
+      pageCount: (data.pageCount as number) || 1,
       fileType: data.fileType || file.type,
       fileName: data.fileName || file.name,
       fileSize: data.fileSize || file.size,
@@ -565,7 +603,7 @@ export const extractTextFromImage = async (file, onProgress) => {
     };
 
   } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error));
+    const err: Error = error instanceof Error ? error : new Error(String(error));
     ErrorLogger.error(err, { component: 'fileProcessor', action: 'extractTextFromImage', fileName: file.name });
 
     // Provide more specific error messages
@@ -585,10 +623,10 @@ export const extractTextFromImage = async (file, onProgress) => {
 
 /**
  * Get the appropriate extraction method for file type
- * @param {string} mimeType - File MIME type
- * @returns {string} - Extraction method name
+ * @param mimeType - File MIME type
+ * @returns Extraction method name
  */
-const getExtractionMethod = (mimeType) => {
+const getExtractionMethod = (mimeType: string): string => {
   switch (mimeType) {
     case 'application/pdf':
       return 'PDF text extraction';
@@ -604,11 +642,11 @@ const getExtractionMethod = (mimeType) => {
 /**
  * Generate mock extracted text based on file type
  * Replace this with actual text extraction in production
- * @param {File} file - The uploaded file
- * @returns {Promise<string>} - Mock extracted text
+ * @param file - The uploaded file
+ * @returns Mock extracted text
  */
-const generateMockExtractedText = async (file) => {
-  const baseContent = `
+const generateMockExtractedText = async (file: File): Promise<string> => {
+  const baseContent: string = `
 This is a comprehensive document about advanced concepts in modern technology and innovation.
 
 Introduction
@@ -658,10 +696,10 @@ This comprehensive overview provides a foundation for understanding the complex 
 `;
 
   // Simulate different document lengths based on file size
-  const multiplier = Math.max(1, Math.floor(file.size / (1024 * 1024))); // Rough multiplier based on MB
-  let fullContent = baseContent;
-  
-  for (let i = 1; i < multiplier; i++) {
+  const multiplier: number = Math.max(1, Math.floor(file.size / (1024 * 1024))); // Rough multiplier based on MB
+  let fullContent: string = baseContent;
+
+  for (let i: number = 1; i < multiplier; i++) {
     fullContent += `\n\nSection ${i + 1}: Additional Content\n${baseContent.substring(0, 1000)}...`;
   }
 
@@ -670,9 +708,9 @@ This comprehensive overview provides a foundation for understanding the complex 
 
 /**
  * Clean up file resources after processing
- * @param {File} file - The processed file
+ * @param file - The processed file
  */
-export const cleanupFile = (file) => {
+export const cleanupFile = (file: File): void => {
   // In a real implementation, this might clear file references,
   // cancel ongoing operations, or clean up temporary resources
   ErrorLogger.debug('Cleaned up file resources', { component: 'fileProcessor', action: 'cleanupFile', fileName: file.name });
@@ -680,10 +718,10 @@ export const cleanupFile = (file) => {
 
 /**
  * Get file type icon based on MIME type
- * @param {string} mimeType - File MIME type
- * @returns {string} - Icon name for UI
+ * @param mimeType - File MIME type
+ * @returns Icon name for UI
  */
-export const getFileTypeIcon = (mimeType) => {
+export const getFileTypeIcon = (mimeType: string): string => {
   switch (mimeType) {
     case 'application/pdf':
       return 'file-type-pdf';
@@ -698,15 +736,15 @@ export const getFileTypeIcon = (mimeType) => {
 
 /**
  * Format file size for display
- * @param {number} bytes - File size in bytes
- * @returns {string} - Formatted size string
+ * @param bytes - File size in bytes
+ * @returns Formatted size string
  */
-export const formatFileSize = (bytes) => {
+export const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return '0 Bytes';
-  
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
+
+  const k: number = 1024;
+  const sizes: string[] = ['Bytes', 'KB', 'MB', 'GB'];
+  const i: number = Math.floor(Math.log(bytes) / Math.log(k));
+
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };

@@ -2,7 +2,7 @@
 // This file contains all the constants and settings for the application
 // Replace placeholder values with your actual API keys and settings
 
-interface AppConfig {
+export interface AppConfig {
   ANTHROPIC_MODEL: string;
   MAX_SLIDES_PER_UPLOAD: number;
   MONTHLY_SLIDE_LIMIT: number;

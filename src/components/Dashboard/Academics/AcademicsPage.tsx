@@ -9,10 +9,8 @@ import { useToast } from '../../Toast/Toast';
 import { supabase } from '../../../lib/supabase';
 import { hasBasicProfanity } from '../../../utils/academicsProfanity';
 import { computeFlashcardTopicScores, computeTopicQuizScores, mergeTopicScores } from '../../../utils/academicsAnalytics';
-// @ts-expect-error JS module in TS file
-import { extractTextFromFile } from '../../../utils/fileProcessor.js';
-// @ts-expect-error JS module in TS file
-import { haikuClient } from '../../../utils/haikuClient.js';
+import { extractTextFromFile } from '../../../utils/fileProcessor';
+import { haikuClient } from '../../../utils/haikuClient';
 
 type QuizQuestionJson = {
   index?: number;

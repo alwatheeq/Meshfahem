@@ -5,7 +5,7 @@ import html2pdf from 'html2pdf.js'; // Ensure html2pdf.js is correctly imported
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { useI18n } from '../../contexts/I18nContext';
-import { PREDEFINED_TOPICS } from '../../utils/config.js';
+import { PREDEFINED_TOPICS } from '../../utils/config';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useToast } from '../Toast/Toast';
 import { handleApiError, handleSupabaseError, isOffline, handleOfflineError } from '../../utils/errorHandler';

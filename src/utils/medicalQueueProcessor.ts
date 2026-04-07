@@ -1,27 +1,78 @@
 // Medical Queue Processor
 // Handles medical content processing with enhanced clinical focus
 
-import { medStudentClient } from './medStudentClient.js';
+import { medStudentClient } from './medStudentClient';
 import { CONFIG } from './config.js';
 import { ErrorLogger } from './errorLogger';
 
+interface Flashcard {
+  question: string;
+  answer: string;
+  [key: string]: unknown;
+}
+
+interface MedicalProcessingResult {
+  summary: string;
+  flashcards: Flashcard[];
+  topics: string[];
+  medicalScore: number;
+  tokens: number;
+  processingMode: string;
+}
+
+interface ProgressData {
+  summaryChunks?: string[];
+  flashcards?: Flashcard[];
+  topics?: string[];
+  medicalScore?: number;
+}
+
+type OnProgressCallback = (
+  percent: number,
+  message: string,
+  data: ProgressData | null
+) => void;
+
+interface ProcessingModeResult {
+  mode: string;
+  reason: string;
+  estimatedPages?: number;
+  batches: number;
+  medicalOptimized?: boolean;
+}
+
+interface TimeEstimate {
+  mode: string;
+  estimatedPages: number;
+  summaryTime: number;
+  flashcardTime: number;
+  totalTime: number;
+  formattedTime: string;
+  medicalEnhanced: boolean;
+}
+
 /**
  * Process medical content with specialized medical education pipeline
- * @param {string} text - Medical text content
- * @param {number} flashcardCount - Number of flashcards to generate
- * @param {boolean} fromSummary - Whether to generate flashcards from summary
- * @param {Function} onProgress - Progress callback
- * @returns {Promise<Object>} - Medical processing results with token usage
+ * @param text - Medical text content
+ * @param flashcardCount - Number of flashcards to generate
+ * @param fromSummary - Whether to generate flashcards from summary
+ * @param onProgress - Progress callback
+ * @returns Medical processing results with token usage
  */
-export const processMedicalContent = async (text, flashcardCount, fromSummary, onProgress) => {
+export const processMedicalContent = async (
+  text: string,
+  flashcardCount: number,
+  fromSummary: boolean,
+  onProgress?: OnProgressCallback
+): Promise<MedicalProcessingResult> => {
   if (!text || text.trim().length === 0) {
     throw new Error('Medical text content is required');
   }
 
   ErrorLogger.info('Starting medical content processing', { component: 'medicalQueueProcessor', action: 'processMedicalContent', textLength: text.length });
-  const estimatedPages = Math.max(1, Math.ceil(text.length / 2000));
-  let medicalScore = 0;
-  let totalTokens = 0;
+  const estimatedPages: number = Math.max(1, Math.ceil(text.length / 2000));
+  let medicalScore: number = 0;
+  let totalTokens: number = 0;
 
   try {
     // Step 1: Validate medical content
@@ -38,7 +89,7 @@ export const processMedicalContent = async (text, flashcardCount, fromSummary, o
     // Step 2: Generate medical summary
     onProgress?.(25, 'Generating medical summary with clinical focus...', { medicalScore });
     const summaryResult = await medStudentClient.generateMedicalSummary(text, estimatedPages);
-    const summary = summaryResult.summary;
+    const summary: string = summaryResult.summary;
     totalTokens += summaryResult.tokens?.total || 0;
 
     onProgress?.(50, 'Medical summary complete, generating flashcards...', {
@@ -47,13 +98,13 @@ export const processMedicalContent = async (text, flashcardCount, fromSummary, o
     });
 
     // Step 3: Generate medical flashcards
-    const sourceText = fromSummary ? summary : text;
+    const sourceText: string = fromSummary ? summary : text;
     const flashcardsResult = await medStudentClient.generateMedicalFlashcards(
       sourceText,
       flashcardCount,
       fromSummary ? 0 : estimatedPages
     );
-    const flashcards = flashcardsResult.flashcards;
+    const flashcards: Flashcard[] = flashcardsResult.flashcards;
     totalTokens += flashcardsResult.tokens?.total || 0;
 
     onProgress?.(80, 'Medical flashcards complete, detecting specialties...', {
@@ -63,7 +114,7 @@ export const processMedicalContent = async (text, flashcardCount, fromSummary, o
     });
 
     // Step 4: Detect medical topics/specialties
-    const topics = await medStudentClient.detectMedicalTopics(text);
+    const topics: string[] = await medStudentClient.detectMedicalTopics(text);
 
     onProgress?.(100, 'Medical processing complete!', {
       summaryChunks: [summary],
@@ -91,8 +142,8 @@ export const processMedicalContent = async (text, flashcardCount, fromSummary, o
       processingMode: 'medical'
     };
 
-  } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error));
+  } catch (error: unknown) {
+    const err: Error = error instanceof Error ? error : new Error(String(error));
     ErrorLogger.error(err, { component: 'medicalQueueProcessor', action: 'processMedicalContent', flashcardCount });
     throw new Error(`Medical processing failed: ${err.message}`);
   }
@@ -100,19 +151,19 @@ export const processMedicalContent = async (text, flashcardCount, fromSummary, o
 
 /**
  * Determine medical processing mode based on content
- * @param {string} text - Medical text
- * @param {number} flashcardCount - Requested flashcards
- * @returns {Object} - Processing mode information
+ * @param text - Medical text
+ * @param flashcardCount - Requested flashcards
+ * @returns Processing mode information
  */
-export const determineMedicalProcessingMode = (text, flashcardCount) => {
+export const determineMedicalProcessingMode = (text: string, flashcardCount: number): ProcessingModeResult => {
   if (!text) {
     return { mode: 'fast', reason: 'No content', batches: 1 };
   }
 
-  const estimatedPages = Math.ceil(text.length / 2000);
-  
+  const estimatedPages: number = Math.ceil(text.length / 2000);
+
   // Medical content often benefits from staged processing for better clinical correlation
-  const isFastMode = estimatedPages <= 50 && flashcardCount <= 15;
+  const isFastMode: boolean = estimatedPages <= 50 && flashcardCount <= 15;
 
   if (isFastMode) {
     return {
@@ -135,17 +186,17 @@ export const determineMedicalProcessingMode = (text, flashcardCount) => {
 
 /**
  * Estimate medical processing time with clinical complexity factors
- * @param {string} text - Medical text
- * @param {number} flashcardCount - Number of flashcards
- * @returns {Object} - Time estimates for medical processing
+ * @param text - Medical text
+ * @param flashcardCount - Number of flashcards
+ * @returns Time estimates for medical processing
  */
-export const estimateMedicalProcessingTime = (text, flashcardCount) => {
-  const estimatedPages = Math.ceil(text.length / 2000);
-  const mode = determineMedicalProcessingMode(text, flashcardCount);
-  
+export const estimateMedicalProcessingTime = (text: string, flashcardCount: number): TimeEstimate => {
+  const estimatedPages: number = Math.ceil(text.length / 2000);
+  const mode: ProcessingModeResult = determineMedicalProcessingMode(text, flashcardCount);
+
   // Medical processing takes longer due to enhanced clinical analysis
-  let summaryTime = 0;
-  let flashcardTime = 0;
+  let summaryTime: number = 0;
+  let flashcardTime: number = 0;
 
   if (mode.mode === 'fast') {
     summaryTime = Math.min(45, estimatedPages * 3); // Longer for medical analysis
@@ -155,7 +206,7 @@ export const estimateMedicalProcessingTime = (text, flashcardCount) => {
     flashcardTime = Math.min(240, flashcardCount * 3); // Complex medical questions
   }
 
-  const totalTime = summaryTime + flashcardTime;
+  const totalTime: number = summaryTime + flashcardTime;
 
   return {
     mode: mode.mode,
@@ -168,7 +219,7 @@ export const estimateMedicalProcessingTime = (text, flashcardCount) => {
   };
 };
 
-const formatMedicalTime = (seconds) => {
+const formatMedicalTime = (seconds: number): string => {
   if (seconds < 60) {
     return `${seconds} seconds (enhanced medical analysis)`;
   } else if (seconds < 120) {

@@ -6,7 +6,7 @@ import { medStudentClient } from '../../utils/medStudentClient';
 import { useFeatureAccess } from '../../hooks/useFeatureAccess';
 import { useSubscription } from '../../hooks/useSubscription';
 import { ErrorLogger } from '../../utils/errorLogger';
-import { extractTextFromFile } from '../../utils/fileProcessor.js';
+import { extractTextFromFile } from '../../utils/fileProcessor';
 
 interface InputFormProps {
   onProcessInput: (input: File | string, flashcardCount: number, fromSummary: boolean, medicalMode?: boolean, useOCR?: boolean) => void;

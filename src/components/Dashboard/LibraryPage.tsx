@@ -9,7 +9,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useUserPreferences } from '../../contexts/UserPreferencesContext';
 import { LikeButton } from './LikeButton';
 import { TopicsTagsModal } from './TopicsTagsModal';
-import { PREDEFINED_TOPICS } from '../../utils/config.js';
+import { PREDEFINED_TOPICS } from '../../utils/config';
 import { usePageTutorial } from '../../hooks/usePageTutorial';
 import { PageTutorial } from '../Onboarding/PageTutorial';
 import { handleApiError, handleSupabaseError, isOffline, handleOfflineError } from '../../utils/errorHandler';

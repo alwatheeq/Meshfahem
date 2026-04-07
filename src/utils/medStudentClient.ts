@@ -4,7 +4,56 @@
 import { supabase } from '../lib/supabase';
 import { ErrorLogger } from './errorLogger';
 
+interface TokenUsage {
+  input: number;
+  output: number;
+  total: number;
+}
+
+interface MedicalFunctionBody {
+  action: string;
+  text?: string;
+  count?: number;
+  model?: string;
+  maxTokens?: number;
+  pageCount?: number;
+}
+
+interface MedicalFunctionResponse {
+  success: boolean;
+  error?: string;
+  summary?: string;
+  flashcards?: Flashcard[];
+  topics?: string[];
+  tokens?: TokenUsage;
+}
+
+interface Flashcard {
+  question: string;
+  answer: string;
+  [key: string]: unknown;
+}
+
+interface ValidationResult {
+  isValid: boolean;
+  score: number;
+  feedback: string;
+}
+
+interface MedicalSummaryResult {
+  summary: string;
+  tokens: TokenUsage;
+}
+
+interface MedicalFlashcardsResult {
+  flashcards: Flashcard[];
+  tokens: TokenUsage;
+}
+
 class MedStudentClient {
+  private baseUrl: string;
+  private headers: Record<string, string>;
+
   constructor() {
     this.baseUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/med-student-mode`;
     this.headers = {
@@ -15,53 +64,49 @@ class MedStudentClient {
 
   /**
    * Call the med-student-mode Edge Function
-   * @param {Object} body - Request body
-   * @returns {Promise<Object>} - Response data
    */
-  async callMedicalFunction(body) {
+  async callMedicalFunction(body: MedicalFunctionBody): Promise<MedicalFunctionResponse> {
     try {
-      ErrorLogger.debug('Calling Medical Student Mode function', { component: 'medStudentClient', action: 'callMedicalFunction', actionType: body.action });
-      
-      const response = await fetch(this.baseUrl, {
+      ErrorLogger.debug('Calling Medical Student Mode function', { component: 'medStudentClient', action: 'callMedicalFunction', actionType: body.action } as Record<string, unknown>);
+
+      const response: Response = await fetch(this.baseUrl, {
         method: 'POST',
         headers: this.headers,
         body: JSON.stringify(body)
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        const error = new Error(`Medical processing failed: ${response.status} ${errorText}`);
-        ErrorLogger.error(error, { component: 'medStudentClient', action: 'callMedicalFunction', actionType: body.action, status: response.status });
+        const errorText: string = await response.text();
+        const error: Error = new Error(`Medical processing failed: ${response.status} ${errorText}`);
+        ErrorLogger.error(error, { component: 'medStudentClient', action: 'callMedicalFunction', actionType: body.action, status: response.status } as Record<string, unknown>);
         throw error;
       }
 
-      const data = await response.json();
-      
+      const data: MedicalFunctionResponse = await response.json();
+
       if (!data.success) {
         throw new Error(data.error || 'Medical processing failed');
       }
 
-      ErrorLogger.debug('Medical mode response received successfully', { component: 'medStudentClient', action: 'callMedicalFunction', actionType: body.action });
+      ErrorLogger.debug('Medical mode response received successfully', { component: 'medStudentClient', action: 'callMedicalFunction', actionType: body.action } as Record<string, unknown>);
       return data;
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      ErrorLogger.error(err, { component: 'medStudentClient', action: 'callMedicalFunction', actionType: body?.action });
+    } catch (error: unknown) {
+      const err: Error = error instanceof Error ? error : new Error(String(error));
+      ErrorLogger.error(err, { component: 'medStudentClient', action: 'callMedicalFunction', actionType: body?.action } as Record<string, unknown>);
       throw new Error(`Medical processing error: ${err.message}`);
     }
   }
 
   /**
    * Validate if content is suitable for medical processing
-   * @param {string} text - Text to validate
-   * @returns {Promise<Object>} - Validation result
    */
-  async validateMedicalContent(text) {
+  async validateMedicalContent(text: string): Promise<ValidationResult> {
     if (!text || typeof text !== 'string') {
       return { isValid: false, score: 0, feedback: 'No text content provided' };
     }
 
-    const trimmedText = text.trim();
-    
+    const trimmedText: string = text.trim();
+
     if (trimmedText.length < 200) {
       return { isValid: false, score: 0, feedback: 'Text too short for medical analysis (minimum 200 characters)' };
     }
@@ -71,7 +116,7 @@ class MedStudentClient {
     }
 
     // Medical terminology detection
-    const medicalTerms = [
+    const medicalTerms: string[] = [
       'diagnosis', 'treatment', 'symptom', 'patient', 'disease', 'condition', 'therapy',
       'clinical', 'medical', 'pathology', 'etiology', 'prognosis', 'syndrome',
       'cardiovascular', 'respiratory', 'neurological', 'gastrointestinal', 'renal',
@@ -81,23 +126,23 @@ class MedStudentClient {
       'anatomy', 'physiology', 'organ', 'tissue', 'cell', 'muscle', 'bone'
     ];
 
-    const lowerText = trimmedText.toLowerCase();
-    const foundTerms = medicalTerms.filter(term => lowerText.includes(term));
-    const medicalScore = Math.min((foundTerms.length / medicalTerms.length) * 100, 40);
+    const lowerText: string = trimmedText.toLowerCase();
+    const foundTerms: string[] = medicalTerms.filter((term: string) => lowerText.includes(term));
+    const medicalScore: number = Math.min((foundTerms.length / medicalTerms.length) * 100, 40);
 
-    let score = 50; // Base score
+    let score: number = 50; // Base score
     score += medicalScore; // Add up to 40 points for medical content
-    
+
     // Bonus points for clinical indicators
     if (lowerText.includes('patient') || lowerText.includes('clinical')) score += 10;
     if (lowerText.includes('diagnosis') || lowerText.includes('treatment')) score += 10;
 
-    const isValid = score >= 65; // Higher threshold for medical content
-    
+    const isValid: boolean = score >= 65; // Higher threshold for medical content
+
     return {
       isValid,
       score: Math.round(score),
-      feedback: isValid 
+      feedback: isValid
         ? `Suitable for medical processing (${Math.round(medicalScore)}% medical terminology detected)`
         : 'Content may not be medical-focused enough for optimal results'
     };
@@ -105,17 +150,14 @@ class MedStudentClient {
 
   /**
    * Generate medical summary
-   * @param {string} text - Medical text content
-   * @param {number} pageCount - Page count for usage tracking
-   * @returns {Promise<{summary: string, tokens: {input: number, output: number, total: number}}>} - Medical summary with token usage
    */
-  async generateMedicalSummary(text, pageCount = 0) {
-    const validation = await this.validateMedicalContent(text);
+  async generateMedicalSummary(text: string, pageCount: number = 0): Promise<MedicalSummaryResult> {
+    const validation: ValidationResult = await this.validateMedicalContent(text);
     if (!validation.isValid) {
       throw new Error(validation.feedback);
     }
 
-    const response = await this.callMedicalFunction({
+    const response: MedicalFunctionResponse = await this.callMedicalFunction({
       action: 'summarize_medical_text',
       text,
       model: 'claude-3-haiku-20240307',
@@ -124,25 +166,21 @@ class MedStudentClient {
     });
 
     return {
-      summary: response.summary,
+      summary: response.summary!,
       tokens: response.tokens || { input: 0, output: 0, total: 0 }
     };
   }
 
   /**
    * Generate medical flashcards
-   * @param {string} text - Medical text content
-   * @param {number} count - Number of flashcards
-   * @param {number} pageCount - Page count for usage tracking
-   * @returns {Promise<{flashcards: Array, tokens: {input: number, output: number, total: number}}>} - Medical flashcards with token usage
    */
-  async generateMedicalFlashcards(text, count, pageCount = 0) {
-    const validation = await this.validateMedicalContent(text);
+  async generateMedicalFlashcards(text: string, count: number, pageCount: number = 0): Promise<MedicalFlashcardsResult> {
+    const validation: ValidationResult = await this.validateMedicalContent(text);
     if (!validation.isValid) {
       throw new Error(validation.feedback);
     }
 
-    const response = await this.callMedicalFunction({
+    const response: MedicalFunctionResponse = await this.callMedicalFunction({
       action: 'generate_medical_flashcards',
       text,
       count,
@@ -152,32 +190,30 @@ class MedStudentClient {
     });
 
     return {
-      flashcards: response.flashcards,
+      flashcards: response.flashcards!,
       tokens: response.tokens || { input: 0, output: 0, total: 0 }
     };
   }
 
   /**
    * Detect medical topics
-   * @param {string} text - Medical text content
-   * @returns {Promise<Array>} - Detected medical topics
    */
-  async detectMedicalTopics(text) {
-    const validation = await this.validateMedicalContent(text);
+  async detectMedicalTopics(text: string): Promise<string[]> {
+    const validation: ValidationResult = await this.validateMedicalContent(text);
     if (!validation.isValid) {
       return ['Medicine', 'Clinical Studies'];
     }
 
     try {
-      const response = await this.callMedicalFunction({
+      const response: MedicalFunctionResponse = await this.callMedicalFunction({
         action: 'detect_medical_topics',
         text,
         model: 'claude-3-haiku-20240307',
         maxTokens: 500
       });
 
-      return response.topics;
-    } catch (error) {
+      return response.topics!;
+    } catch (error: unknown) {
       console.warn('Medical topic detection failed:', error);
       return ['Medicine', 'Clinical Studies'];
     }
@@ -185,11 +221,10 @@ class MedStudentClient {
 
   /**
    * Test API connection
-   * @returns {Promise<boolean>} - True if API is accessible
    */
-  async testConnection() {
+  async testConnection(): Promise<boolean> {
     try {
-      const response = await this.callMedicalFunction({ action: 'ping' });
+      const response: MedicalFunctionResponse = await this.callMedicalFunction({ action: 'ping' });
       return response.success === true;
     } catch {
       return false;
@@ -198,5 +233,5 @@ class MedStudentClient {
 }
 
 // Create and export singleton instance
-export const medStudentClient = new MedStudentClient();
+export const medStudentClient: MedStudentClient = new MedStudentClient();
 export { MedStudentClient };

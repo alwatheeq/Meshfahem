@@ -33,13 +33,12 @@ import { usePageTutorial } from '../../hooks/usePageTutorial';
 import { FreeFormToggle } from './BookMode/FreeFormToggle';
 import { useI18n } from '../../contexts/I18nContext';
 import { supabase } from '../../lib/supabase';
-import { extractTextFromFile, extractTextFromImage } from '../../utils/fileProcessor.js';
-import { processSummaryBatches, processFlashcardBatches, determineProcessingMode } from '../../utils/queueProcessor.js';
-import { processMedicalContent, determineMedicalProcessingMode } from '../../utils/medicalQueueProcessor.js';
-// @ts-expect-error - translation.js is a JavaScript file without TypeScript definitions
-import { translateContent, AVAILABLE_LANGUAGES, needsTranslation, detectLanguage } from '../../utils/translation.js';
-import { normalizeText, generateTextHash, checkCache, storeInCache } from '../../utils/deduplication.js';
-import { haikuClient } from '../../utils/haikuClient.js';
+import { extractTextFromFile, extractTextFromImage } from '../../utils/fileProcessor';
+import { processSummaryBatches, processFlashcardBatches, determineProcessingMode } from '../../utils/queueProcessor';
+import { processMedicalContent, determineMedicalProcessingMode } from '../../utils/medicalQueueProcessor';
+import { translateContent, AVAILABLE_LANGUAGES, needsTranslation, detectLanguage } from '../../utils/translation';
+import { normalizeText, generateTextHash, checkCache, storeInCache } from '../../utils/deduplication';
+import { haikuClient } from '../../utils/haikuClient';
 import { handleApiError, handleSupabaseError, isOffline } from '../../utils/errorHandler';
 import { ErrorLogger } from '../../utils/errorLogger';
 
