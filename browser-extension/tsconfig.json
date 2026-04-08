@@ -18,5 +18,5 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["chrome"]
   },
-  "include": ["popup", "background", "content", "utils"]
+  "include": ["popup", "background", "content", "utils", "options"]
 }

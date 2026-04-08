@@ -1,40 +1,58 @@
 import { getSupabase, getSession } from '../utils/supabaseClient';
 
-// Context menu IDs
-const MENU_SAVE_LIBRARY = 'meshfahem-save-library';
+// ─── Context Menu Setup ─────────────────────────────────────────
+
+const MENU_PARENT = 'meshfahem-parent';
+const MENU_SAVE = 'meshfahem-save';
 const MENU_SUMMARIZE = 'meshfahem-summarize';
 const MENU_FLASHCARDS = 'meshfahem-flashcards';
+const MENU_CAPTURE_PAGE = 'meshfahem-capture-page';
 
-// Create context menus on install
 chrome.runtime.onInstalled.addListener(() => {
+  // Parent menu
   chrome.contextMenus.create({
-    id: MENU_SAVE_LIBRARY,
-    title: 'Save to Meshfahem Library',
+    id: MENU_PARENT,
+    title: 'Meshfahem',
+    contexts: ['selection', 'page'],
+  });
+
+  // Selection actions (only visible when text is selected)
+  chrome.contextMenus.create({
+    id: MENU_SAVE,
+    parentId: MENU_PARENT,
+    title: 'Save selection to Library',
     contexts: ['selection'],
   });
 
   chrome.contextMenus.create({
     id: MENU_SUMMARIZE,
-    title: 'Summarize with Meshfahem',
+    parentId: MENU_PARENT,
+    title: 'Summarize selection',
     contexts: ['selection'],
   });
 
   chrome.contextMenus.create({
     id: MENU_FLASHCARDS,
-    title: 'Create Flashcards with Meshfahem',
+    parentId: MENU_PARENT,
+    title: 'Create Flashcards from selection',
     contexts: ['selection'],
+  });
+
+  // Full-page capture (always visible)
+  chrome.contextMenus.create({
+    id: MENU_CAPTURE_PAGE,
+    parentId: MENU_PARENT,
+    title: 'Capture entire page to Library',
+    contexts: ['page', 'selection'],
   });
 });
 
-// Handle context menu clicks
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  const selectedText = info.selectionText;
-  if (!selectedText) return;
+// ─── Context Menu Handler ───────────────────────────────────────
 
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const session = await getSession();
   if (!session) {
-    // Notify user to log in
-    chrome.action.openPopup?.();
+    notifyTab(tab?.id, 'Sign in required', 'Open the Meshfahem extension popup to sign in.', 'info');
     return;
   }
 
@@ -42,27 +60,53 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const pageUrl = tab?.url || '';
 
   try {
+    if (info.menuItemId === MENU_CAPTURE_PAGE) {
+      // Capture full page content via content script
+      if (!tab?.id) return;
+
+      const pageData = await new Promise<{ content: string; pageTitle: string; pageUrl: string }>((resolve) => {
+        chrome.tabs.sendMessage(tab.id!, { type: 'GET_PAGE_CONTENT' }, (res) => {
+          resolve(res || { content: '', pageTitle: pageTitle, pageUrl: pageUrl });
+        });
+      });
+
+      if (!pageData.content) {
+        notifyTab(tab.id, 'Capture failed', 'Could not extract page content.', 'error');
+        return;
+      }
+
+      await saveToLibrary(session.user.id, pageData.content, pageData.pageTitle || pageTitle, pageData.pageUrl || pageUrl);
+      notifyTab(tab.id, 'Page captured', 'Full page saved to your Meshfahem library', 'success');
+      return;
+    }
+
+    // Selection-based actions
+    const selectedText = info.selectionText;
+    if (!selectedText) return;
+
     switch (info.menuItemId) {
-      case MENU_SAVE_LIBRARY:
+      case MENU_SAVE:
         await saveToLibrary(session.user.id, selectedText, pageTitle, pageUrl);
-        showNotification('Saved to Library', 'Text saved to your Meshfahem library');
+        notifyTab(tab?.id, 'Saved to Library', `${selectedText.length.toLocaleString()} characters saved`, 'success');
         break;
 
       case MENU_SUMMARIZE:
         await sendForProcessing(session.user.id, selectedText, pageTitle, pageUrl, 'summarize');
-        showNotification('Sent for Summarization', 'Your text is being summarized');
+        notifyTab(tab?.id, 'Summarizing...', 'Your text is being summarized by AI', 'info');
         break;
 
       case MENU_FLASHCARDS:
         await sendForProcessing(session.user.id, selectedText, pageTitle, pageUrl, 'flashcards');
-        showNotification('Creating Flashcards', 'Flashcards are being generated');
+        notifyTab(tab?.id, 'Creating flashcards...', 'AI is generating flashcards from your text', 'info');
         break;
     }
   } catch (error) {
     console.error('Meshfahem extension error:', error);
-    showNotification('Error', 'Failed to process. Please try again.');
+    notifyTab(tab?.id, 'Something went wrong', 'Please try again or check your connection.', 'error');
   }
 });
+
+// ─── Supabase Operations ────────────────────────────────────────
 
 async function saveToLibrary(userId: string, text: string, title: string, sourceUrl: string) {
   const supabase = await getSupabase();
@@ -91,7 +135,6 @@ async function sendForProcessing(
   const supabase = await getSupabase();
   if (!supabase) throw new Error('Not configured');
 
-  // Save to library first
   const { data: item, error: insertError } = await supabase
     .from('user_library_items')
     .insert({
@@ -108,7 +151,6 @@ async function sendForProcessing(
 
   if (insertError) throw insertError;
 
-  // Call edge function for processing
   const { error: fnError } = await supabase.functions.invoke('generate-summary-and-flashcards', {
     body: {
       text,
@@ -122,26 +164,24 @@ async function sendForProcessing(
   if (fnError) throw fnError;
 }
 
-function showNotification(title: string, message: string) {
-  // Send to content script for in-page toast
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs[0]?.id) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        type: 'MESHFAHEM_NOTIFICATION',
-        title,
-        message,
-      });
-    }
+// ─── Notification Helper ────────────────────────────────────────
+
+function notifyTab(tabId: number | undefined, title: string, message: string, variant: 'success' | 'error' | 'info' = 'success') {
+  if (!tabId) return;
+  chrome.tabs.sendMessage(tabId, {
+    type: 'MESHFAHEM_NOTIFICATION',
+    title,
+    message,
+    variant,
   });
 }
 
-// Handle messages from popup
+// ─── Message Handler (popup ↔ background) ───────────────────────
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'GET_SESSION') {
-    getSession().then((session) => {
-      sendResponse({ session });
-    });
-    return true; // Keep channel open for async response
+    getSession().then((session) => sendResponse({ session }));
+    return true;
   }
 
   if (message.type === 'SAVE_SELECTION') {
@@ -150,6 +190,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         chrome.tabs.sendMessage(tabs[0].id, { type: 'GET_SELECTION' }, (response) => {
           sendResponse(response);
         });
+      } else {
+        sendResponse({ selectedText: '', pageTitle: '', pageUrl: '' });
       }
     });
     return true;
