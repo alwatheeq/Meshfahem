@@ -13,8 +13,13 @@ interface ChatAssistantProps {
   originalText?: string;
   topics?: string[];
   medicalMode?: boolean;
-  contextType?: 'summary' | 'library_item' | 'history_item' | 'shared';
+  contextType?: 'summary' | 'library_item' | 'history_item' | 'shared' | 'course';
   contextId?: string | null;
+  courseContext?: {
+    courseName: string;
+    courseTopics: string[];
+    courseScore: number;
+  } | null;
 }
 
 interface Message {
@@ -30,7 +35,8 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
   topics = [],
   medicalMode = false,
   contextType = 'summary',
-  contextId = null
+  contextId = null,
+  courseContext = null
 }) => {
   const { user } = useAuth();
   const { t } = useI18n();
@@ -167,7 +173,14 @@ export const ChatAssistant: React.FC<ChatAssistantProps> = ({
           topics: topics || [],
           medical_mode: medicalMode || false,
           context_type: contextType,
-          context_id: contextId
+          context_id: contextId,
+          ...(courseContext ? {
+            course_context: {
+              course_name: courseContext.courseName,
+              course_topics: courseContext.courseTopics,
+              course_score: courseContext.courseScore,
+            }
+          } : {})
         })
       });
 

@@ -14,7 +14,9 @@ import { ProfilePage } from './ProfilePage';
 import { QuizPage } from './QuizPage';
 import { EduPlayPage } from './EduPlayPage';
 import { StudyRoomsPage } from './StudyRoomsPage';
+import { SocialPage } from './Social/SocialPage';
 import { AcademicsPage } from './Academics/AcademicsPage';
+import { FloatingVideoPlayer } from './FloatingVideoPlayer';
 import { InsufficientCreditsModal } from './InsufficientCreditsModal';
 import { PersistentSubscriptionModal } from '../Subscription/PersistentSubscriptionModal';
 import {
@@ -73,7 +75,8 @@ type DashboardSidebarView =
   | 'quiz'
   | 'eduplay'
   | 'academics'
-  | 'study-rooms';
+  | 'study-rooms'
+  | 'social';
 
 function mapDashboardViewToSoftUpsellFeature(view: DashboardSidebarView): FeatureType | null {
   switch (view) {
@@ -141,7 +144,7 @@ export const Dashboard: React.FC = () => {
     }
   }, [location.state, location.pathname, user, navigate]);
 
-  const [currentView, setCurrentView] = useState<'main' | 'history' | 'library' | 'informational' | 'feedback' | 'profile' | 'quiz' | 'eduplay' | 'academics' | 'study-rooms'>('main');
+  const [currentView, setCurrentView] = useState<DashboardSidebarView>('main');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [libraryRefreshKey, setLibraryRefreshKey] = useState(0);
@@ -1359,6 +1362,7 @@ export const Dashboard: React.FC = () => {
             )}
 
             {currentView === 'study-rooms' && <StudyRoomsPage />}
+            {currentView === 'social' && <SocialPage />}
 
             {currentView === 'academics' && <AcademicsPage key="academics" />}
 
@@ -1610,6 +1614,7 @@ export const Dashboard: React.FC = () => {
       
       {/* Global Chat Assistant - Available on all pages except EduPlay */}
       {currentView !== 'eduplay' && <GlobalChatAssistant />}
+      <FloatingVideoPlayer />
 
       {/* Dashboard Tutorial */}
       {tutorialConfig && (

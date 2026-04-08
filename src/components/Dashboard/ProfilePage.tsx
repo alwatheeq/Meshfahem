@@ -1368,6 +1368,22 @@ export const ProfilePage: React.FC = React.memo(() => {
                     {stats.bio && (
                       <p className="text-gray-600 dark:text-gray-400 mt-1">{stats.bio}</p>
                     )}
+                    {(stats as any).username && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">
+                          @{(stats as any).username}
+                        </span>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText((stats as any).username);
+                          }}
+                          className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                          title={t('social.copy_username') || 'Copy username'}
+                        >
+                          {t('social.copy_username') || 'Copy'}
+                        </button>
+                      </div>
+                    )}
                   </>
                 )}
 

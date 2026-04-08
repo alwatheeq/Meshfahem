@@ -9,6 +9,7 @@ import { UserPreferencesProvider } from './contexts/UserPreferencesContext';
 import { OnboardingProvider } from './contexts/OnboardingContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ChatProvider } from './contexts/ChatContext';
+import { VideoRoomProvider } from './contexts/VideoRoomContext';
 import { ToastProvider } from './components/Toast/Toast';
 import { Auth } from './components/Auth/Auth';
 import { Dashboard } from './components/Dashboard/Dashboard';
@@ -299,6 +300,7 @@ function App() {
                 <UserPreferencesProvider>
                   <OnboardingProvider>
                     <ThemeProvider>
+                      <VideoRoomProvider>
                       <ChatProvider>
                       <SubscriptionUpsellGateProvider>
                       <PersistentModalProvider>
@@ -399,6 +401,7 @@ function App() {
                       </PersistentModalProvider>
                       </SubscriptionUpsellGateProvider>
                       </ChatProvider>
+                      </VideoRoomProvider>
                     </ThemeProvider>
                   </OnboardingProvider>
                 </UserPreferencesProvider>

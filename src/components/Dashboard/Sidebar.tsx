@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useRef } from 'react';
-import { Home, History, BookOpen, Menu, ChevronLeft, Info, MessageSquare, FileQuestion, Target, Users, Gamepad2, Pin, PinOff } from 'lucide-react';
+import { Home, History, BookOpen, Menu, ChevronLeft, Info, MessageSquare, FileQuestion, Target, Users, Gamepad2, Pin, PinOff, UserPlus } from 'lucide-react';
 import { useI18n } from '../../contexts/I18nContext';
 import { useMouseProximity } from '../../hooks/useMouseProximity';
 import { useUserPreferences } from '../../contexts/UserPreferencesContext';
@@ -7,8 +7,8 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useTTS } from '../../hooks/useTTS';
 
 interface SidebarProps {
-  currentView: 'main' | 'history' | 'library' | 'informational' | 'feedback' | 'profile' | 'quiz' | 'eduplay' | 'academics' | 'study-rooms';
-  onNavigate: (view: 'main' | 'history' | 'library' | 'informational' | 'feedback' | 'profile' | 'quiz' | 'eduplay' | 'academics' | 'study-rooms') => void;
+  currentView: 'main' | 'history' | 'library' | 'informational' | 'feedback' | 'profile' | 'quiz' | 'eduplay' | 'academics' | 'study-rooms' | 'social';
+  onNavigate: (view: 'main' | 'history' | 'library' | 'informational' | 'feedback' | 'profile' | 'quiz' | 'eduplay' | 'academics' | 'study-rooms' | 'social') => void;
   isSidebarOpen: boolean;
   toggleSidebar: () => void;
 }
@@ -115,6 +115,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: t('sidebar.study_rooms'),
       icon: Users,
       description: t('sidebar.study_rooms_desc'),
+      disabled: false
+    },
+    {
+      id: 'social' as const,
+      label: t('sidebar.social') || 'Friends & Groups',
+      icon: UserPlus,
+      description: t('sidebar.social_desc') || 'Connect with study buddies',
       disabled: false
     },
     {

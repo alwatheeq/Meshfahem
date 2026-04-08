@@ -11,6 +11,7 @@ import { hasBasicProfanity } from '../../../utils/academicsProfanity';
 import { computeFlashcardTopicScores, computeTopicQuizScores, mergeTopicScores } from '../../../utils/academicsAnalytics';
 import { extractTextFromFile } from '../../../utils/fileProcessor';
 import { haikuClient } from '../../../utils/haikuClient';
+import { CourseDetailView } from './CourseDetailView';
 
 type QuizQuestionJson = {
   index?: number;
@@ -580,6 +581,20 @@ export const AcademicsPage: React.FC = React.memo(() => {
           </div>
         </div>
       </div>
+
+      {/* Course Detail View with tabs (Analytics, SRS, Exams, Challenges, Tutor) */}
+      {selectedCourse && (
+        <CourseDetailView
+          courseId={selectedCourse.id}
+          courseName={selectedCourse.course_name}
+          courseCode={selectedCourse.course_code}
+          courseTopicName={selectedCourse.academics_topics?.name || ''}
+          courseItems={courseItems}
+          courseQuizzes={courseQuizzes}
+          courseScore={courseScore}
+          topicScores={topicScores}
+        />
+      )}
 
       {showCreateCourse ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

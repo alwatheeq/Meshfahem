@@ -1,6 +1,8 @@
 import React from 'react';
-import { FileText, RefreshCw, Copy, Check, BookOpen, FileSearch, X, Download, Folder, Tag, Plus, AlertCircle, Stethoscope, GraduationCap, Activity, Globe, Lock } from 'lucide-react';
+import { FileText, RefreshCw, Copy, Check, BookOpen, FileSearch, X, Download, Folder, Tag, Plus, AlertCircle, Stethoscope, GraduationCap, Activity, Globe, Lock, Timer, Network } from 'lucide-react';
 import { parseBlocks } from '../../utils/summaryFormatter';
+import { PomodoroTimer } from './PomodoroTimer';
+import MindMapGenerator from './MindMap/MindMapGenerator';
 import html2pdf from 'html2pdf.js'; // Ensure html2pdf.js is correctly imported
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
@@ -80,6 +82,8 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
   const [published, setPublished] = React.useState(false);
   const [showOriginalText, setShowOriginalText] = React.useState(false);
   const [showPublishModal, setShowPublishModal] = React.useState(false);
+  const [showMindMap, setShowMindMap] = React.useState(false);
+  const [pomodoroBreak, setPomodoroBreak] = React.useState(false);
   const [folders, setFolders] = React.useState<UserFolder[]>([]);
   const [tags, setTags] = React.useState<UserTag[]>([]);
   const [selectedFolderId, setSelectedFolderId] = React.useState<string>('');
@@ -1000,6 +1004,20 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
                 <span>{t('summary.export_pdf')}</span>
               </button>
 
+              <button
+                type="button"
+                onClick={() => setShowMindMap(true)}
+                className="flex items-center space-x-2 px-3 py-1.5 text-sm text-teal-600 hover:text-teal-800 border border-teal-300 rounded-lg hover:bg-teal-50 transition duration-150 dark:border-teal-600 dark:hover:bg-teal-900 dark:text-teal-400 dark:hover:text-teal-200"
+              >
+                <Network className="h-4 w-4" />
+                <span>{t('mind_map.generate') || 'Mind Map'}</span>
+              </button>
+
+              <PomodoroTimer
+                onBreakStart={() => setPomodoroBreak(true)}
+                onBreakEnd={() => setPomodoroBreak(false)}
+              />
+
               {!isSharedView && (
                 <button
                   onClick={handleShowPublishModal}
@@ -1347,6 +1365,14 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
           </div>
         </div>
       </div>
+    )}
+
+    {/* Mind Map Modal */}
+    {showMindMap && (
+      <MindMapGenerator
+        text={combinedSummary}
+        onClose={() => setShowMindMap(false)}
+      />
     )}
     </>
   );

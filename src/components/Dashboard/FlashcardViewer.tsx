@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../contexts/ThemeContext';
 import { recordFlashcardStudy, recordFlashcardRating } from '../../utils/studyTracking';
 import { ReadAloudButton } from './ReadAloud/ReadAloudButton';
+import { FlashcardExplanation } from './FlashcardExplanation';
 
 interface Flashcard {
   front: string;
@@ -815,6 +816,14 @@ const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, me
                           {feedbackMessage}
                         </p>
                       </div>
+                      {isCorrect === false && currentCard && (
+                        <FlashcardExplanation
+                          question={currentCard.front}
+                          correctAnswer={currentCard.back}
+                          userAnswer={typedAnswer || selectedOption || undefined}
+                          medicalMode={medicalMode}
+                        />
+                      )}
                       <button
                         onClick={nextCard}
                         className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-150 dark:bg-blue-500 dark:hover:bg-blue-600"
@@ -875,6 +884,14 @@ const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, me
                           {feedbackMessage}
                         </p>
                       </div>
+                      {isCorrect === false && currentCard && (
+                        <FlashcardExplanation
+                          question={currentCard.front}
+                          correctAnswer={currentCard.back}
+                          userAnswer={typedAnswer || selectedOption || undefined}
+                          medicalMode={medicalMode}
+                        />
+                      )}
                       <button
                         onClick={nextCard}
                         className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-150 dark:bg-blue-500 dark:hover:bg-blue-600"
@@ -925,6 +942,14 @@ const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, me
                           {feedbackMessage}
                         </p>
                       </div>
+                      {isCorrect === false && currentCard && (
+                        <FlashcardExplanation
+                          question={currentCard.front}
+                          correctAnswer={currentCard.back}
+                          userAnswer={typedAnswer || selectedOption || undefined}
+                          medicalMode={medicalMode}
+                        />
+                      )}
                       <button
                         onClick={nextCard}
                         className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-150 dark:bg-blue-500 dark:hover:bg-blue-600"
@@ -968,6 +993,14 @@ const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, me
                           {feedbackMessage}
                         </p>
                       </div>
+                      {isCorrect === false && currentCard && (
+                        <FlashcardExplanation
+                          question={currentCard.front}
+                          correctAnswer={currentCard.back}
+                          userAnswer={typedAnswer || selectedOption || undefined}
+                          medicalMode={medicalMode}
+                        />
+                      )}
                       <button
                         onClick={nextCard}
                         className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-150 dark:bg-blue-500 dark:hover:bg-blue-600"
