@@ -128,7 +128,7 @@ export const SocialPage: React.FC = () => {
         {username && (
           <button
             onClick={handleCopyUsername}
-            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border ${getThemeCardBorder()} ${getThemeCardBg()} hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors group`}
+            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border ${getThemeCardBorder()} ${getThemeCardBg()} hover:opacity-80 transition-colors group`}
             title={t('social.copy_username') || 'Copy username'}
           >
             <AtSign className="w-3.5 h-3.5 text-emerald-500" />
@@ -152,8 +152,8 @@ export const SocialPage: React.FC = () => {
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all flex-1 justify-center ${
                 isActive
-                  ? 'bg-white dark:bg-gray-800 text-emerald-600 dark:text-emerald-400 shadow-sm'
-                  : `${getThemeTextMuted()} hover:${getThemeTextSecondary()}`
+                  ? `${getThemeCardBg()} text-emerald-600 dark:text-emerald-400 shadow-sm`
+                  : `${getThemeTextMuted()} hover:opacity-80`
               }`}
             >
               {tab.icon}

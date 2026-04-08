@@ -106,6 +106,8 @@ export const CourseDetailView: React.FC<CourseDetailViewProps> = ({
           return (
             <button
               key={key}
+              role="tab"
+              aria-selected={isActive}
               onClick={() => setActiveTab(key)}
               className={`
                 flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors

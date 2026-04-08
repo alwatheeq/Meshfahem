@@ -19,7 +19,7 @@ export const FlashcardExplanation: React.FC<FlashcardExplanationProps> = ({
   medicalMode = false,
 }) => {
   const { t } = useI18n();
-  const { getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary } = useTheme();
+  const { getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeAccent } = useTheme();
   const [expanded, setExpanded] = useState(false);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -67,10 +67,12 @@ Explain briefly (2-3 sentences) why the correct answer is right${userAnswer ? ' 
     <div className="mt-3">
       <button
         onClick={fetchExplanation}
+        aria-expanded={expanded}
+        aria-label={t('flashcard_explanation.why') || 'Why?'}
         className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
           expanded
             ? `${getThemeCardBg()} ${getThemeCardBorder()} border`
-            : 'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20'
+            : `${getThemeAccent()} hover:opacity-80`
         }`}
       >
         {loading ? (

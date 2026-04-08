@@ -37,7 +37,7 @@ export function parseAIResponse(response: string): MindMapConcept[] {
  * Converts an array of MindMapConcept objects into ReactFlow nodes and edges
  * using a radial tree layout. The first concept is the center/root node.
  */
-export function conceptsToFlow(concepts: MindMapConcept[]): { nodes: Node[]; edges: Edge[] } {
+export function conceptsToFlow(concepts: MindMapConcept[], isDark: boolean = false): { nodes: Node[]; edges: Edge[] } {
   if (concepts.length === 0) {
     return { nodes: [], edges: [] };
   }
@@ -57,14 +57,18 @@ export function conceptsToFlow(concepts: MindMapConcept[]): { nodes: Node[]; edg
     sourcePosition: Position.Bottom,
     targetPosition: Position.Top,
     style: {
-      background: 'linear-gradient(135deg, #10b981, #14b8a6)',
+      background: isDark
+        ? 'linear-gradient(135deg, #059669, #0d9488)'
+        : 'linear-gradient(135deg, #10b981, #14b8a6)',
       color: '#ffffff',
       border: 'none',
       borderRadius: '16px',
       padding: '16px 28px',
       fontSize: '16px',
       fontWeight: 700,
-      boxShadow: '0 8px 24px rgba(16, 185, 129, 0.35)',
+      boxShadow: isDark
+        ? '0 8px 24px rgba(5, 150, 105, 0.25)'
+        : '0 8px 24px rgba(16, 185, 129, 0.35)',
       minWidth: '180px',
       textAlign: 'center' as const,
     },
@@ -98,8 +102,10 @@ export function conceptsToFlow(concepts: MindMapConcept[]): { nodes: Node[]; edg
         fontWeight: 500,
         minWidth: '120px',
         textAlign: 'center' as const,
-        border: '1px solid rgba(148, 163, 184, 0.3)',
-        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+        background: isDark ? '#1e293b' : '#ffffff',
+        color: isDark ? '#e2e8f0' : '#334155',
+        border: isDark ? '1px solid rgba(100, 116, 139, 0.3)' : '1px solid rgba(148, 163, 184, 0.3)',
+        boxShadow: isDark ? '0 2px 8px rgba(0, 0, 0, 0.3)' : '0 2px 8px rgba(0, 0, 0, 0.08)',
       },
     });
 
@@ -111,7 +117,7 @@ export function conceptsToFlow(concepts: MindMapConcept[]): { nodes: Node[]; edg
       type: 'smoothstep',
       animated: true,
       style: {
-        stroke: '#10b981',
+        stroke: isDark ? '#34d399' : '#10b981',
         strokeWidth: 2,
       },
     });
@@ -132,7 +138,7 @@ export function conceptsToFlow(concepts: MindMapConcept[]): { nodes: Node[]; edg
           target: childId,
           type: 'smoothstep',
           style: {
-            stroke: '#94a3b8',
+            stroke: isDark ? '#64748b' : '#94a3b8',
             strokeWidth: 1.5,
             strokeDasharray: '6 3',
           },

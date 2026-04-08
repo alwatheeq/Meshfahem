@@ -290,7 +290,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, groupName, onBack
         <img
           src={profile.avatar_url}
           alt={profile.display_name || profile.username}
-          className="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-gray-700 flex-shrink-0"
+          className={`w-8 h-8 rounded-full object-cover border ${getThemeCardBorder()} flex-shrink-0`}
         />
       );
     }

@@ -120,7 +120,7 @@ export const UserSearch: React.FC<UserSearchProps> = ({ onAddFriend }) => {
         {results.map((profile) => (
           <div
             key={profile.id}
-            className={`flex items-center gap-3 p-3 rounded-xl border ${getThemeCardBorder()} ${getThemeCardBg()} hover:${getThemeSubtle()} transition-colors`}
+            className={`flex items-center gap-3 p-3 rounded-xl border ${getThemeCardBorder()} ${getThemeCardBg()} hover:opacity-90 transition-all`}
           >
             {/* Avatar */}
             {profile.avatar_url ? (

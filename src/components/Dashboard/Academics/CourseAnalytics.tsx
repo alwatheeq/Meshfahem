@@ -152,8 +152,8 @@ export const CourseAnalytics: React.FC<CourseAnalyticsProps> = ({ courseId, cour
   if (loading) {
     return (
       <div className={`rounded-xl border p-6 ${getThemeCardBg()} ${getThemeCardBorder()} animate-pulse`}>
-        <div className="h-6 w-48 rounded bg-gray-200 dark:bg-gray-700 mb-4" />
-        <div className="h-32 rounded bg-gray-200 dark:bg-gray-700" />
+        <div className="h-6 w-48 rounded ${getThemeSubtle()} mb-4" />
+        <div className="h-32 rounded ${getThemeSubtle()}" />
       </div>
     );
   }
@@ -183,7 +183,7 @@ export const CourseAnalytics: React.FC<CourseAnalyticsProps> = ({ courseId, cour
           </span>
           <span className={`text-2xl font-bold ${getThemeTextPrimary()}`}>{overallScore}%</span>
         </div>
-        <div className="w-full h-3 rounded-full bg-gray-200 dark:bg-gray-700">
+        <div className="w-full h-3 rounded-full ${getThemeSubtle()}">
           <div
             className={`h-3 rounded-full transition-all duration-500 ${getBarColor(overallScore)}`}
             style={{ width: `${overallScore}%` }}
@@ -204,7 +204,7 @@ export const CourseAnalytics: React.FC<CourseAnalyticsProps> = ({ courseId, cour
                   <span className={`text-xs truncate max-w-[70%] ${getThemeTextMuted()}`}>{ts.topic}</span>
                   <span className={`text-xs font-medium ${getThemeTextSecondary()}`}>{ts.score}%</span>
                 </div>
-                <div className="w-full h-2 rounded-full bg-gray-200 dark:bg-gray-700">
+                <div className="w-full h-2 rounded-full ${getThemeSubtle()}">
                   <div
                     className={`h-2 rounded-full transition-all duration-300 ${getBarColor(ts.score)}`}
                     style={{ width: `${(ts.score / maxTopicScore) * 100}%` }}

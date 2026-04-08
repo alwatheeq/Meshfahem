@@ -64,7 +64,7 @@ const MindMapViewer: React.FC<MindMapViewerProps> = ({ nodes, edges, onClose }) 
         {/* Title bar */}
         <div
           className={`absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-5 py-3
-            border-b backdrop-blur-md bg-white/80 dark:bg-gray-900/80 ${getThemeCardBorder()}`}
+            border-b backdrop-blur-md ${getThemeCardBg()} ${getThemeCardBorder()}`}
         >
           <div className="flex items-center gap-2.5">
             <div className={`p-1.5 rounded-lg ${getThemeAccent()} bg-opacity-10`}>
@@ -80,7 +80,7 @@ const MindMapViewer: React.FC<MindMapViewerProps> = ({ nodes, edges, onClose }) 
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className={`p-2 rounded-xl hover:opacity-80 transition-colors ${getThemeCardBg()}`}
             aria-label="Close mind map"
           >
             <X className={`w-5 h-5 ${getThemeTextSecondary()}`} />

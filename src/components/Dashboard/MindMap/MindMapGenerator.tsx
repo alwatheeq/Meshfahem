@@ -47,7 +47,8 @@ const MindMapGenerator: React.FC<MindMapGeneratorProps> = ({ text, itemId, onClo
 
       const responseText = typeof data === 'string' ? data : data?.response || data?.message || JSON.stringify(data);
       const concepts = parseAIResponse(responseText);
-      const flow = conceptsToFlow(concepts);
+      const isDark = document.documentElement.classList.contains('dark');
+      const flow = conceptsToFlow(concepts, isDark);
 
       setNodes(flow.nodes);
       setEdges(flow.edges);

@@ -75,7 +75,7 @@ export const HighlightMenu: React.FC<HighlightMenuProps> = ({
           {onCreateFlashcard && (
             <button
               onClick={onCreateFlashcard}
-              className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs font-medium ${getThemeTextSecondary()} hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors`}
+              className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs font-medium ${getThemeTextSecondary()} hover:opacity-80 transition-colors`}
             >
               <CreditCard className="h-3.5 w-3.5" />
               {t('highlighting.create_flashcard') || 'Create Flashcard'}
@@ -84,7 +84,7 @@ export const HighlightMenu: React.FC<HighlightMenuProps> = ({
 
           <button
             onClick={() => setShowNote(!showNote)}
-            className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs font-medium ${getThemeTextSecondary()} hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors`}
+            className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs font-medium ${getThemeTextSecondary()} hover:opacity-80 transition-colors`}
           >
             <StickyNote className="h-3.5 w-3.5" />
             {t('highlighting.add_note') || 'Add Note'}
@@ -127,7 +127,7 @@ export const HighlightMenu: React.FC<HighlightMenuProps> = ({
         {/* Close button - small X in corner */}
         <button
           onClick={onClose}
-          className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-gray-200 dark:bg-gray-600 flex items-center justify-center hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors"
+          className={`absolute -top-2 -right-2 w-5 h-5 rounded-full ${getThemeCardBg()} ${getThemeCardBorder()} border flex items-center justify-center hover:opacity-80 transition-colors`}
         >
           <X className="h-3 w-3 text-gray-600 dark:text-gray-300" />
         </button>

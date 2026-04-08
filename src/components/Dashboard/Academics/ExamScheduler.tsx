@@ -162,8 +162,8 @@ export const ExamScheduler: React.FC<ExamSchedulerProps> = ({ courseId }) => {
   if (loading) {
     return (
       <div className={`rounded-xl border p-6 ${getThemeCardBg()} ${getThemeCardBorder()} animate-pulse`}>
-        <div className="h-6 w-40 rounded bg-gray-200 dark:bg-gray-700 mb-4" />
-        <div className="h-20 rounded bg-gray-200 dark:bg-gray-700" />
+        <div className="h-6 w-40 rounded ${getThemeSubtle()} mb-4" />
+        <div className="h-20 rounded ${getThemeSubtle()}" />
       </div>
     );
   }
@@ -180,7 +180,7 @@ export const ExamScheduler: React.FC<ExamSchedulerProps> = ({ courseId }) => {
         </div>
         <button
           onClick={() => setShowAddForm(!showAddForm)}
-          className={`p-2 rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-800 ${getThemeTextSecondary()}`}
+          className={`p-2 rounded-lg transition-colors hover:opacity-80 ${getThemeTextSecondary()}`}
         >
           <Plus className="w-5 h-5" />
         </button>
@@ -216,7 +216,7 @@ export const ExamScheduler: React.FC<ExamSchedulerProps> = ({ courseId }) => {
               </button>
               <button
                 onClick={() => { setShowAddForm(false); setNewExamName(''); setNewExamDate(''); }}
-                className={`px-4 py-2 rounded-lg text-sm ${getThemeTextMuted()} hover:bg-gray-100 dark:hover:bg-gray-800`}
+                className={`px-4 py-2 rounded-lg text-sm ${getThemeTextMuted()} hover:opacity-80`}
               >
                 {t('common.cancel') || 'Cancel'}
               </button>
@@ -263,6 +263,7 @@ export const ExamScheduler: React.FC<ExamSchedulerProps> = ({ courseId }) => {
                     </div>
                     <button
                       onClick={() => handleDeleteExam(exam.id)}
+                      aria-label={t('academics.exam_scheduler.delete') || 'Delete exam'}
                       className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />

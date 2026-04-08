@@ -78,21 +78,22 @@ export const FloatingVideoPlayer: React.FC = () => {
           <div className="flex items-center gap-1">
             <button
               onClick={() => setIsMuted(!isMuted)}
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+              className="p-1 rounded hover:opacity-80 transition-colors"
               title={isMuted ? 'Unmute' : 'Mute'}
+              aria-label={isMuted ? 'Unmute' : 'Mute'}
             >
               {isMuted ? (
-                <VolumeX className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
+                <VolumeX className="h-3.5 w-3.5 ${getThemeTextMuted()}" />
               ) : (
-                <Volume2 className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
+                <Volume2 className="h-3.5 w-3.5 ${getThemeTextMuted()}" />
               )}
             </button>
             <button
               onClick={maximize}
-              className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+              className="p-1 rounded hover:opacity-80 transition-colors"
               title={t('floating_video.expand') || 'Return to Room'}
             >
-              <Maximize2 className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
+              <Maximize2 className="h-3.5 w-3.5 ${getThemeTextMuted()}" />
             </button>
             <button
               onClick={disconnect}

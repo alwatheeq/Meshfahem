@@ -59,8 +59,8 @@ export const SrsReviewPanel: React.FC<SrsReviewPanelProps> = ({ courseItemIds, o
   if (loading) {
     return (
       <div className={`rounded-xl border p-6 ${getThemeCardBg()} ${getThemeCardBorder()} animate-pulse`}>
-        <div className="h-6 w-40 rounded bg-gray-200 dark:bg-gray-700 mb-4" />
-        <div className="h-24 rounded bg-gray-200 dark:bg-gray-700" />
+        <div className="h-6 w-40 rounded ${getThemeSubtle()} mb-4" />
+        <div className="h-24 rounded ${getThemeSubtle()}" />
       </div>
     );
   }
@@ -86,7 +86,7 @@ export const SrsReviewPanel: React.FC<SrsReviewPanelProps> = ({ courseItemIds, o
               stroke="currentColor"
               strokeWidth="8"
               fill="none"
-              className="text-gray-200 dark:text-gray-700"
+              className={`${getThemeTextMuted()} opacity-30`}
             />
             <circle
               cx="48"
@@ -136,7 +136,7 @@ export const SrsReviewPanel: React.FC<SrsReviewPanelProps> = ({ courseItemIds, o
         className={`w-full mt-5 py-3 px-4 rounded-lg font-medium text-white transition-all duration-200 ${
           dueCount > 0
             ? `bg-gradient-to-r ${getThemeGradient()} hover:opacity-90 active:scale-[0.98]`
-            : 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed opacity-60'
+            : `${getThemeSubtle()} cursor-not-allowed opacity-60`
         }`}
       >
         {dueCount > 0
