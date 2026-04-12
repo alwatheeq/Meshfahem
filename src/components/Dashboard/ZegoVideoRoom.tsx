@@ -3,12 +3,23 @@ import { ZegoUIKitPrebuilt } from '@zegocloud/zego-uikit-prebuilt';
 import { Loader2 } from 'lucide-react';
 import { handleApiError, isOffline } from '../../utils/errorHandler';
 import { ErrorLogger } from '../../utils/errorLogger';
+import { useFloatingVideoStore } from '../../stores/useFloatingVideoStore';
+
+export interface FloatingRoomMeta {
+  id: string;
+  room_code: string;
+  name: string;
+  description?: string;
+  max_participants: number;
+}
 
 interface ZegoVideoRoomProps {
   roomId: string;        // Unique identifier for video session (room code or ID)
   roomName: string;      // Display name shown to users
   userName: string;
   onDisconnect: () => void;
+  /** When set, registers the active study room in the floating video store on join. */
+  floatingRoomMeta?: FloatingRoomMeta;
 }
 
 function randomID(len: number): string {
@@ -26,7 +37,11 @@ export const ZegoVideoRoom: React.FC<ZegoVideoRoomProps> = ({
   roomName,
   userName,
   onDisconnect,
+  floatingRoomMeta,
 }) => {
+  const floatingMetaRef = useRef<FloatingRoomMeta | undefined>(floatingRoomMeta);
+  floatingMetaRef.current = floatingRoomMeta;
+
   const containerRef = useRef<HTMLDivElement>(null);
   const zegoInstanceRef = useRef<ReturnType<typeof ZegoUIKitPrebuilt.create> | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -152,9 +167,20 @@ export const ZegoVideoRoom: React.FC<ZegoVideoRoomProps> = ({
           onJoinRoom: () => {
             ErrorLogger.info('Successfully joined room', { component: 'ZegoVideoRoom', action: 'onJoinRoom', roomId });
             ErrorLogger.debug('Chat feature is enabled', { component: 'ZegoVideoRoom', action: 'onJoinRoom', roomId });
+            const meta = floatingMetaRef.current;
+            if (meta) {
+              useFloatingVideoStore.getState().joinRoom({
+                id: meta.id,
+                room_code: meta.room_code,
+                name: meta.name,
+                description: meta.description,
+                max_participants: meta.max_participants,
+              });
+            }
           },
           onLeaveRoom: () => {
             ErrorLogger.info('User left room', { component: 'ZegoVideoRoom', action: 'onLeaveRoom', roomId });
+            useFloatingVideoStore.getState().leaveRoom();
             onDisconnect();
           },
           onUserJoin: (users: Array<{ userID: string; userName: string }>) => {
@@ -182,6 +208,7 @@ export const ZegoVideoRoom: React.FC<ZegoVideoRoomProps> = ({
     initializeZego();
 
     return () => {
+      useFloatingVideoStore.getState().leaveRoom();
       if (zegoInstanceRef.current) {
         try {
           ErrorLogger.debug('Destroying video instance', { component: 'ZegoVideoRoom', action: 'cleanup', roomId });

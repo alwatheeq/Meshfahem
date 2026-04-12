@@ -45,7 +45,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
     >
       <div className="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm"></div>
 
-      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:s shadow-[0_2px_8px_rgba(0,0,0,0.08)]hadow-lg max-w-md w-full overflow-hidden animate-scaleIn border border-gray-100 dark:border-gray-700">
+      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] dark:shadow-lg max-w-md w-full overflow-hidden animate-scaleIn border border-gray-100 dark:border-gray-700">
         <div className="p-6">
           <div className="flex items-start space-x-4 mb-4">
             {isDestructive && (

@@ -1,19 +1,60 @@
 // Medical Queue Processor
 // Handles medical content processing with enhanced clinical focus
 
-import { medStudentClient } from './medStudentClient.js';
-import { CONFIG } from './config.js';
+import { medStudentClient } from './medStudentClient';
 import { ErrorLogger } from './errorLogger';
 
-/**
- * Process medical content with specialized medical education pipeline
- * @param {string} text - Medical text content
- * @param {number} flashcardCount - Number of flashcards to generate
- * @param {boolean} fromSummary - Whether to generate flashcards from summary
- * @param {Function} onProgress - Progress callback
- * @returns {Promise<Object>} - Medical processing results with token usage
- */
-export const processMedicalContent = async (text, flashcardCount, fromSummary, onProgress) => {
+export interface Flashcard {
+  front: string;
+  back: string;
+}
+
+export interface MedicalProgressData {
+  summaryChunks?: string[];
+  flashcards?: Flashcard[];
+  topics?: string[];
+  medicalScore?: number;
+}
+
+export type MedicalProgressCallback = (progress: number, message: string, data: MedicalProgressData | null) => void;
+
+export interface MedicalProcessingResult {
+  summary: string;
+  flashcards: Flashcard[];
+  topics: string[];
+  medicalScore: number;
+  tokens: number;
+  processingMode: 'medical';
+}
+
+export interface MedicalProcessingMode {
+  mode: 'fast' | 'staged';
+  reason: string;
+  estimatedPages: number;
+  batches: number;
+  medicalOptimized: boolean;
+}
+
+export interface TimeEstimate {
+  mode: string;
+  estimatedPages: number;
+  summaryTime: number;
+  flashcardTime: number;
+  totalTime: number;
+  formattedTime: string;
+}
+
+export interface MedicalTimeEstimate extends Omit<TimeEstimate, 'mode'> {
+  mode: string;
+  medicalEnhanced: boolean;
+}
+
+export const processMedicalContent = async (
+  text: string,
+  flashcardCount: number,
+  fromSummary: boolean,
+  onProgress?: MedicalProgressCallback
+): Promise<MedicalProcessingResult> => {
   if (!text || text.trim().length === 0) {
     throw new Error('Medical text content is required');
   }
@@ -98,20 +139,13 @@ export const processMedicalContent = async (text, flashcardCount, fromSummary, o
   }
 };
 
-/**
- * Determine medical processing mode based on content
- * @param {string} text - Medical text
- * @param {number} flashcardCount - Requested flashcards
- * @returns {Object} - Processing mode information
- */
-export const determineMedicalProcessingMode = (text, flashcardCount) => {
+export const determineMedicalProcessingMode = (text: string, flashcardCount: number): MedicalProcessingMode => {
   if (!text) {
-    return { mode: 'fast', reason: 'No content', batches: 1 };
+    return { mode: 'fast', reason: 'No content', estimatedPages: 0, batches: 1, medicalOptimized: true };
   }
 
   const estimatedPages = Math.ceil(text.length / 2000);
   
-  // Medical content often benefits from staged processing for better clinical correlation
   const isFastMode = estimatedPages <= 50 && flashcardCount <= 15;
 
   if (isFastMode) {
@@ -133,26 +167,19 @@ export const determineMedicalProcessingMode = (text, flashcardCount) => {
   }
 };
 
-/**
- * Estimate medical processing time with clinical complexity factors
- * @param {string} text - Medical text
- * @param {number} flashcardCount - Number of flashcards
- * @returns {Object} - Time estimates for medical processing
- */
-export const estimateMedicalProcessingTime = (text, flashcardCount) => {
+export const estimateMedicalProcessingTime = (text: string, flashcardCount: number): MedicalTimeEstimate => {
   const estimatedPages = Math.ceil(text.length / 2000);
   const mode = determineMedicalProcessingMode(text, flashcardCount);
   
-  // Medical processing takes longer due to enhanced clinical analysis
   let summaryTime = 0;
   let flashcardTime = 0;
 
   if (mode.mode === 'fast') {
-    summaryTime = Math.min(45, estimatedPages * 3); // Longer for medical analysis
-    flashcardTime = Math.min(60, flashcardCount * 2); // Clinical scenarios take more time
+    summaryTime = Math.min(45, estimatedPages * 3);
+    flashcardTime = Math.min(60, flashcardCount * 2);
   } else {
-    summaryTime = Math.min(180, estimatedPages * 4); // Enhanced medical analysis
-    flashcardTime = Math.min(240, flashcardCount * 3); // Complex medical questions
+    summaryTime = Math.min(180, estimatedPages * 4);
+    flashcardTime = Math.min(240, flashcardCount * 3);
   }
 
   const totalTime = summaryTime + flashcardTime;
@@ -168,7 +195,7 @@ export const estimateMedicalProcessingTime = (text, flashcardCount) => {
   };
 };
 
-const formatMedicalTime = (seconds) => {
+const formatMedicalTime = (seconds: number): string => {
   if (seconds < 60) {
     return `${seconds} seconds (enhanced medical analysis)`;
   } else if (seconds < 120) {

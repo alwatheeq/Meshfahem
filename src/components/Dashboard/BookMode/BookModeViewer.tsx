@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, BookOpen, CreditCard, StickyNote } from 'lucide-react';
+import { Plus, BookOpen, CreditCard, StickyNote, Brain } from 'lucide-react';
 import { useBookMode } from '../../../hooks/useBookMode';
 import { WidgetContainer, WidgetConfig } from './WidgetContainer';
 import { BookWidget } from './BookWidget';
@@ -8,6 +8,8 @@ import { NotesWidget } from './NotesWidget';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useI18n } from '../../../contexts/I18nContext';
 import { PageBreakConfig, paginateSummary } from '../../../utils/bookModeHelpers';
+import { Modal } from '../../Common/Modal';
+import MindMapView from '../MindMap/MindMapView';
 
 interface BookModeViewerProps {
   summaryId: string | null;
@@ -39,6 +41,7 @@ export const BookModeViewer: React.FC<BookModeViewerProps> = ({
   const [previousFreeFormMode, setPreviousFreeFormMode] = useState<boolean>(freeFormMode);
   const [addWidgetMenuOpen, setAddWidgetMenuOpen] = useState(false);
   const addWidgetMenuRef = useRef<HTMLDivElement>(null);
+  const [mindMapOpen, setMindMapOpen] = useState(false);
 
   const {
     widgets,
@@ -161,6 +164,7 @@ export const BookModeViewer: React.FC<BookModeViewerProps> = ({
             flashcards={flashcards}
             medicalMode={medicalMode}
             itemId={summaryId}
+            contextSummary={summaryText}
           />
         );
       case 'notes':
@@ -230,6 +234,19 @@ export const BookModeViewer: React.FC<BookModeViewerProps> = ({
           </WidgetContainer>
         ))}
       </div>
+
+      <button
+        type="button"
+        onClick={() => setMindMapOpen(true)}
+        className={`fixed bottom-24 right-6 z-50 rounded-full w-10 h-10 flex items-center justify-center shadow-lg hover:shadow-xl transition-shadow text-white ${getThemeGradient('ui')}`}
+        title={t('mind_map.title') || 'Mind map'}
+      >
+        <Brain className="h-5 w-5" />
+      </button>
+
+      <Modal isOpen={mindMapOpen} onClose={() => setMindMapOpen(false)} title={t('mind_map.title')} maxWidth="2xl">
+        <MindMapView text={summaryText} title={t('mind_map.title')} />
+      </Modal>
 
       {/* Add Widget Button (floating) - click to open, click outside to close */}
       <div className="fixed bottom-6 right-6 z-50" ref={addWidgetMenuRef}>

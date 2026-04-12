@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Users, Plus, X, Copy, Check, Clock, UserPlus, Trash2, Search } from 'lucide-react';
+import { Users, Plus, X, Copy, Check, Clock, UserPlus, Trash2, Search, Heart, UsersRound } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { ZegoVideoRoom } from './ZegoVideoRoom';
@@ -13,6 +13,11 @@ import { LoadingSkeleton } from '../Common/LoadingSkeleton';
 import { usePageTutorial } from '../../hooks/usePageTutorial';
 import { PageTutorial } from '../Onboarding/PageTutorial';
 import { useSubscriptionUpsellGate } from '../../contexts/SubscriptionUpsellGateContext';
+import { UsernameSetupModal } from './UsernameSetupModal';
+import { useFloatingVideoStore } from '../../stores/useFloatingVideoStore';
+import { FriendsPanel } from './Social/FriendsPanel';
+import { GroupsPanel } from './Social/GroupsPanel';
+import { GroupChat } from './Social/GroupChat';
 
 interface StudyRoom {
   id: string;
@@ -45,7 +50,31 @@ export const StudyRoomsPage: React.FC = () => {
   const { confirm, ConfirmModal } = useConfirm();
   const { shouldShowTutorial, showTutorial, isTutorialOpen, completeTutorial, skipTutorial, config: tutorialConfig } = usePageTutorial('study-rooms');
   const { setBusy } = useSubscriptionUpsellGate();
-  const [activeTab, setActiveTab] = useState<'browse' | 'my-rooms' | 'create'>('browse');
+  const [activeTab, setActiveTab] = useState<'browse' | 'my-rooms' | 'create' | 'friends' | 'groups' | 'group-chat'>('browse');
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [hasUsername, setHasUsername] = useState(false);
+  const [activeGroupChat, setActiveGroupChat] = useState<{ groupId: string; groupName: string } | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      supabase.from('user_profiles').select('username').eq('id', user.id).single().then(({ data }) => {
+        setHasUsername(!!data?.username);
+      });
+    }
+  }, [user]);
+
+  const handleSocialTabClick = (tab: 'friends' | 'groups') => {
+    if (!hasUsername) {
+      setShowUsernameModal(true);
+      return;
+    }
+    setActiveTab(tab);
+  };
+
+  const handleOpenGroupChat = (groupId: string, groupName: string) => {
+    setActiveGroupChat({ groupId, groupName });
+    setActiveTab('group-chat');
+  };
   const [rooms, setRooms] = useState<StudyRoom[]>([]);
   const [myRooms, setMyRooms] = useState<StudyRoom[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,6 +84,11 @@ export const StudyRoomsPage: React.FC = () => {
     setBusy('studyRoom', !!selectedRoom);
     return () => setBusy('studyRoom', false);
   }, [selectedRoom, setBusy]);
+
+  useEffect(() => {
+    useFloatingVideoStore.getState().setStudyRoomsForeground(true);
+    return () => useFloatingVideoStore.getState().setStudyRoomsForeground(false);
+  }, []);
 
   const [participants, setParticipants] = useState<RoomParticipant[]>([]);
   const [copiedCode, setCopiedCode] = useState(false);
@@ -999,6 +1033,13 @@ export const StudyRoomsPage: React.FC = () => {
               roomName={selectedRoom.room_name}
               userName={userDisplayName || user?.email?.split('@')[0] || 'Anonymous'}
               onDisconnect={handleLeaveRoom}
+              floatingRoomMeta={{
+                id: selectedRoom.id,
+                room_code: selectedRoom.room_code,
+                name: selectedRoom.room_name,
+                description: selectedRoom.room_description,
+                max_participants: selectedRoom.max_participants,
+              }}
             />
           </div>
         </div>
@@ -1047,6 +1088,28 @@ export const StudyRoomsPage: React.FC = () => {
               }`}
             >
               {t('study_rooms.create')}
+            </button>
+            <button
+              onClick={() => handleSocialTabClick('friends')}
+              className={`px-4 py-2 rounded-md transition-colors duration-150 font-medium flex items-center gap-1.5 ${
+                activeTab === 'friends'
+                  ? `${getThemeCardBg()} ${getThemeTextPrimary()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow`
+                  : `${getThemeTextSecondary()} hover:opacity-80`
+              }`}
+            >
+              <Heart className="h-3.5 w-3.5" />
+              {t('social.tab_friends')}
+            </button>
+            <button
+              onClick={() => handleSocialTabClick('groups')}
+              className={`px-4 py-2 rounded-md transition-colors duration-150 font-medium flex items-center gap-1.5 ${
+                activeTab === 'groups' || activeTab === 'group-chat'
+                  ? `${getThemeCardBg()} ${getThemeTextPrimary()} shadow-[0_1px_3px_0_rgba(0,0,0,0.08),0_1px_2px_0_rgba(0,0,0,0.06)] ${getThemeCardBorder()} dark:shadow`
+                  : `${getThemeTextSecondary()} hover:opacity-80`
+              }`}
+            >
+              <UsersRound className="h-3.5 w-3.5" />
+              {t('social.tab_groups')}
             </button>
           </div>
         </div>
@@ -1207,7 +1270,30 @@ export const StudyRoomsPage: React.FC = () => {
             )}
           </div>
         )}
+        {activeTab === 'friends' && <FriendsPanel />}
+
+        {activeTab === 'groups' && (
+          <GroupsPanel onOpenGroupChat={handleOpenGroupChat} />
+        )}
+
+        {activeTab === 'group-chat' && activeGroupChat && (
+          <GroupChat
+            groupId={activeGroupChat.groupId}
+            groupName={activeGroupChat.groupName}
+            onBack={() => setActiveTab('groups')}
+          />
+        )}
       </div>
+
+      <UsernameSetupModal
+        isOpen={showUsernameModal}
+        onClose={() => setShowUsernameModal(false)}
+        onComplete={(username) => {
+          setHasUsername(true);
+          setShowUsernameModal(false);
+          showSuccessToast(`Username @${username} saved!`);
+        }}
+      />
 
       {ConfirmModal}
 

@@ -1,17 +1,32 @@
 // Deduplication Service
 // Handles text normalization, hashing, and cache checking to avoid redundant AI processing
 
-import { supabase } from '../lib/supabase.ts';
-import { CONFIG } from './config.js';
+import { supabase } from '../lib/supabase';
 import { ErrorLogger } from './errorLogger';
+
+export interface Flashcard {
+  front: string;
+  back: string;
+}
+
+export interface CacheResult {
+  summary: string;
+  flashcards: Flashcard[];
+  cachedAt: string;
+}
+
+export interface CacheStats {
+  totalEntries: number;
+  validEntries: number;
+  totalSizeBytes?: number;
+  retentionDays: number;
+}
 
 /**
  * Normalize text content for consistent hashing
  * Removes slide numbers, headers, footers, and standardizes formatting
- * @param {string} text - Raw extracted text
- * @returns {string} - Normalized text
  */
-export const normalizeText = (text) => {
+export const normalizeText = (text: string): string => {
   if (!text || typeof text !== 'string') {
     return '';
   }
@@ -35,7 +50,7 @@ export const normalizeText = (text) => {
     .replace(/\d{1,2}\/\d{1,2}\/\d{4}/g, '')
     .replace(/\d{1,2}-\d{1,2}-\d{4}/g, '')
     // Remove bullet points and numbering
-    .replace(/^[\s]*[•\-\*\d+\.]+[\s]*/gm, '')
+    .replace(/^[\s]*(?:[•\-*]|\d+\.)[\s]*/gm, '')
     // Normalize punctuation spacing
     .replace(/\s*([,.!?;:])\s*/g, '$1 ')
     // Remove duplicate spaces
@@ -47,10 +62,8 @@ export const normalizeText = (text) => {
 
 /**
  * Generate SHA-256 hash of normalized text
- * @param {string} normalizedText - The normalized text to hash
- * @returns {Promise<string>} - SHA-256 hash as hexadecimal string
  */
-export const generateTextHash = async (normalizedText) => {
+export const generateTextHash = async (normalizedText: string): Promise<string> => {
   if (!normalizedText) {
     throw new Error('Text is required for hashing');
   }
@@ -75,22 +88,16 @@ export const generateTextHash = async (normalizedText) => {
 /**
  * Create a composite key for cache lookups
  * Includes content hash, flashcard count, and processing mode
- * @param {string} contentHash - SHA-256 hash of content
- * @param {number} flashcardCount - Number of requested flashcards
- * @param {string} mode - Processing mode ('full' or 'summary')
- * @returns {string} - Composite cache key
  */
-export const createCacheKey = (contentHash, flashcardCount, mode = 'full') => {
+export const createCacheKey = (contentHash: string, flashcardCount: number, mode: string = 'full'): string => {
   return `${contentHash}_${flashcardCount}_${mode}`;
 };
 
 /**
  * Check if content has been processed before
  * Now queries Supabase for cached results
- * @param {string} cacheKey - The composite cache key
- * @returns {Promise<Object|null>} - Cached result or null if not found
  */
-export const checkCache = async (cacheKey) => {
+export const checkCache = async (cacheKey: string): Promise<CacheResult | null> => {
   try {
     ErrorLogger.debug('Checking cache', { component: 'deduplication', action: 'checkCache', cacheKey });
     
@@ -128,12 +135,8 @@ export const checkCache = async (cacheKey) => {
 /**
  * Store processed results in cache
  * Now stores in Supabase with 365-day retention
- * @param {string} cacheKey - The composite cache key
- * @param {string} summary - Generated summary
- * @param {Array} flashcards - Generated flashcards
- * @returns {Promise<void>}
  */
-export const storeInCache = async (cacheKey, summary, flashcards) => {
+export const storeInCache = async (cacheKey: string, summary: string, flashcards: Flashcard[]): Promise<void> => {
   try {
     ErrorLogger.debug('Storing in cache', { component: 'deduplication', action: 'storeInCache', cacheKey });
     
@@ -152,7 +155,6 @@ export const storeInCache = async (cacheKey, summary, flashcards) => {
       });
 
     if (error) {
-      // Log error but don't throw - caching failure shouldn't break main flow
       ErrorLogger.error(error, { component: 'deduplication', action: 'storeInCache', cacheKey });
       return;
     }
@@ -161,16 +163,14 @@ export const storeInCache = async (cacheKey, summary, flashcards) => {
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
     ErrorLogger.error(err, { component: 'deduplication', action: 'storeInCache', cacheKey });
-    // Don't throw - caching failure shouldn't break the main flow
   }
 };
 
 /**
  * Clean expired cache entries from Supabase
  * This function can be called periodically or by a scheduled job
- * @returns {Promise<number>} - Number of entries cleaned
  */
-export const cleanExpiredCache = async () => {
+export const cleanExpiredCache = async (): Promise<number> => {
   try {
     ErrorLogger.debug('Cleaning expired cache entries', { component: 'deduplication', action: 'cleanExpiredCache' });
     
@@ -199,9 +199,8 @@ export const cleanExpiredCache = async () => {
 /**
  * Clean expired history entries from Supabase
  * This function can be called periodically or by a scheduled job
- * @returns {Promise<number>} - Number of entries cleaned
  */
-export const cleanExpiredHistory = async () => {
+export const cleanExpiredHistory = async (): Promise<number> => {
   try {
     ErrorLogger.debug('Cleaning expired history entries', { component: 'deduplication', action: 'cleanExpiredHistory' });
     
@@ -226,11 +225,11 @@ export const cleanExpiredHistory = async () => {
     return 0;
   }
 };
+
 /**
  * Get cache statistics from Supabase
- * @returns {Promise<Object>} - Cache statistics
  */
-export const getCacheStats = async () => {
+export const getCacheStats = async (): Promise<CacheStats> => {
   try {
     const { data, error } = await supabase
       .from('cached_content')
@@ -264,12 +263,12 @@ export const getCacheStats = async () => {
 };
 
 // Utility function to validate and deduplicate flashcards
-export const deduplicateFlashcards = (flashcards, threshold = 0.8) => {
+export const deduplicateFlashcards = (flashcards: Flashcard[], threshold: number = 0.8): Flashcard[] => {
   if (!Array.isArray(flashcards)) {
     return [];
   }
 
-  const unique = [];
+  const unique: Flashcard[] = [];
   
   for (const card of flashcards) {
     if (!card || !card.front || !card.back) {
@@ -295,7 +294,7 @@ export const deduplicateFlashcards = (flashcards, threshold = 0.8) => {
 };
 
 // Simple string similarity calculation (Levenshtein distance ratio)
-const calculateSimilarity = (str1, str2) => {
+const calculateSimilarity = (str1: string, str2: string): number => {
   const maxLength = Math.max(str1.length, str2.length);
   if (maxLength === 0) return 1;
   
@@ -303,8 +302,8 @@ const calculateSimilarity = (str1, str2) => {
   return (maxLength - distance) / maxLength;
 };
 
-const levenshteinDistance = (str1, str2) => {
-  const matrix = [];
+const levenshteinDistance = (str1: string, str2: string): number => {
+  const matrix: number[][] = [];
 
   for (let i = 0; i <= str2.length; i++) {
     matrix[i] = [i];

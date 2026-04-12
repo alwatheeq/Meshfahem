@@ -1,19 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import { handleSupabaseError, isOffline } from '../utils/errorHandler';
 import { ErrorLogger } from '../utils/errorLogger';
+import { useCreditStore } from '../stores/useCreditStore';
+import type { CreditBalance } from '../stores/useCreditStore';
 
-interface CreditBalance {
-  credits_remaining: number;
-  credits_total: number;
-  cycle_start: string | null;
-  cycle_end: string | null;
-  free_credits_claimed: boolean;
-  /** Study Room (Zego) pool: 1000/month, 1 credit = 1 minute */
-  zego_credits_remaining?: number;
-  zego_credits_total?: number;
-}
+export type { CreditBalance };
 
 interface CreditContextType {
   balance: CreditBalance | null;
@@ -25,8 +18,7 @@ const CreditContext = createContext<CreditContextType | undefined>(undefined);
 
 export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [balance, setBalance] = useState<CreditBalance | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { balance, loading, setBalance, setLoading } = useCreditStore();
 
   const fetchBalance = useCallback(async () => {
     if (!user) {

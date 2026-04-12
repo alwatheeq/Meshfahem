@@ -542,8 +542,6 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         'violet-500': 'bg-violet-500',
         'violet-600': 'bg-violet-600',
         'violet-400': 'bg-violet-400',
-        'rose-400': 'bg-rose-400',
-        'rose-600': 'bg-rose-600',
       };
       return accentClassMap[activeUI.accent] || `bg-${activeUI.accent}`;
     } else {

@@ -19,6 +19,7 @@ import { EnvValidator } from './components/EnvValidator';
 import { SubscriptionRefreshListener } from './components/SubscriptionRefreshListener';
 import { ErrorLogger } from './utils/errorLogger';
 import { supabase } from './lib/supabase';
+import FloatingVideoPortal from './components/Dashboard/FloatingVideo/FloatingVideoPortal';
 
 const ShareView = lazy(() => import('./components/ShareView').then(m => ({ default: m.ShareView })));
 const AdminLogin = lazy(() => import('./components/Admin/AdminLogin').then(m => ({ default: m.AdminLogin })));
@@ -395,6 +396,7 @@ function App() {
                       </Routes>
                     </Suspense>
                   </ErrorBoundary>
+                  <FloatingVideoPortal />
                         </ToastProvider>
                       </PersistentModalProvider>
                       </SubscriptionUpsellGateProvider>

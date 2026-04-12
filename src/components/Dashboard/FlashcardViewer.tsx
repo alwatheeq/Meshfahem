@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useContext } from 'react';
-import { ChevronLeft, ChevronRight, RotateCcw, Eye, EyeOff, Download, Shuffle, BookOpen, CheckCircle, BarChart, CreditCard as Edit3, List, FileText, HelpCircle, Stethoscope } from 'lucide-react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
+import { ChevronLeft, ChevronRight, RotateCcw, Eye, EyeOff, Download, Shuffle, BookOpen, CheckCircle, BarChart, CreditCard as Edit3, List, FileText, HelpCircle, Stethoscope, MessageCircleQuestion } from 'lucide-react';
 import { useI18n, I18nContext } from '../../contexts/I18nContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../contexts/ThemeContext';
 import { recordFlashcardStudy, recordFlashcardRating } from '../../utils/studyTracking';
 import { ReadAloudButton } from './ReadAloud/ReadAloudButton';
+import { supabase } from '../../lib/supabase';
 
 interface Flashcard {
   front: string;
@@ -15,13 +16,15 @@ interface FlashcardViewerProps {
   flashcards: Flashcard[];
   medicalMode?: boolean;
   itemId?: string;
+  /** Study material context for the chat-assistant (optional; derived from flashcards if omitted). */
+  contextSummary?: string;
 }
 
 type StudyMode = 'flip' | 'type_answer' | 'multiple_choice' | 'fill_in_blanks' | 'true_false';
 type MedicalStudyMode = 'clinical_cases' | 'pathophysiology' | 'pharmacology' | 'differential_diagnosis';
 
 // Internal component that uses hooks
-const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, medicalMode = false, itemId }) => {
+const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, medicalMode = false, itemId, contextSummary }) => {
   const { t } = useI18n();
   const { user } = useAuth();
   const { getThemeGradient, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
@@ -54,6 +57,45 @@ const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, me
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
+
+  const [explanation, setExplanation] = useState('');
+  const [loadingExplanation, setLoadingExplanation] = useState(false);
+
+  const assistantSummaryText = React.useMemo(() => {
+    const fromProp = contextSummary?.trim();
+    if (fromProp && fromProp.length >= 10) return fromProp.slice(0, 12000);
+    const derived = flashcards.map((f) => `${f.front}\n${f.back}`).join('\n\n').trim();
+    if (derived.length >= 10) return derived.slice(0, 12000);
+    return 'Flashcard study context for explanations.';
+  }, [contextSummary, flashcards]);
+
+  const fetchExplanation = useCallback(async (question: string, answer: string) => {
+    setLoadingExplanation(true);
+    setExplanation('');
+    try {
+      const { data, error } = await supabase.functions.invoke('chat-assistant', {
+        body: {
+          message: `Explain why the correct answer to "${question}" is "${answer}" in 2-3 sentences.`,
+          summary_text: assistantSummaryText,
+          one_shot: true,
+          topics: [],
+          medical_mode: medicalMode,
+        },
+      });
+      if (error) throw error;
+      const msg =
+        data && typeof data === 'object' && data !== null && 'message' in data
+          ? String((data as { message?: unknown }).message ?? '')
+          : typeof data === 'string'
+            ? data
+            : '';
+      setExplanation(msg || t('flashcard_explain.error'));
+    } catch {
+      setExplanation(t('flashcard_explain.error'));
+    } finally {
+      setLoadingExplanation(false);
+    }
+  }, [t, assistantSummaryText, medicalMode]);
 
   // Initialize study session when component mounts or flashcards change
   useEffect(() => {
@@ -815,8 +857,27 @@ const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, me
                           {feedbackMessage}
                         </p>
                       </div>
+                      {!isCorrect && currentCard && (
+                        <div>
+                          {!explanation && !loadingExplanation && (
+                            <button
+                              onClick={() => fetchExplanation(currentCard.front, currentCard.back)}
+                              className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                            >
+                              <MessageCircleQuestion className="h-4 w-4" />
+                              {t('flashcard_explain.why')}
+                            </button>
+                          )}
+                          {loadingExplanation && <p className="text-sm text-gray-500">{t('flashcard_explain.loading')}</p>}
+                          {explanation && (
+                            <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 dark:bg-blue-900/50 dark:border-blue-700 text-sm text-blue-800 dark:text-blue-200">
+                              {explanation}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <button
-                        onClick={nextCard}
+                        onClick={() => { nextCard(); setExplanation(''); }}
                         className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-150 dark:bg-blue-500 dark:hover:bg-blue-600"
                       >
                         {t('flashcards.next_card')}
@@ -875,8 +936,19 @@ const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, me
                           {feedbackMessage}
                         </p>
                       </div>
+                      {!isCorrect && currentCard && (
+                        <div>
+                          {!explanation && !loadingExplanation && (
+                            <button onClick={() => fetchExplanation(currentCard.front, currentCard.back)} className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
+                              <MessageCircleQuestion className="h-4 w-4" />{t('flashcard_explain.why')}
+                            </button>
+                          )}
+                          {loadingExplanation && <p className="text-sm text-gray-500">{t('flashcard_explain.loading')}</p>}
+                          {explanation && <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 dark:bg-blue-900/50 dark:border-blue-700 text-sm text-blue-800 dark:text-blue-200">{explanation}</div>}
+                        </div>
+                      )}
                       <button
-                        onClick={nextCard}
+                        onClick={() => { nextCard(); setExplanation(''); }}
                         className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-150 dark:bg-blue-500 dark:hover:bg-blue-600"
                       >
                         {t('flashcards.next_card')}
@@ -925,8 +997,19 @@ const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, me
                           {feedbackMessage}
                         </p>
                       </div>
+                      {!isCorrect && currentCard && (
+                        <div>
+                          {!explanation && !loadingExplanation && (
+                            <button onClick={() => fetchExplanation(currentCard.front, currentCard.back)} className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
+                              <MessageCircleQuestion className="h-4 w-4" />{t('flashcard_explain.why')}
+                            </button>
+                          )}
+                          {loadingExplanation && <p className="text-sm text-gray-500">{t('flashcard_explain.loading')}</p>}
+                          {explanation && <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 dark:bg-blue-900/50 dark:border-blue-700 text-sm text-blue-800 dark:text-blue-200">{explanation}</div>}
+                        </div>
+                      )}
                       <button
-                        onClick={nextCard}
+                        onClick={() => { nextCard(); setExplanation(''); }}
                         className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-150 dark:bg-blue-500 dark:hover:bg-blue-600"
                       >
                         {t('flashcards.next_card')}
@@ -968,8 +1051,19 @@ const FlashcardViewerContent: React.FC<FlashcardViewerProps> = ({ flashcards, me
                           {feedbackMessage}
                         </p>
                       </div>
+                      {!isCorrect && currentCard && (
+                        <div>
+                          {!explanation && !loadingExplanation && (
+                            <button onClick={() => fetchExplanation(currentCard.front, currentCard.back)} className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
+                              <MessageCircleQuestion className="h-4 w-4" />{t('flashcard_explain.why')}
+                            </button>
+                          )}
+                          {loadingExplanation && <p className="text-sm text-gray-500">{t('flashcard_explain.loading')}</p>}
+                          {explanation && <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 dark:bg-blue-900/50 dark:border-blue-700 text-sm text-blue-800 dark:text-blue-200">{explanation}</div>}
+                        </div>
+                      )}
                       <button
-                        onClick={nextCard}
+                        onClick={() => { nextCard(); setExplanation(''); }}
                         className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-150 dark:bg-blue-500 dark:hover:bg-blue-600"
                       >
                         {t('flashcards.next_card')}

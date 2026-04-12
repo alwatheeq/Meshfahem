@@ -1,15 +1,8 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useCallback, ReactNode } from 'react';
+import { useChatStore } from '../stores/useChatStore';
+import type { ChatContextData, ChatContextType } from '../stores/useChatStore';
 
-export type ChatContextType = 'summary' | 'library_item' | 'history_item' | 'general';
-
-export interface ChatContextData {
-  summaryText: string | null;
-  originalText: string | null;
-  topics: string[];
-  medicalMode: boolean;
-  contextType: ChatContextType;
-  contextId: string | null;
-}
+export type { ChatContextData, ChatContextType };
 
 interface ChatContextValue {
   context: ChatContextData;
@@ -17,30 +10,27 @@ interface ChatContextValue {
   clearChatContext: () => void;
 }
 
-const defaultContext: ChatContextData = {
-  summaryText: null,
-  originalText: null,
-  topics: [],
-  medicalMode: false,
-  contextType: 'general',
-  contextId: null,
-};
-
 const ChatContext = createContext<ChatContextValue | undefined>(undefined);
 
 export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [context, setContext] = useState<ChatContextData>(defaultContext);
+  const store = useChatStore();
 
-  const setChatContext = (data: Partial<ChatContextData>) => {
-    setContext((prev) => ({
-      ...prev,
-      ...data,
-    }));
+  const context: ChatContextData = {
+    summaryText: store.summaryText,
+    originalText: store.originalText,
+    topics: store.topics,
+    medicalMode: store.medicalMode,
+    contextType: store.contextType,
+    contextId: store.contextId,
   };
 
-  const clearChatContext = () => {
-    setContext(defaultContext);
-  };
+  const setChatContext = useCallback((data: Partial<ChatContextData>) => {
+    store.setChatContext(data);
+  }, [store]);
+
+  const clearChatContext = useCallback(() => {
+    store.clearChatContext();
+  }, [store]);
 
   return (
     <ChatContext.Provider

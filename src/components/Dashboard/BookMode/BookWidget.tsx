@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, BookOpen, FileText } from 'lucide-react';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useI18n } from '../../../contexts/I18nContext';
 import { PageBreakConfig, paginateSummary } from '../../../utils/bookModeHelpers';
-import { parseBlocks } from '../../../utils/summaryFormatter';
+import HighlightLayer from '../Highlighting/HighlightLayer';
 
 interface PageNote {
   id: string;
@@ -21,6 +21,8 @@ interface BookWidgetProps {
   onPageChange?: (pageIndex: number) => void;
   onProgressUpdate?: (pageIndex: number) => void;
   notesForCurrentPage?: PageNote[];
+  /** Library/history item id for persisted highlights (optional). */
+  highlightItemId?: string | null;
 }
 
 export const BookWidget: React.FC<BookWidgetProps> = ({
@@ -29,9 +31,10 @@ export const BookWidget: React.FC<BookWidgetProps> = ({
   initialPage = 0,
   onPageChange,
   onProgressUpdate,
-  notesForCurrentPage = []
+  notesForCurrentPage = [],
+  highlightItemId = null,
 }) => {
-  const { getThemeText, getThemeCardBg, getThemeCardBorder, getThemeTextPrimary, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
+  const { getThemeText, getThemeCardBg, getThemeCardBorder, getThemeTextSecondary, getThemeTextMuted, getThemeSubtle } = useTheme();
   const { t } = useI18n();
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
@@ -118,38 +121,16 @@ export const BookWidget: React.FC<BookWidgetProps> = ({
             })}
           </div>
         )}
-        <div className={`max-w-none ${getThemeText()}`}>
-          <div className="leading-relaxed">
-            {parseBlocks(currentPageContent).map((block, index) => {
-              if (block.type === 'heading') {
-                return (
-                  <h3
-                    key={index}
-                    className={`text-sm font-semibold tracking-tight mt-5 mb-2 ${getThemeTextPrimary()}`}
-                  >
-                    {block.text}
-                  </h3>
-                );
-              }
-              if (block.type === 'bullets') {
-                return (
-                  <ul key={index} className="my-3 space-y-1.5 pl-1">
-                    {block.items.map((item, j) => (
-                      <li key={j} className={`flex items-start gap-2.5 text-sm leading-relaxed ${getThemeTextSecondary()}`}>
-                        <span className="mt-2 w-1.5 h-1.5 rounded-full bg-current flex-shrink-0 opacity-40" />
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                );
-              }
-              return (
-                <p key={index} className={`text-sm leading-relaxed mb-2 ${getThemeTextSecondary()}`}>
-                  {block.text}
-                </p>
-              );
-            })}
-          </div>
+        <div className={`max-w-none ${getThemeText()} leading-relaxed`}>
+          {config.pages[currentPage] && (
+            <div className={`text-sm ${getThemeTextSecondary()}`}>
+              <HighlightLayer
+                text={currentPageContent}
+                itemId={highlightItemId || undefined}
+                globalOffset={config.pages[currentPage].start}
+              />
+            </div>
+          )}
         </div>
       </div>
 

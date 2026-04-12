@@ -1,11 +1,10 @@
 import React from 'react';
-import { FileText, RefreshCw, Copy, Check, BookOpen, FileSearch, X, Download, Folder, Tag, Plus, AlertCircle, Stethoscope, GraduationCap, Activity, Globe, Lock } from 'lucide-react';
-import { parseBlocks } from '../../utils/summaryFormatter';
+import { FileText, RefreshCw, Copy, Check, BookOpen, FileSearch, X, Download, Folder, Tag, Plus, AlertCircle, Stethoscope, GraduationCap, Activity, Globe, Lock, Brain } from 'lucide-react';
 import html2pdf from 'html2pdf.js'; // Ensure html2pdf.js is correctly imported
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { useI18n } from '../../contexts/I18nContext';
-import { PREDEFINED_TOPICS } from '../../utils/config.js';
+import { PREDEFINED_TOPICS } from '../../utils/config';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useToast } from '../Toast/Toast';
 import { handleApiError, handleSupabaseError, isOffline, handleOfflineError } from '../../utils/errorHandler';
@@ -16,6 +15,9 @@ import { BookModeViewer } from './BookMode/BookModeViewer';
 import { useUserPreferences } from '../../contexts/UserPreferencesContext';
 import { ReadAloudButton } from './ReadAloud/ReadAloudButton';
 import { sanitizeForTts } from './ReadAloud/readAloudUtils';
+import HighlightLayer from './Highlighting/HighlightLayer';
+import { Modal } from '../Common/Modal';
+import MindMapView from './MindMap/MindMapView';
 
 interface SummaryDisplayProps {
   summaryChunks: string[];
@@ -28,6 +30,8 @@ interface SummaryDisplayProps {
   onReset: () => void;
   isSharedView?: boolean;
   hideNewDocumentButton?: boolean;
+  /** Library item id (`user_library_items.id`) so highlights persist for this document. */
+  highlightLibraryItemId?: string;
   onActionBarData?: (data: {
     freeFormMode: boolean;
     onFreeFormToggle: (enabled: boolean) => void;
@@ -78,7 +82,17 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
   const [copiedIndex, setCopiedIndex] = React.useState<number | null>(null);
   const [publishing, setPublishing] = React.useState(false);
   const [published, setPublished] = React.useState(false);
+  const [mindMapOpen, setMindMapOpen] = React.useState(false);
+  /** Set after publishing from this session so highlights/book mode use the real library id. */
+  const [persistedLibraryItemId, setPersistedLibraryItemId] = React.useState<string | undefined>(undefined);
+  const effectiveLibraryItemId = highlightLibraryItemId ?? persistedLibraryItemId;
   const [showOriginalText, setShowOriginalText] = React.useState(false);
+
+  React.useEffect(() => {
+    if (summaryChunks.length === 0) {
+      setPersistedLibraryItemId(undefined);
+    }
+  }, [summaryChunks.length]);
   const [showPublishModal, setShowPublishModal] = React.useState(false);
   const [folders, setFolders] = React.useState<UserFolder[]>([]);
   const [tags, setTags] = React.useState<UserTag[]>([]);
@@ -366,6 +380,9 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
         setShowPublishModal(false);
         showSuccessToast('Item published to library successfully!');
         setTimeout(() => setPublished(false), 3000);
+        if (result.itemId) {
+          setPersistedLibraryItemId(result.itemId);
+        }
 
         // Trigger library refresh event with item ID
         window.dispatchEvent(new CustomEvent('libraryItemPublished', {
@@ -860,9 +877,15 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
 
         <div className="p-6 max-h-96 overflow-y-auto">
           <div className={`${getThemeSubtle('bg')} rounded-lg p-4`}>
-            <p className={`${getThemeTextSecondary()} leading-relaxed whitespace-pre-wrap text-sm`}>
-              {originalText && originalText.trim() ? originalText : t('summary.no_original_text')}
-            </p>
+            {originalText && originalText.trim() ? (
+              <div className={`${getThemeTextSecondary()} text-sm`}>
+                <HighlightLayer text={originalText} itemId={effectiveLibraryItemId} />
+              </div>
+            ) : (
+              <p className={`${getThemeTextSecondary()} leading-relaxed whitespace-pre-wrap text-sm`}>
+                {t('summary.no_original_text')}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -875,7 +898,7 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
       <div className="relative">
         {/* Action Bar removed - now rendered in Dashboard */}
         <BookModeViewer
-          summaryId={null} // New summary, not yet saved
+          summaryId={effectiveLibraryItemId ?? null}
           summaryText={combinedSummary}
           flashcards={flashcards}
           originalText={originalText}
@@ -972,6 +995,15 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
               text={sanitizeForTts(combinedSummary)}
               ariaLabel={t('read_aloud.read_aloud') || 'Read summary aloud'}
             />
+
+            <button
+              type="button"
+              onClick={() => setMindMapOpen(true)}
+              className="flex items-center space-x-2 px-3 py-1.5 text-sm text-indigo-600 hover:text-indigo-800 border border-indigo-300 rounded-lg hover:bg-indigo-50 transition duration-150 dark:border-indigo-600 dark:hover:bg-indigo-900/40 dark:text-indigo-400"
+            >
+              <Brain className="h-4 w-4" />
+              <span>{t('mind_map.title')}</span>
+            </button>
             
             <button
               onClick={() => setShowOriginalText(true)}
@@ -1054,38 +1086,17 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
             </p>
           </div>
         )}
-        <div className="leading-relaxed">
-          {parseBlocks(combinedSummary).map((block, index) => {
-            if (block.type === 'heading') {
-              return (
-                <h3 key={index} className={`text-sm font-semibold tracking-tight mt-5 mb-2 ${getThemeTextPrimary()}`}>
-                  {block.text}
-                </h3>
-              );
-            }
-            if (block.type === 'bullets') {
-              return (
-                <ul key={index} className="my-3 space-y-1.5 pl-1">
-                  {block.items.map((item, j) => (
-                    <li key={j} className={`flex items-start gap-2.5 text-sm leading-relaxed ${getThemeTextSecondary()}`}>
-                      <span className="mt-2 w-1.5 h-1.5 rounded-full bg-current flex-shrink-0 opacity-40" />
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              );
-            }
-            return (
-              <p key={index} className={`text-sm leading-relaxed mb-2 ${getThemeTextSecondary()}`}>
-                {block.text}
-              </p>
-            );
-          })}
+        <div className="leading-relaxed text-sm">
+          <HighlightLayer text={combinedSummary} itemId={effectiveLibraryItemId} />
         </div>
       </div>
       
       </div>
     )}
+
+    <Modal isOpen={mindMapOpen} onClose={() => setMindMapOpen(false)} title={t('mind_map.title')} maxWidth="2xl">
+      <MindMapView text={combinedSummary} title={t('mind_map.title')} />
+    </Modal>
 
     {/* Publish to Library Modal */}
     {showPublishModal && (

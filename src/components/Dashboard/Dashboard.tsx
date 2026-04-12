@@ -28,18 +28,18 @@ import { useAuth } from '../../hooks/useAuth';
 import { useSubscription } from '../../hooks/useSubscription';
 import { useTheme } from '../../contexts/ThemeContext';
 import { GlobalChatAssistant } from '../ChatAssistant/GlobalChatAssistant';
+import { PomodoroTimer } from './PomodoroTimer';
 import { PageTutorial } from '../Onboarding/PageTutorial';
 import { usePageTutorial } from '../../hooks/usePageTutorial';
 import { FreeFormToggle } from './BookMode/FreeFormToggle';
 import { useI18n } from '../../contexts/I18nContext';
 import { supabase } from '../../lib/supabase';
-import { extractTextFromFile, extractTextFromImage } from '../../utils/fileProcessor.js';
-import { processSummaryBatches, processFlashcardBatches, determineProcessingMode } from '../../utils/queueProcessor.js';
-import { processMedicalContent, determineMedicalProcessingMode } from '../../utils/medicalQueueProcessor.js';
-// @ts-expect-error - translation.js is a JavaScript file without TypeScript definitions
-import { translateContent, AVAILABLE_LANGUAGES, needsTranslation, detectLanguage } from '../../utils/translation.js';
-import { normalizeText, generateTextHash, checkCache, storeInCache } from '../../utils/deduplication.js';
-import { haikuClient } from '../../utils/haikuClient.js';
+import { extractTextFromFile, extractTextFromImage } from '../../utils/fileProcessor';
+import { processSummaryBatches, processFlashcardBatches, determineProcessingMode } from '../../utils/queueProcessor';
+import { processMedicalContent, determineMedicalProcessingMode } from '../../utils/medicalQueueProcessor';
+import { translateContent, AVAILABLE_LANGUAGES, needsTranslation, detectLanguage } from '../../utils/translation';
+import { normalizeText, generateTextHash, checkCache, storeInCache } from '../../utils/deduplication';
+import { haikuClient } from '../../utils/haikuClient';
 import { handleApiError, handleSupabaseError, isOffline } from '../../utils/errorHandler';
 import { ErrorLogger } from '../../utils/errorLogger';
 
@@ -143,6 +143,12 @@ export const Dashboard: React.FC = () => {
   }, [location.state, location.pathname, user, navigate]);
 
   const [currentView, setCurrentView] = useState<'main' | 'history' | 'library' | 'informational' | 'feedback' | 'profile' | 'quiz' | 'eduplay' | 'academics' | 'study-rooms'>('main');
+
+  useEffect(() => {
+    const onFocusStudyRooms = () => setCurrentView('study-rooms');
+    window.addEventListener('mindstudy:focus-study-rooms', onFocusStudyRooms);
+    return () => window.removeEventListener('mindstudy:focus-study-rooms', onFocusStudyRooms);
+  }, []);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [libraryRefreshKey, setLibraryRefreshKey] = useState(0);
@@ -1611,6 +1617,9 @@ export const Dashboard: React.FC = () => {
       
       {/* Global Chat Assistant - Available on all pages except EduPlay */}
       {currentView !== 'eduplay' && <GlobalChatAssistant />}
+
+      {/* Pomodoro Timer - Available on summary and content views */}
+      <PomodoroTimer />
 
       {/* Dashboard Tutorial */}
       {tutorialConfig && (

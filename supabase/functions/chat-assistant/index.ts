@@ -179,6 +179,7 @@ Deno.serve(async (req) => {
       context_id = null,
       model = DEFAULT_MODEL,
       maxTokens = 2000,
+      one_shot = false,
     } = requestBody;
 
     const authHeader = req.headers.get('Authorization');
@@ -247,6 +248,46 @@ Deno.serve(async (req) => {
         console.error('Credit check error:', limitCheckError);
         return errorResponse('Failed to check credit balance', 500);
       }
+    }
+
+    if (one_shot === true) {
+      const systemPrompt = buildSystemPrompt(
+        summary_text,
+        typeof original_text === 'string' ? original_text : null,
+        Array.isArray(topics) ? topics : [],
+        medical_mode === true,
+      );
+      const result = await callClaude(
+        systemPrompt,
+        [{ role: 'user', content: message.trim() }],
+        typeof model === 'string' ? model : DEFAULT_MODEL,
+        typeof maxTokens === 'number' ? maxTokens : 2000,
+      );
+
+      if ('error' in result) {
+        console.error('[chat-assistant] one_shot API error:', result.error);
+        return errorResponse(result.error, 500);
+      }
+
+      if (!isAdmin && result.tokens) {
+        try {
+          const { error: deductError } = await supabase.rpc('deduct_credits_atomic', {
+            p_user_id: userId,
+            p_tokens_used: result.tokens.total,
+            p_operation_type: 'chat_assistant',
+          });
+          if (deductError) {
+            console.error('Failed to deduct credits (one_shot):', deductError);
+          }
+        } catch (usageError) {
+          console.error('Failed to deduct credits (one_shot):', usageError);
+        }
+      }
+
+      return jsonResponse({
+        message: result.output,
+        tokens: result.tokens,
+      });
     }
 
     let conversationId = conversation_id;

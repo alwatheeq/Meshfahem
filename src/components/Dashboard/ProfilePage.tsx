@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Award, Flame, BookOpen, FileQuestion, Clock, TrendingUp, Edit2, Save, X, CreditCard, Crown, Gift, Settings, ChevronDown } from 'lucide-react';
+import { User, Award, Flame, BookOpen, FileQuestion, Clock, TrendingUp, Edit2, Save, X, CreditCard, Crown, Gift, Settings, ChevronDown, Copy, Check, AtSign, Hash } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useSubscription } from '../../hooks/useSubscription';
 import { useCredits } from '../../contexts/CreditContext';
@@ -9,6 +9,7 @@ import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { useI18n } from '../../contexts/I18nContext';
 import { useToast } from '../Toast/Toast';
+import { UsernameSetupModal } from './UsernameSetupModal';
 import { usePageTutorial } from '../../hooks/usePageTutorial';
 import { PageTutorial } from '../Onboarding/PageTutorial';
 import { handleApiError, handleSupabaseError, isOffline, handleOfflineError } from '../../utils/errorHandler';
@@ -71,6 +72,11 @@ export const ProfilePage: React.FC = React.memo(() => {
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [creditsDetailOpen, setCreditsDetailOpen] = useState(false);
+  const [username, setUsername] = useState<string | null>(null);
+  const [publicUserId, setPublicUserId] = useState<string | null>(null);
+  const [_usernameChangedAt, setUsernameChangedAt] = useState<string | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -89,6 +95,24 @@ export const ProfilePage: React.FC = React.memo(() => {
       return () => clearTimeout(timer);
     }
   }, [shouldShowTutorial, loading, showTutorial]);
+
+  useEffect(() => {
+    if (user) {
+      supabase.from('user_profiles').select('username, public_user_id, username_changed_at').eq('id', user.id).single().then(({ data }) => {
+        if (data) {
+          setUsername(data.username);
+          setPublicUserId(data.public_user_id);
+          setUsernameChangedAt(data.username_changed_at);
+        }
+      });
+    }
+  }, [user]);
+
+  const handleCopyField = (text: string, field: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
 
   const handleClaimFreeCredits = async () => {
     if (!user || claimingCredits) return;
@@ -1371,6 +1395,45 @@ export const ProfilePage: React.FC = React.memo(() => {
                   </>
                 )}
 
+                {/* Username & Public ID Section */}
+                {(username || publicUserId) && (
+                  <div className="mt-3 space-y-2">
+                    {username && (
+                      <div className="flex items-center gap-2">
+                        <AtSign className={`h-4 w-4 ${getThemeTextMuted()}`} />
+                        <span className={`font-medium ${getThemeTextPrimary()}`}>@{username}</span>
+                        <button
+                          onClick={() => handleCopyField(`@${username}`, 'username')}
+                          className={`p-1 rounded hover:bg-black/5 dark:hover:bg-white/10 ${getThemeTextMuted()}`}
+                        >
+                          {copiedField === 'username' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                        </button>
+                      </div>
+                    )}
+                    {publicUserId && (
+                      <div className="flex items-center gap-2">
+                        <Hash className={`h-4 w-4 ${getThemeTextMuted()}`} />
+                        <span className={`text-sm ${getThemeTextMuted()}`}>{publicUserId}</span>
+                        <span className={`text-xs ${getThemeTextMuted()}`}>({t('social.your_id')})</span>
+                        <button
+                          onClick={() => handleCopyField(publicUserId, 'user-id')}
+                          className={`p-1 rounded hover:bg-black/5 dark:hover:bg-white/10 ${getThemeTextMuted()}`}
+                        >
+                          {copiedField === 'user-id' ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                        </button>
+                      </div>
+                    )}
+                    {username && (
+                      <button
+                        onClick={() => setShowUsernameModal(true)}
+                        className={`text-sm ${getThemeTextSecondary()} hover:underline`}
+                      >
+                        {t('social.change_username')}
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <div className="mt-4">
                   <div className={`flex items-center justify-between text-sm text-gray-600 dark:text-gray-400 mb-1 ${isRtl ? 'flex-row-reverse' : ''}`}>
                     <span>{t('profile.level')} {currentLevel}</span>
@@ -1568,6 +1631,16 @@ export const ProfilePage: React.FC = React.memo(() => {
           onSkip={skipTutorial}
         />
       )}
+
+      <UsernameSetupModal
+        isOpen={showUsernameModal}
+        onClose={() => setShowUsernameModal(false)}
+        onComplete={(newUsername) => {
+          setUsername(newUsername);
+          setUsernameChangedAt(new Date().toISOString());
+          setShowUsernameModal(false);
+        }}
+      />
     </div>
   );
 });

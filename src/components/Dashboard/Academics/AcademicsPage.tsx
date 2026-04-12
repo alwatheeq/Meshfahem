@@ -9,10 +9,12 @@ import { useToast } from '../../Toast/Toast';
 import { supabase } from '../../../lib/supabase';
 import { hasBasicProfanity } from '../../../utils/academicsProfanity';
 import { computeFlashcardTopicScores, computeTopicQuizScores, mergeTopicScores } from '../../../utils/academicsAnalytics';
-// @ts-expect-error JS module in TS file
-import { extractTextFromFile } from '../../../utils/fileProcessor.js';
-// @ts-expect-error JS module in TS file
-import { haikuClient } from '../../../utils/haikuClient.js';
+import { extractTextFromFile } from '../../../utils/fileProcessor';
+import { haikuClient } from '../../../utils/haikuClient';
+import { SRSReviewPanel } from './SRSReviewPanel';
+import { CourseAnalytics } from './CourseAnalytics';
+import { ExamScheduler } from './ExamScheduler';
+import { CourseTutor } from './CourseTutor';
 
 type QuizQuestionJson = {
   index?: number;
@@ -560,6 +562,22 @@ export const AcademicsPage: React.FC = React.memo(() => {
                 ))}
               </div>
             </div>
+
+            {selectedCourse && (
+              <>
+                <SRSReviewPanel
+                  courseId={selectedCourse.id}
+                  itemIds={courseItems.map(ci => ci.item_id)}
+                />
+                <CourseAnalytics courseId={selectedCourse.id} />
+                <ExamScheduler courseId={selectedCourse.id} />
+                <CourseTutor
+                  courseId={selectedCourse.id}
+                  courseName={selectedCourse.course_name}
+                  topicName={selectedCourse.academics_topics?.name || ''}
+                />
+              </>
+            )}
 
             <div className={`p-4 rounded-lg border ${getThemeCardBorder()}`}>
               <h4 className={`font-semibold ${getThemeTextPrimary()} mb-2`}>{t('academics.generated_content_heading')}</h4>

@@ -56,11 +56,11 @@ export const CONFIG = {
   // Development Settings
   DEBUG_MODE: process.env.NODE_ENV === 'development',
   LOG_LEVEL: 'info'
-};
+} as const;
 
 // Predefined topics for user selection when publishing to library
 // Topics are organized alphabetically by first letter of first word
-export const PREDEFINED_TOPICS = [
+export const PREDEFINED_TOPICS: readonly string[] = [
   'Anesthesiology',
   'Anatomy',
   'Anatomy Review',
@@ -141,7 +141,7 @@ export const PREDEFINED_TOPICS = [
 ];
 
 // Simplified validation (API key now handled server-side)
-export const validateConfig = () => {
+export const validateConfig = (): boolean => {
   return true;
 };
 

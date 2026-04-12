@@ -1,17 +1,43 @@
-// Anthropic Claude Haiku API Client
-// Now uses Supabase Edge Functions for secure API key handling
-
 import { supabase } from '../lib/supabase';
-import { CONFIG } from './config.js';
-import { medStudentClient } from './medStudentClient.js';
+import { CONFIG } from './config';
+import { medStudentClient } from './medStudentClient';
 import { ErrorLogger } from './errorLogger';
 
+export interface TokenUsage {
+  input: number;
+  output: number;
+  total: number;
+}
+
+export interface Flashcard {
+  front: string;
+  back: string;
+}
+
+export interface SummaryResult {
+  summary: string;
+  tokens: TokenUsage;
+}
+
+export interface FlashcardsResult {
+  flashcards: Flashcard[];
+  tokens: TokenUsage;
+}
+
+interface DetailedError extends Error {
+  code?: string;
+  details?: string;
+  functionName?: string;
+}
+
 class HaikuClient {
+  requestTimeout: number;
+
   constructor() {
     this.requestTimeout = CONFIG.REQUEST_TIMEOUT_MS;
   }
 
-  async callFunction(functionName, body) {
+  async callFunction(functionName: string, body: Record<string, unknown>): Promise<any> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.requestTimeout);
 
@@ -21,7 +47,7 @@ class HaikuClient {
         action: 'callFunction',
         functionName,
         actionType: body.action,
-        textLength: body.text?.length || 0,
+        textLength: (body.text as string)?.length || 0,
         model: body.model
       });
 
@@ -33,12 +59,10 @@ class HaikuClient {
       clearTimeout(timeoutId);
 
       if (error) {
-        // Try to extract detailed error information
         let errorMessage = 'Function call failed';
 
         if (error.message) {
           try {
-            // Check if the error message contains JSON with detailed error info
             const errorData = JSON.parse(error.message);
             if (errorData.error) {
               errorMessage = errorData.error;
@@ -46,21 +70,19 @@ class HaikuClient {
               errorMessage = error.message;
             }
           } catch {
-            // If parsing fails, use the raw error message
             errorMessage = error.message;
           }
         }
 
-        // Include additional context in the error
-        const detailedError = new Error(errorMessage);
-        detailedError.code = error.code;
-        detailedError.details = error.details;
+        const detailedError: DetailedError = new Error(errorMessage);
+        detailedError.code = (error as any).code;
+        detailedError.details = (error as any).details;
         detailedError.functionName = functionName;
         ErrorLogger.error(detailedError, { 
           component: 'haikuClient', 
           action: 'callFunction', 
           functionName,
-          errorCode: error.code 
+          errorCode: (error as any).code 
         });
         throw detailedError;
       }
@@ -74,7 +96,6 @@ class HaikuClient {
         dataKeys: data ? Object.keys(data) : []
       });
 
-      // Trigger credit balance refresh after successful AI operation
       if (data && (body.action === 'summary' || body.action === 'flashcards' || body.action === 'topics')) {
         ErrorLogger.debug('AI operation completed, triggering credit update', { component: 'haikuClient', action: 'callFunction', functionName, actionType: body.action });
         window.dispatchEvent(new CustomEvent('creditUpdated'));
@@ -83,7 +104,7 @@ class HaikuClient {
       return data;
     } catch (error) {
       clearTimeout(timeoutId);
-      if (error.name === 'AbortError') {
+      if ((error as Error).name === 'AbortError') {
         const timeoutError = new Error(`Request timeout - the function took longer than ${this.requestTimeout / 1000} seconds to respond`);
         ErrorLogger.error(timeoutError, { component: 'haikuClient', action: 'callFunction', functionName, timeout: this.requestTimeout });
         throw timeoutError;
@@ -94,17 +115,7 @@ class HaikuClient {
     }
   }
 
-  /**
-   * Generate a summary from the provided text
-   * @param {string} text - The text to summarize
-   * @param {number} chunkIndex - Optional chunk index for batch processing
-   * @param {number} totalChunks - Optional total number of chunks
-   * @param {number} pageCount - Optional page count for usage tracking
-    * @param {boolean} medicalMode - Whether to use medical processing
-    * @param {boolean} medicalMode - Whether to use medical processing
-   * @returns {Promise<{summary: string, tokens: {input: number, output: number, total: number}}>} - Generated summary with token usage
-   */
-  async generateSummary(text, chunkIndex = 0, totalChunks = 1, pageCount = 0, medicalMode = false) {
+  async generateSummary(text: string, chunkIndex: number = 0, totalChunks: number = 1, pageCount: number = 0, medicalMode: boolean = false): Promise<SummaryResult> {
     if (!text?.trim()) {
       throw new Error('Text content is required for summary generation');
     }
@@ -118,13 +129,11 @@ class HaikuClient {
       medicalMode: medicalMode === true 
     });
 
-    // Route to medical processing ONLY if explicitly enabled (strict check)
     if (medicalMode === true) {
       ErrorLogger.debug('Routing to medical summary generation', { component: 'haikuClient', action: 'generateSummary', medicalMode: true });
       return await medStudentClient.generateMedicalSummary(text, pageCount);
     }
     
-    // Regular summary generation (medicalMode is false or undefined)
     ErrorLogger.debug('Using regular summary generation', { component: 'haikuClient', action: 'generateSummary', medicalMode: false });
     const { summary, tokens } = await this.callFunction('generate-summary-and-flashcards', {
       action: 'summary',
@@ -139,16 +148,7 @@ class HaikuClient {
     return { summary, tokens: tokens || { input: 0, output: 0, total: 0 } };
   }
 
-  /**
-   * Generate flashcards from the provided text
-   * @param {string} text - The text to create flashcards from
-   * @param {number} count - Number of flashcards to generate
-    * @param {string} mode - The mode for flashcard generation
-    * @param {number} batchIndex - The batch index for processing
-    * @param {number} pageCount - Optional page count for usage tracking
-    * @returns {Promise<{flashcards: Array, tokens: {input: number, output: number, total: number}}>} - Generated flashcards with token usage
-    */
-  async generateFlashcards(text, count, mode, batchIndex, pageCount = 0, medicalMode = false) {
+  async generateFlashcards(text: string, count: number, mode: string, batchIndex: number, pageCount: number = 0, medicalMode: boolean = false): Promise<FlashcardsResult> {
     ErrorLogger.debug('Generating flashcards', { 
       component: 'haikuClient', 
       action: 'generateFlashcards', 
@@ -158,13 +158,11 @@ class HaikuClient {
       medicalMode: medicalMode === true 
     });
     
-    // Route to medical processing ONLY if explicitly enabled (strict check)
     if (medicalMode === true) {
       ErrorLogger.debug('Routing to medical flashcard generation', { component: 'haikuClient', action: 'generateFlashcards', medicalMode: true });
       return await medStudentClient.generateMedicalFlashcards(text, count, pageCount);
     }
     
-    // Regular flashcard generation (medicalMode is false or undefined)
     ErrorLogger.debug('Using regular flashcard generation', { component: 'haikuClient', action: 'generateFlashcards', medicalMode: false });
 
     const { flashcards, tokens } = await this.callFunction('generate-summary-and-flashcards', {
@@ -183,13 +181,7 @@ class HaikuClient {
     return { flashcards: flashcards.slice(0, count), tokens: tokens || { input: 0, output: 0, total: 0 } };
   }
 
-  /**
-   * Detect topics from the provided text
-   * @param {string} text - The text to analyze for topics
-   * @param {boolean} medicalMode - Whether to use medical processing
-   * @returns {Promise<Array>} - Detected topics
-   */
-  async detectTopics(text, medicalMode = false) {
+  async detectTopics(text: string, medicalMode: boolean = false): Promise<string[]> {
     if (!text?.trim()) {
       throw new Error('Text content is required for topic detection');
     }
@@ -201,13 +193,11 @@ class HaikuClient {
       medicalMode: medicalMode === true 
     });
     
-    // Route to medical processing ONLY if explicitly enabled (strict check)
     if (medicalMode === true) {
       ErrorLogger.debug('Routing to medical topic detection', { component: 'haikuClient', action: 'detectTopics', medicalMode: true });
       return await medStudentClient.detectMedicalTopics(text);
     }
     
-    // Regular topic detection (medicalMode is false or undefined)
     ErrorLogger.debug('Using regular topic detection', { component: 'haikuClient', action: 'detectTopics', medicalMode: false });
     const { topics } = await this.callFunction('generate-summary-and-flashcards', {
       action: 'topics',
@@ -220,11 +210,7 @@ class HaikuClient {
     return topics;
   }
 
-  /**
-   * Check if the API key is configured and valid
-   * @returns {Promise<boolean>} - True if API is accessible
-   */
-  async validateApiKey() {
+  async validateApiKey(): Promise<boolean> {
     try {
       const { ok } = await this.callFunction('generate-summary-and-flashcards', { 
         action: 'ping' 
@@ -236,18 +222,15 @@ class HaikuClient {
   }
 }
 
-// Create and export a singleton instance
 export const haikuClient = new HaikuClient();
 
-// Export the class for testing purposes
 export { HaikuClient };
 
-// Utility functions for batch processing
-export const calculateBatches = (totalItems, batchSize = CONFIG.BATCH_SIZE) => {
+export const calculateBatches = (totalItems: number, batchSize: number = CONFIG.BATCH_SIZE): number => {
   return Math.ceil(totalItems / batchSize);
 };
 
-export const getBatchItems = (items, batchIndex, batchSize = CONFIG.BATCH_SIZE) => {
+export const getBatchItems = <T>(items: T[], batchIndex: number, batchSize: number = CONFIG.BATCH_SIZE): T[] => {
   const start = batchIndex * batchSize;
   const end = start + batchSize;
   return items.slice(start, end);

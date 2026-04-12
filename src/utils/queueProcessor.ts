@@ -2,28 +2,59 @@
 // Handles batched processing for large documents and flashcard sets
 // Provides progressive updates and manages processing workflows
 
-import { haikuClient, calculateBatches, getBatchItems } from './haikuClient.js';
-import { CONFIG } from './config.js';
-import { deduplicateFlashcards } from './deduplication.js';
+import { haikuClient, calculateBatches } from './haikuClient';
+import { CONFIG } from './config';
+import { deduplicateFlashcards } from './deduplication';
 import { ErrorLogger } from './errorLogger';
 
-/**
- * Process document in batches and generate progressive summaries
- * @param {string} text - Full document text
- * @param {Function} onProgress - Callback for progress updates
- * @param {Function} onChunkComplete - Callback when each summary chunk is ready
- * @returns {Promise<string>} - Final combined summary
- */
-export const processSummaryBatches = async (text, onProgress, onChunkComplete) => {
+export type ProgressCallback = (progress: number, message: string) => void;
+export type ChunkCompleteCallback = (chunk: string, index: number, total: number) => void;
+export type BatchCompleteCallback = (cards: Flashcard[], batchIndex: number, totalBatches: number) => void;
+
+export interface Flashcard {
+  front: string;
+  back: string;
+}
+
+export interface SummaryResult {
+  summary: string;
+  tokens: number;
+}
+
+export interface FlashcardResult {
+  flashcards: Flashcard[];
+  tokens: number;
+}
+
+export interface ProcessingMode {
+  mode: 'fast' | 'staged';
+  reason: string;
+  estimatedPages?: number;
+  batches: number;
+}
+
+export interface TimeEstimate {
+  mode: string;
+  estimatedPages: number;
+  summaryTime: number;
+  flashcardTime: number;
+  totalTime: number;
+  formattedTime: string;
+}
+
+export const processSummaryBatches = async (
+  text: string,
+  onProgress?: ProgressCallback,
+  onChunkComplete?: ChunkCompleteCallback
+): Promise<SummaryResult> => {
   if (!text || text.trim().length === 0) {
     throw new Error('Text content is required');
   }
 
-  // Split text into chunks based on CHARS_PER_CHUNK configuration
   const textChunks = splitTextIntoChunks(text);
   const totalChunks = textChunks.length;
-  const estimatedPages = Math.max(1, Math.ceil(text.length / CONFIG.CHARS_PER_PAGE)); // Estimate pages for usage
-  const summaryChunks = [];
+  const estimatedPages = Math.max(1, Math.ceil(text.length / CONFIG.CHARS_PER_PAGE));
+  const summaryChunks: string[] = [];
   let totalTokensUsed = 0;
 
   ErrorLogger.info(`Processing ${totalChunks} text chunks in batches`, { component: 'queueProcessor', action: 'processSummaryBatches', totalChunks });
@@ -31,7 +62,7 @@ export const processSummaryBatches = async (text, onProgress, onChunkComplete) =
   try {
     for (let i = 0; i < textChunks.length; i++) {
       const chunk = textChunks[i];
-      const progress = Math.round(((i + 1) / totalChunks) * 70); // Reserve 30% for final combination
+      const progress = Math.round(((i + 1) / totalChunks) * 70);
 
       if (onProgress) {
         onProgress(progress, `Processing section ${i + 1} of ${totalChunks}...`);
@@ -39,7 +70,6 @@ export const processSummaryBatches = async (text, onProgress, onChunkComplete) =
 
       try {
         ErrorLogger.debug(`Generating summary for chunk ${i + 1}/${totalChunks}`, { component: 'queueProcessor', action: 'processSummaryBatches', chunkIndex: i + 1, totalChunks, chunkSize: chunk.length, medicalMode: false });
-        // Explicitly pass medicalMode as false for regular processing
         const result = await haikuClient.generateSummary(chunk, i, totalChunks, i === 0 ? estimatedPages : 0, false);
         const summaryText = result.summary || result;
 
@@ -53,31 +83,26 @@ export const processSummaryBatches = async (text, onProgress, onChunkComplete) =
 
         summaryChunks.push(summaryText);
 
-        // Track tokens from this chunk
         if (result.tokens && result.tokens.total) {
           totalTokensUsed += result.tokens.total;
           ErrorLogger.debug(`Chunk ${i + 1} used ${result.tokens.total} tokens`, { component: 'queueProcessor', action: 'processSummaryBatches', chunkIndex: i + 1, tokens: result.tokens.total });
         }
 
-        // Notify that this chunk is complete
         if (onChunkComplete) {
           onChunkComplete(summaryText, i, totalChunks);
         }
 
-        // Brief pause between requests to avoid rate limiting
         if (i < textChunks.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       } catch (chunkError) {
         const err = chunkError instanceof Error ? chunkError : new Error(String(chunkError));
         ErrorLogger.error(err, { component: 'queueProcessor', action: 'processSummaryBatches', chunkIndex: i + 1, totalChunks });
-        // Continue with other chunks, but note the failure
         summaryChunks.push(`[Summary unavailable for section ${i + 1}]`);
       }
     }
 
-    // Combine summaries if we have multiple chunks
-    let finalSummary;
+    let finalSummary: string;
     if (summaryChunks.length > 1) {
       if (onProgress) {
         onProgress(85, 'Combining summaries...');
@@ -89,7 +114,6 @@ export const processSummaryBatches = async (text, onProgress, onChunkComplete) =
       } catch (combineError) {
         const err = combineError instanceof Error ? combineError : new Error(String(combineError));
         ErrorLogger.error(err, { component: 'queueProcessor', action: 'combineChunkSummaries', chunkCount: summaryChunks.length });
-        // Return individual summaries joined together
         finalSummary = summaryChunks.join('\n\n');
       }
     } else {
@@ -119,16 +143,13 @@ export const processSummaryBatches = async (text, onProgress, onChunkComplete) =
   }
 };
 
-/**
- * Process flashcards in batches with progressive updates
- * @param {string} text - Source text for flashcards
- * @param {number} totalCount - Total number of flashcards to generate
- * @param {string} mode - Generation mode ('full' or 'summary')
- * @param {Function} onProgress - Progress callback
- * @param {Function} onBatchComplete - Callback when each batch is ready
- * @returns {Promise<Array>} - All generated flashcards
- */
-export const processFlashcardBatches = async (text, totalCount, mode, onProgress, onBatchComplete) => {
+export const processFlashcardBatches = async (
+  text: string,
+  totalCount: number,
+  mode: string,
+  onProgress?: ProgressCallback,
+  onBatchComplete?: BatchCompleteCallback
+): Promise<FlashcardResult> => {
   if (!text || text.trim().length === 0) {
     throw new Error('Text content is required');
   }
@@ -139,8 +160,8 @@ export const processFlashcardBatches = async (text, totalCount, mode, onProgress
 
   const maxBatchSize = 25;
   const batches = calculateBatches(totalCount, maxBatchSize);
-  const estimatedPages = Math.max(1, Math.ceil(text.length / CONFIG.CHARS_PER_PAGE)); // Estimate pages for usage
-  const allFlashcards = [];
+  const estimatedPages = Math.max(1, Math.ceil(text.length / CONFIG.CHARS_PER_PAGE));
+  const allFlashcards: Flashcard[] = [];
 
   ErrorLogger.info(`Generating ${totalCount} flashcards in ${batches} batch(es)`, { component: 'queueProcessor', action: 'processFlashcardBatches', totalCount, batches });
 
@@ -155,43 +176,38 @@ export const processFlashcardBatches = async (text, totalCount, mode, onProgress
       }
 
       try {
-        // Explicitly pass medicalMode as false for regular processing
         const result = await haikuClient.generateFlashcards(
           text,
           batchSize,
           mode,
           batchIndex,
           batchIndex === 0 ? estimatedPages : 0,
-          false // medicalMode = false for regular processing
+          false
         );
 
         const batchFlashcards = result.flashcards || result;
 
-        // Deduplicate within this batch and against existing cards
         const uniqueBatchCards = deduplicateFlashcards([...allFlashcards, ...batchFlashcards])
-          .slice(allFlashcards.length); // Get only the new unique cards
+          .slice(allFlashcards.length);
 
         allFlashcards.push(...uniqueBatchCards);
         
-        // Notify that this batch is complete
         if (onBatchComplete) {
           onBatchComplete(uniqueBatchCards, batchIndex, batches);
         }
 
-        // If we have fewer cards than expected due to deduplication, try to generate more
         const remaining = totalCount - allFlashcards.length;
         if (remaining > 0 && batchIndex === batches - 1) {
           ErrorLogger.debug(`Generating ${remaining} additional flashcards to reach target count`, { component: 'queueProcessor', action: 'processFlashcardBatches', remaining, totalCount });
           
           try {
-            // Explicitly pass medicalMode as false for regular processing
             const additionalResult = await haikuClient.generateFlashcards(
               text,
               remaining,
               mode,
               batchIndex + 1,
-              0, // pageCount
-              false // medicalMode = false for regular processing
+              0,
+              false
             );
 
             const additionalCards = additionalResult.flashcards || additionalResult;
@@ -205,15 +221,13 @@ export const processFlashcardBatches = async (text, totalCount, mode, onProgress
           }
         }
 
-        // Brief pause between batches
         if (batchIndex < batches - 1) {
           await new Promise(resolve => setTimeout(resolve, 1500));
         }
       } catch (batchError) {
         const err = batchError instanceof Error ? batchError : new Error(String(batchError));
         ErrorLogger.error(err, { component: 'queueProcessor', action: 'processFlashcardBatches', batchIndex: batchIndex + 1, totalBatches: batches });
-        // Continue with other batches but note the failure
-        const errorCard = {
+        const errorCard: Flashcard = {
           front: `Batch ${batchIndex + 1} Error`,
           back: 'This batch of flashcards could not be generated. Please try again.'
         };
@@ -221,18 +235,16 @@ export const processFlashcardBatches = async (text, totalCount, mode, onProgress
       }
     }
 
-    // Ensure we have at least some flashcards
     if (allFlashcards.length === 0) {
       throw new Error('No flashcards could be generated');
     }
 
-    // Trim to requested count and final deduplication
     const finalFlashcards = deduplicateFlashcards(allFlashcards).slice(0, totalCount);
 
     ErrorLogger.info('Generated flashcards', { component: 'queueProcessor', action: 'processFlashcardBatches', flashcardCount: finalFlashcards.length, totalCount });
     return {
       flashcards: finalFlashcards,
-      tokens: 0 // Tokens are tracked separately in the edge function
+      tokens: 0
     };
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
@@ -241,18 +253,11 @@ export const processFlashcardBatches = async (text, totalCount, mode, onProgress
   }
 };
 
-/**
- * Determine processing mode based on content size and requirements
- * @param {string} text - Document text
- * @param {number} flashcardCount - Requested flashcard count
- * @returns {Object} - Processing mode and batch information
- */
-export const determineProcessingMode = (text, flashcardCount) => {
+export const determineProcessingMode = (text: string, flashcardCount: number): ProcessingMode => {
   if (!text) {
     return { mode: 'fast', reason: 'No content', batches: 1 };
   }
 
-  // Estimate page/slide count using configured constant
   const estimatedPages = Math.ceil(text.length / CONFIG.CHARS_PER_PAGE);
   
   const isFastMode = estimatedPages <= CONFIG.FAST_MODE_MAX_SLIDES && 
@@ -278,21 +283,14 @@ export const determineProcessingMode = (text, flashcardCount) => {
   }
 };
 
-/**
- * Split text into manageable chunks for processing
- * @param {string} text - Full text
- * @param {number} pagesPerChunk - Pages per chunk (optional, defaults to calculating based on CHARS_PER_CHUNK)
- * @returns {Array<string>} - Text chunks
- */
-const splitTextIntoChunks = (text, pagesPerChunk = null) => {
-  // Use CONFIG.CHARS_PER_CHUNK (14000) as the target chunk size
+const splitTextIntoChunks = (text: string, _pagesPerChunk: number | null = null): string[] => {
   const charsPerChunk = CONFIG.CHARS_PER_CHUNK || 14000;
 
   if (text.length <= charsPerChunk) {
     return [text];
   }
 
-  const chunks = [];
+  const chunks: string[] = [];
   let currentPosition = 0;
 
   ErrorLogger.debug('Splitting text into chunks', { component: 'queueProcessor', action: 'splitTextIntoChunks', textLength: text.length, charsPerChunk });
@@ -300,12 +298,10 @@ const splitTextIntoChunks = (text, pagesPerChunk = null) => {
   while (currentPosition < text.length) {
     let chunkEnd = currentPosition + charsPerChunk;
 
-    // Try to break at a paragraph or sentence boundary
     if (chunkEnd < text.length) {
       const paragraphBreak = text.lastIndexOf('\n\n', chunkEnd);
       const sentenceBreak = text.lastIndexOf('. ', chunkEnd);
 
-      // Look for break points in the last 30% of the chunk to avoid cutting too early
       if (paragraphBreak > currentPosition + (charsPerChunk * 0.7)) {
         chunkEnd = paragraphBreak + 2;
       } else if (sentenceBreak > currentPosition + (charsPerChunk * 0.7)) {
@@ -325,12 +321,7 @@ const splitTextIntoChunks = (text, pagesPerChunk = null) => {
   return chunks;
 };
 
-/**
- * Combine individual chunk summaries into a cohesive final summary
- * @param {Array<string>} chunkSummaries - Individual summaries
- * @returns {Promise<string>} - Combined summary
- */
-const combineChunkSummaries = async (chunkSummaries) => {
+const combineChunkSummaries = async (chunkSummaries: string[]): Promise<string> => {
   if (!chunkSummaries || chunkSummaries.length === 0) {
     return 'No summary available.';
   }
@@ -339,8 +330,6 @@ const combineChunkSummaries = async (chunkSummaries) => {
     return chunkSummaries[0];
   }
 
-  // Simply join the summaries without section labels for seamless flow
-  // Each summary already contains properly formatted bullets starting with "- "
   const combinedText = chunkSummaries
     .map(summary => summary.trim())
     .join('\n\n');
@@ -349,13 +338,7 @@ const combineChunkSummaries = async (chunkSummaries) => {
   return combinedText;
 };
 
-/**
- * Calculate estimated processing time
- * @param {string} text - Document text
- * @param {number} flashcardCount - Number of flashcards
- * @returns {Object} - Time estimates
- */
-export const estimateProcessingTime = (text, flashcardCount) => {
+export const estimateProcessingTime = (text: string, flashcardCount: number): TimeEstimate => {
   const estimatedPages = Math.ceil(text.length / CONFIG.CHARS_PER_PAGE);
   const mode = determineProcessingMode(text, flashcardCount);
   
@@ -363,11 +346,11 @@ export const estimateProcessingTime = (text, flashcardCount) => {
   let flashcardTime = 0;
 
   if (mode.mode === 'fast') {
-    summaryTime = Math.min(30, estimatedPages * 2); // ~2 seconds per page, max 30s
-    flashcardTime = Math.min(45, flashcardCount * 1.5); // ~1.5 seconds per card, max 45s
+    summaryTime = Math.min(30, estimatedPages * 2);
+    flashcardTime = Math.min(45, flashcardCount * 1.5);
   } else {
-    summaryTime = Math.min(120, estimatedPages * 3); // ~3 seconds per page, max 2 minutes
-    flashcardTime = Math.min(180, flashcardCount * 2.5); // ~2.5 seconds per card, max 3 minutes
+    summaryTime = Math.min(120, estimatedPages * 3);
+    flashcardTime = Math.min(180, flashcardCount * 2.5);
   }
 
   const totalTime = summaryTime + flashcardTime;
@@ -382,7 +365,7 @@ export const estimateProcessingTime = (text, flashcardCount) => {
   };
 };
 
-const formatTime = (seconds) => {
+const formatTime = (seconds: number): string => {
   if (seconds < 60) {
     return `${seconds} seconds`;
   } else if (seconds < 120) {

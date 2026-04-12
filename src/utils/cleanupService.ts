@@ -4,11 +4,51 @@
 import { supabase } from '../lib/supabase';
 import { ErrorLogger } from './errorLogger';
 
+interface CleanupResult {
+  success: boolean;
+  error?: string;
+  [key: string]: unknown;
+}
+
+interface HistoryStats {
+  total: number;
+  active: number;
+  expired: number;
+}
+
+interface LibraryStats {
+  total: number;
+  permanent: number;
+}
+
+interface DataRetentionPolicy {
+  historyRetentionDays: number;
+  libraryRetentionDays: string;
+}
+
+interface RetentionStats {
+  history: HistoryStats;
+  library: LibraryStats;
+  dataRetentionPolicy: DataRetentionPolicy;
+}
+
+interface ScheduleDetail {
+  enabled?: boolean;
+  available?: boolean;
+  frequency?: string;
+  nextRun?: string;
+  description: string;
+}
+
+interface CleanupScheduleInfo {
+  automaticCleanup: ScheduleDetail;
+  manualCleanup: ScheduleDetail;
+}
+
 /**
  * Manually trigger cleanup of expired history entries
- * @returns {Promise<Object>} - Cleanup results
  */
-export const triggerManualCleanup = async () => {
+export const triggerManualCleanup = async (): Promise<CleanupResult> => {
   try {
     ErrorLogger.info('Triggering manual cleanup of expired history entries', { component: 'cleanupService', action: 'triggerManualCleanup' });
     
@@ -37,15 +77,14 @@ export const triggerManualCleanup = async () => {
 
 /**
  * Get retention statistics for user data
- * @returns {Promise<Object>} - Data retention statistics
  */
-export const getRetentionStats = async () => {
+export const getRetentionStats = async (): Promise<RetentionStats> => {
   if (!supabase.auth.user) {
     throw new Error('User must be authenticated');
   }
 
   try {
-    const userId = supabase.auth.user.id;
+    const userId = (supabase.auth.user as unknown as { id: string }).id;
     const currentTime = new Date().toISOString();
 
     // Get history statistics
@@ -70,7 +109,7 @@ export const getRetentionStats = async () => {
 
     // Calculate statistics
     const totalHistoryItems = historyData?.length || 0;
-    const expiredHistoryItems = historyData?.filter(item => 
+    const expiredHistoryItems = historyData?.filter((item: { expires_at: string }) => 
       new Date(item.expires_at) <= new Date(currentTime)
     ).length || 0;
     const activeHistoryItems = totalHistoryItems - expiredHistoryItems;
@@ -85,7 +124,7 @@ export const getRetentionStats = async () => {
       },
       library: {
         total: totalLibraryItems,
-        permanent: totalLibraryItems // Library items don't expire
+        permanent: totalLibraryItems
       },
       dataRetentionPolicy: {
         historyRetentionDays: 365,
@@ -101,9 +140,8 @@ export const getRetentionStats = async () => {
 
 /**
  * Schedule automatic cleanup (placeholder for future cron job setup)
- * @returns {Object} - Scheduling information
  */
-export const getCleanupScheduleInfo = () => {
+export const getCleanupScheduleInfo = (): CleanupScheduleInfo => {
   return {
     automaticCleanup: {
       enabled: true,

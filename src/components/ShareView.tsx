@@ -190,12 +190,14 @@ export const ShareView: React.FC = () => {
             onPublishToLibrary={() => Promise.resolve(false)} // Disabled for shared view
             onReset={() => {}} // Disabled for shared view
             isSharedView={true}
+            highlightLibraryItemId={item.id}
           />
           
           {item.flashcards_json.length > 0 && (
-            <FlashcardViewer 
+            <FlashcardViewer
               flashcards={item.flashcards_json}
               itemId={item.id}
+              contextSummary={item.summary_text}
             />
           )}
         </div>
