@@ -46,7 +46,7 @@ function normalizeUnicode(str: string): string {
 }
 
 function stripOptionPrefix(str: string): string {
-  return str.replace(/^[A-Da-d][\).\]:]\s*/, '').replace(/^[1-4][\).\]:]\s*/, '').trim();
+  return str.replace(/^[A-Da-d][).\]:]\s*/, '').replace(/^[1-4][).\]:]\s*/, '').trim();
 }
 
 function normalizeForDedup(s: string): string {
@@ -91,20 +91,22 @@ function findBestMatch(correctAnswer: string, options: string[]): string | null 
   return null;
 }
 
-function validateAndNormalizeQuestion(q: any): Question | null {
+function validateAndNormalizeQuestion(q: unknown): Question | null {
   try {
-    if (!q.question || typeof q.question !== 'string') return null;
+    if (typeof q !== 'object' || q === null) return null;
+    const o = q as Record<string, unknown>;
+    if (!o.question || typeof o.question !== 'string') return null;
 
-    if (!q.options || !Array.isArray(q.options) || q.options.length !== 4) return null;
+    if (!Array.isArray(o.options) || o.options.length !== 4) return null;
 
-    if (!q.correct_answer || typeof q.correct_answer !== 'string') return null;
+    if (!o.correct_answer || typeof o.correct_answer !== 'string') return null;
 
-    const normalizedOptions = q.options.map((opt: any) => normalizeString(String(opt)));
+    const normalizedOptions = o.options.map((opt) => normalizeString(String(opt)));
 
     // ✅ Ensure options are unique (common failure)
     if (!optionsAreUnique(normalizedOptions)) return null;
 
-    let normalizedCorrectAnswer = normalizeString(q.correct_answer);
+    let normalizedCorrectAnswer = normalizeString(o.correct_answer);
 
     if (!normalizedOptions.includes(normalizedCorrectAnswer)) {
       const bestMatch = findBestMatch(normalizedCorrectAnswer, normalizedOptions);
@@ -112,11 +114,12 @@ function validateAndNormalizeQuestion(q: any): Question | null {
       else return null;
     }
 
+    const diff = o.difficulty;
     return {
-      question: q.question.trim(),
+      question: o.question.trim(),
       options: normalizedOptions,
       correct_answer: normalizedCorrectAnswer,
-      difficulty: q.difficulty || 'medium'
+      difficulty: typeof diff === 'string' ? diff : 'medium'
     };
   } catch {
     return null;
@@ -138,6 +141,8 @@ function advancedSanitizeJSON(text: string): string {
   if (jsonStart !== Infinity && jsonStart > 0) cleaned = cleaned.substring(jsonStart);
 
   cleaned = cleaned.replace(/,(\s*[\]}])/g, '$1');
+  // Strip C0 control characters from model output (intentional ASCII control class)
+  // eslint-disable-next-line no-control-regex -- sanitize non-printable chars before JSON.parse
   cleaned = cleaned.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '');
 
   return cleaned.trim();
@@ -163,7 +168,7 @@ function smartRepairJSON(text: string): string {
   return repaired.trim();
 }
 
-function tryParseJSON(text: string): any {
+function tryParseJSON(text: string): unknown {
   const sanitized = advancedSanitizeJSON(text);
 
   // strategy 1
@@ -290,9 +295,9 @@ async function callClaude(prompt: string, claudeApiKey: string, maxTokens: numbe
     const outputTokens = data?.usage?.output_tokens || 0;
 
     return { text: responseText, tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens } };
-  } catch (e: any) {
+  } catch (e: unknown) {
     clearTimeout(timeoutId);
-    if (e?.name === 'AbortError') throw new Error('Claude request timed out');
+    if (e instanceof Error && e.name === 'AbortError') throw new Error('Claude request timed out');
     throw e;
   }
 }
@@ -315,10 +320,10 @@ async function generateQuestions(
 
   const { text: responseText, tokens } = await callClaude(prompt, claudeApiKey, calculatedMaxTokens, temperature);
 
-  let rawQuestions: any;
+  let rawQuestions: unknown;
   try {
     rawQuestions = tryParseJSON(responseText);
-  } catch (err) {
+  } catch (_err) {
     // ✅ charge tokens even if parse fails
     throw new TokenError(`Failed to parse AI response as JSON`, tokens.total);
   }
@@ -400,7 +405,7 @@ async function generateQuestionsInChunks(
         } else {
           throw new Error(`Chunk ${chunkNum}: Only duplicates produced`);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         // If tokens were consumed but parsing/validation failed, count them
         if (error instanceof TokenError) {
           tokensUsedTotal += error.tokensUsed;
@@ -544,7 +549,7 @@ Deno.serve(async (req: Request) => {
       }
     );
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('💥 Fatal error in generate-brain-rush-questions:', error);
 
     return new Response(

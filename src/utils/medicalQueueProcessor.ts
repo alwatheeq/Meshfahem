@@ -53,8 +53,11 @@ export const processMedicalContent = async (
   text: string,
   flashcardCount: number,
   fromSummary: boolean,
-  onProgress?: MedicalProgressCallback
+  onProgress?: MedicalProgressCallback,
+  opts?: { includeSummary?: boolean; includeFlashcards?: boolean }
 ): Promise<MedicalProcessingResult> => {
+  const includeSummary = opts?.includeSummary !== false;
+  const includeFlashcards = opts?.includeFlashcards !== false;
   if (!text || text.trim().length === 0) {
     throw new Error('Medical text content is required');
   }
@@ -76,26 +79,33 @@ export const processMedicalContent = async (
     medicalScore = validation.score;
     ErrorLogger.info('Medical content validated', { component: 'medicalQueueProcessor', action: 'processMedicalContent', medicalScore });
 
-    // Step 2: Generate medical summary
-    onProgress?.(25, 'Generating medical summary with clinical focus...', { medicalScore });
-    const summaryResult = await medStudentClient.generateMedicalSummary(text, estimatedPages);
-    const summary = summaryResult.summary;
-    totalTokens += summaryResult.tokens?.total || 0;
+    // Step 2: Generate medical summary (optional)
+    let summary = '';
+    if (includeSummary) {
+      onProgress?.(25, 'Generating medical summary with clinical focus...', { medicalScore });
+      const summaryResult = await medStudentClient.generateMedicalSummary(text, estimatedPages);
+      summary = summaryResult.summary;
+      totalTokens += summaryResult.tokens?.total || 0;
+    }
 
     onProgress?.(50, 'Medical summary complete, generating flashcards...', {
       summaryChunks: [summary],
       medicalScore
     });
 
-    // Step 3: Generate medical flashcards
-    const sourceText = fromSummary ? summary : text;
-    const flashcardsResult = await medStudentClient.generateMedicalFlashcards(
-      sourceText,
-      flashcardCount,
-      fromSummary ? 0 : estimatedPages
-    );
-    const flashcards = flashcardsResult.flashcards;
-    totalTokens += flashcardsResult.tokens?.total || 0;
+    // Step 3: Generate medical flashcards (optional)
+    let flashcards: Flashcard[] = [];
+    if (includeFlashcards) {
+      const effectiveFromSummary = includeSummary && fromSummary && summary.trim().length > 0;
+      const sourceText = effectiveFromSummary ? summary : text;
+      const flashcardsResult = await medStudentClient.generateMedicalFlashcards(
+        sourceText,
+        flashcardCount,
+        effectiveFromSummary ? 0 : estimatedPages
+      );
+      flashcards = flashcardsResult.flashcards;
+      totalTokens += flashcardsResult.tokens?.total || 0;
+    }
 
     onProgress?.(80, 'Medical flashcards complete, detecting specialties...', {
       summaryChunks: [summary],

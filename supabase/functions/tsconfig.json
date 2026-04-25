@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "strictNullChecks": false,
+    "noImplicitAny": false,
+    "useUnknownInCatchVariables": false,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "types": [],
+    "baseUrl": ".",
+    "paths": {
+      "npm:@supabase/supabase-js@2.54.0": ["../../node_modules/@supabase/supabase-js"],
+      "npm:@supabase/supabase-js@2.39.3": ["../../node_modules/@supabase/supabase-js"],
+      "npm:stripe@14.21.0": ["../../node_modules/stripe"],
+      "jsr:@supabase/functions-js/edge-runtime.d.ts": ["./_shared/edge-runtime-jsr-stub.d.ts"],
+      "jsr:@supabase/supabase-js@2": ["../../node_modules/@supabase/supabase-js"]
+    }
+  },
+  "include": ["./**/*.ts", "./**/*.d.ts"],
+  "exclude": ["node_modules"]
+}

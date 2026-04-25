@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { X, ChevronDown, ChevronUp } from 'lucide-react';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useI18n } from '../../../contexts/I18nContext';
@@ -80,7 +80,7 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
     }
   };
 
-  const handleMouseMove = (e: MouseEvent) => {
+  const handleMouseMove = useCallback((e: MouseEvent) => {
     // Handle resize first
     if (isResizing && resizeDirection) {
       const deltaX = e.clientX - resizeStart.x;
@@ -145,14 +145,14 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
       ...widget,
       position: { x: newX, y: newY }
     });
-  };
+  }, [isResizing, resizeDirection, resizeStart, widget, onUpdate, isDragging, dragStart, wasDragging]);
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     setIsDragging(false);
     setIsResizing(false);
     setResizeDirection('');
     setWasDragging(false);
-  };
+  }, []);
 
   const handleResizeStart = (e: React.MouseEvent, direction: string) => {
     e.preventDefault();
@@ -189,7 +189,7 @@ export const WidgetContainer: React.FC<WidgetContainerProps> = ({
         document.body.style.cursor = '';
       };
     }
-  }, [isDragging, isResizing, resizeDirection, dragStart, widget.position, widget.size, resizeStart]);
+  }, [isDragging, isResizing, resizeDirection, handleMouseMove, handleMouseUp]);
 
   const handleToggleCollapse = () => {
     onUpdate({

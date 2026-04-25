@@ -156,6 +156,7 @@ export const BookModeViewer: React.FC<BookModeViewerProps> = ({
             onPageChange={handlePageChange}
             onProgressUpdate={handlePageChange}
             notesForCurrentPage={pageNotes.filter(n => n.note_type === 'book' ? n.page_index === null : n.page_index === currentPage)}
+            highlightItemId={summaryId}
           />
         );
       case 'flashcards':

@@ -28,7 +28,6 @@ import { useAuth } from '../../hooks/useAuth';
 import { useSubscription } from '../../hooks/useSubscription';
 import { useTheme } from '../../contexts/ThemeContext';
 import { GlobalChatAssistant } from '../ChatAssistant/GlobalChatAssistant';
-import { PomodoroTimer } from './PomodoroTimer';
 import { PageTutorial } from '../Onboarding/PageTutorial';
 import { usePageTutorial } from '../../hooks/usePageTutorial';
 import { FreeFormToggle } from './BookMode/FreeFormToggle';
@@ -42,6 +41,13 @@ import { normalizeText, generateTextHash, checkCache, storeInCache } from '../..
 import { haikuClient } from '../../utils/haikuClient';
 import { handleApiError, handleSupabaseError, isOffline } from '../../utils/errorHandler';
 import { ErrorLogger } from '../../utils/errorLogger';
+import type { AcademicsGenerationPreferences } from '../../utils/academicsGenerationPreferences';
+import {
+  dashboardHasRunnableOutput,
+  mergeGenerationPreferences,
+  prefsMatchDefaultCacheShape,
+} from '../../utils/academicsGenerationPreferences';
+import { throwIfEdgeFunctionInvokeFailed } from '../../utils/edgeFunctionInvoke';
 
 export interface ProcessingState {
   stage: 'idle' | 'uploading' | 'processing' | 'completed' | 'error';
@@ -339,11 +345,19 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const handleProcessInput = async (input: File | string, flashcardCount: number, fromSummary: boolean, medicalMode: boolean = false, useOCR: boolean = false) => {
-    ErrorLogger.debug('Starting handleProcessInput', { 
-      component: 'Dashboard', 
-      action: 'handleProcessInput', 
-      metadata: { medicalMode, flashcardCount, fromSummary } 
+  const handleProcessInput = async (
+    input: File | string,
+    flashcardCount: number,
+    fromSummary: boolean,
+    medicalMode: boolean = false,
+    useOCR: boolean = false,
+    generationPrefs?: AcademicsGenerationPreferences
+  ) => {
+    const genPrefs = mergeGenerationPreferences(generationPrefs);
+    ErrorLogger.debug('Starting handleProcessInput', {
+      component: 'Dashboard',
+      action: 'handleProcessInput',
+      metadata: { medicalMode, flashcardCount, fromSummary, genPrefs },
     });
 
     // Check subscription status first
@@ -374,6 +388,17 @@ export const Dashboard: React.FC = () => {
         progress: 0,
         message: 'Token limit exceeded',
         error: `You've used all ${getTokensRemaining()} tokens in your current billing cycle. Upgrade your plan for more tokens!`
+      }));
+      return;
+    }
+
+    if (!dashboardHasRunnableOutput(genPrefs)) {
+      setProcessingState((prev) => ({
+        ...prev,
+        stage: 'error',
+        progress: 0,
+        message: t('dashboard.error_generation_prefs_required'),
+        error: t('dashboard.error_generation_prefs_required'),
       }));
       return;
     }
@@ -522,9 +547,12 @@ export const Dashboard: React.FC = () => {
       }));
 
       try {
-        const normalizedText = normalizeText(extractedData.text);
-        const contentHash = await generateTextHash(normalizedText);
-        const cachedResult = await checkCache(contentHash);
+        let cachedResult: Awaited<ReturnType<typeof checkCache>> = null;
+        if (prefsMatchDefaultCacheShape(genPrefs)) {
+          const normalizedText = normalizeText(extractedData.text);
+          const contentHash = await generateTextHash(normalizedText);
+          cachedResult = await checkCache(contentHash);
+        }
 
         if (cachedResult) {
           // Found cached content! Use it instead of processing
@@ -629,11 +657,23 @@ export const Dashboard: React.FC = () => {
         ? determineMedicalProcessingMode(extractedData.text, flashcardCount)
         : determineProcessingMode(extractedData.text, flashcardCount);
       
+      const initialProcessingMessage = medicalMode
+        ? genPrefs.includeSummary
+          ? 'Generating medical summary...'
+          : genPrefs.includeFlashcards
+            ? 'Generating medical flashcards...'
+            : 'Processing medical content...'
+        : genPrefs.includeSummary
+          ? 'Generating summary...'
+          : genPrefs.includeFlashcards
+            ? 'Generating flashcards...'
+            : 'Processing...';
+
       setProcessingState(prev => ({
         ...prev,
         stage: 'processing',
         progress: 30,
-        message: medicalMode ? 'Generating medical summary...' : 'Generating summary...',
+        message: initialProcessingMessage,
         mode: processingMode.mode as 'fast' | 'staged'
       }));
 
@@ -672,6 +712,11 @@ export const Dashboard: React.FC = () => {
               })
             }));
           }
+        ,
+          {
+            includeSummary: genPrefs.includeSummary,
+            includeFlashcards: genPrefs.includeFlashcards,
+          }
         );
 
         totalTokens = result.tokens || 0;
@@ -683,7 +728,9 @@ export const Dashboard: React.FC = () => {
         await updateUsage(totalTokens);
 
         // Capture final values directly from result (synchronously available)
-        finalSummary = result.summary || 'No summary generated';
+        finalSummary = genPrefs.includeSummary
+          ? (result.summary || 'No summary generated')
+          : '';
         finalFlashcards = result.flashcards || [];
         finalTopics = result.topics || [];
         finalMedicalScore = result.medicalScore;
@@ -701,7 +748,7 @@ export const Dashboard: React.FC = () => {
 
         setProcessingState(prev => ({
           ...prev,
-          summaryChunks: [finalSummary],
+          summaryChunks: finalSummary ? [finalSummary] : [],
           flashcards: finalFlashcards,
           topics: finalTopics,
           medicalScore: finalMedicalScore
@@ -715,72 +762,91 @@ export const Dashboard: React.FC = () => {
           medicalMode: false,
           textLength: extractedData.text.length 
         });
-        
-        const summaryResult = await processSummaryBatches(
-          extractedData.text,
-          (progress, message) => {
-            setProcessingState(prev => ({
-              ...prev,
-              progress: 30 + Math.round(progress * 0.35), // 30-65% for summary
-              message
-            }));
-          },
-          (chunkSummary, _chunkIndex, _totalChunks) => {
-            setProcessingState(prev => ({
-              ...prev,
-              summaryChunks: [...prev.summaryChunks, chunkSummary]
-            }));
+
+        const effectiveFromSummary = fromSummary && genPrefs.includeSummary;
+        let combinedSummary = '';
+
+        if (genPrefs.includeSummary) {
+          const summaryResult = await processSummaryBatches(
+            extractedData.text,
+            (progress, message) => {
+              setProcessingState(prev => ({
+                ...prev,
+                progress: 30 + Math.round(progress * 0.35), // 30-65% for summary
+                message
+              }));
+            },
+            (chunkSummary, _chunkIndex, _totalChunks) => {
+              setProcessingState(prev => ({
+                ...prev,
+                summaryChunks: [...prev.summaryChunks, chunkSummary]
+              }));
+            }
+          );
+
+          combinedSummary = summaryResult.summary;
+          totalTokens = summaryResult.tokens;
+
+          ErrorLogger.debug('Summary result', {
+            component: 'Dashboard',
+            action: 'handleProcessInput',
+            metadata: {
+              step: 'summaryGeneration',
+              summaryLength: combinedSummary?.length || 0,
+              flashcardCount: finalFlashcards?.length || 0,
+              tokens: totalTokens,
+              isEmpty: !combinedSummary || combinedSummary.trim().length === 0
+            }
+          });
+
+          if (!combinedSummary || combinedSummary.trim().length === 0) {
+            throw new Error('Summary generation returned empty content');
           }
-        );
 
-        const combinedSummary = summaryResult.summary;
-        totalTokens = summaryResult.tokens;
-
-        ErrorLogger.debug('Summary result', {
-          component: 'Dashboard',
-          action: 'handleProcessInput',
-          metadata: {
-            step: 'summaryGeneration',
-            summaryLength: combinedSummary?.length || 0,
-            flashcardCount: finalFlashcards?.length || 0, // Use optional chaining for safety
-            tokens: totalTokens,
-            isEmpty: !combinedSummary || combinedSummary.trim().length === 0
-          }
-        });
-
-        if (!combinedSummary || combinedSummary.trim().length === 0) {
-          throw new Error('Summary generation returned empty content');
+          setProcessingState(prev => ({
+            ...prev,
+            progress: genPrefs.includeFlashcards ? 65 : 85,
+            message: genPrefs.includeFlashcards ? 'Generating flashcards...' : 'Detecting topics...',
+            summaryChunks: [combinedSummary]
+          }));
+        } else {
+          setProcessingState(prev => ({
+            ...prev,
+            progress: genPrefs.includeFlashcards ? 40 : 85,
+            message: genPrefs.includeFlashcards ? 'Generating flashcards...' : 'Detecting topics...',
+            summaryChunks: []
+          }));
         }
 
-        setProcessingState(prev => ({
-          ...prev,
-          progress: 65,
-          message: 'Generating flashcards...',
-          summaryChunks: [combinedSummary]
-        }));
+        let flashcards: Array<{ front: string; back: string }> = [];
+        if (genPrefs.includeFlashcards) {
+          const sourceText = effectiveFromSummary && combinedSummary.trim().length > 0
+            ? combinedSummary
+            : extractedData.text;
+          const flashcardsResult = await processFlashcardBatches(
+            sourceText,
+            flashcardCount,
+            effectiveFromSummary ? 'summary' : 'full',
+            (progress, message) => {
+              setProcessingState(prev => ({
+                ...prev,
+                progress: genPrefs.includeSummary
+                  ? 65 + Math.round(progress * 0.25)
+                  : 40 + Math.round(progress * 0.45),
+                message
+              }));
+            },
+            (batchFlashcards, _batchIndex, _totalBatches) => {
+              setProcessingState(prev => ({
+                ...prev,
+                flashcards: [...prev.flashcards, ...batchFlashcards]
+              }));
+            }
+          );
 
-        const sourceText = fromSummary ? combinedSummary : extractedData.text;
-        const flashcardsResult = await processFlashcardBatches(
-          sourceText,
-          flashcardCount,
-          fromSummary ? 'summary' : 'full',
-          (progress, message) => {
-            setProcessingState(prev => ({
-              ...prev,
-              progress: 65 + Math.round(progress * 0.25), // 65-90% for flashcards
-              message
-            }));
-          },
-          (batchFlashcards, _batchIndex, _totalBatches) => {
-            setProcessingState(prev => ({
-              ...prev,
-              flashcards: [...prev.flashcards, ...batchFlashcards]
-            }));
-          }
-        );
-
-        const flashcards = flashcardsResult.flashcards;
-        totalTokens += flashcardsResult.tokens;
+          flashcards = flashcardsResult.flashcards;
+          totalTokens += flashcardsResult.tokens;
+        }
 
         setProcessingState(prev => ({
           ...prev,
@@ -813,7 +879,9 @@ export const Dashboard: React.FC = () => {
         await updateUsage(totalTokens);
 
         // Capture final values directly from processing results (synchronously available)
-        finalSummary = combinedSummary || 'No summary generated';
+        finalSummary = genPrefs.includeSummary
+          ? (combinedSummary || 'No summary generated')
+          : '';
         finalFlashcards = flashcards || [];
         finalTopics = detectedTopics || [];
 
@@ -829,7 +897,7 @@ export const Dashboard: React.FC = () => {
 
         setProcessingState(prev => ({
           ...prev,
-          summaryChunks: [finalSummary],
+          summaryChunks: finalSummary ? [finalSummary] : [],
           flashcards: finalFlashcards,
           topics: finalTopics
         }));
@@ -843,14 +911,16 @@ export const Dashboard: React.FC = () => {
       }));
 
       try {
-        const normalizedText = normalizeText(extractedData.text);
-        const contentHash = await generateTextHash(normalizedText);
-        await storeInCache(contentHash, finalSummary, finalFlashcards);
-        ErrorLogger.info('Successfully cached processed content', { 
-          component: 'Dashboard', 
-          action: 'handleProcessInput', 
-          metadata: { step: 'cacheStore', summaryLength: finalSummary.length } 
-        });
+        if (prefsMatchDefaultCacheShape(genPrefs)) {
+          const normalizedText = normalizeText(extractedData.text);
+          const contentHash = await generateTextHash(normalizedText);
+          await storeInCache(contentHash, finalSummary, finalFlashcards);
+          ErrorLogger.info('Successfully cached processed content', {
+            component: 'Dashboard',
+            action: 'handleProcessInput',
+            metadata: { step: 'cacheStore', summaryLength: finalSummary.length },
+          });
+        }
       } catch (cacheError) {
         ErrorLogger.warn('Failed to cache results, but continuing', { 
           component: 'Dashboard', 
@@ -874,7 +944,7 @@ export const Dashboard: React.FC = () => {
 
           const translatedContent = await translateContent(
             {
-              summaryChunks: [finalSummary],
+              summaryChunks: finalSummary ? [finalSummary] : [],
               flashcards: finalFlashcards
             },
             detectedLanguage,
@@ -887,7 +957,9 @@ export const Dashboard: React.FC = () => {
             }
           );
 
-          finalSummaryToDisplay = translatedContent.summaryChunks[0] || finalSummary;
+          finalSummaryToDisplay = finalSummary
+            ? (translatedContent.summaryChunks[0] || finalSummary)
+            : '';
           finalFlashcardsToDisplay = translatedContent.flashcards || finalFlashcards;
 
           ErrorLogger.debug('Auto-translation completed', {
@@ -915,9 +987,9 @@ export const Dashboard: React.FC = () => {
         stage: 'completed',
         progress: 100,
         message: medicalMode ? 'Medical content processing complete!' : 'Processing complete!',
-        summaryChunks: [finalSummaryToDisplay],
+        summaryChunks: finalSummaryToDisplay ? [finalSummaryToDisplay] : [],
         flashcards: finalFlashcardsToDisplay,
-        originalSummaryChunks: [finalSummary],
+        originalSummaryChunks: finalSummary ? [finalSummary] : [],
         originalFlashcards: finalFlashcards,
         originalText: extractedData.text,
         topics: finalTopics,
@@ -944,6 +1016,36 @@ export const Dashboard: React.FC = () => {
         extractedData.text,
         finalTopics
       );
+
+      if (user && genPrefs.quizQuestionTypes.length > 0 && extractedData.text.length >= 300) {
+        const quizLang = ['en', 'ar', 'fr', 'tr'].includes(detectedLanguage) ? detectedLanguage : 'en';
+        const quizTitle = medicalMode ? `Medical — ${fileName}` : `${fileName} — Quiz`;
+        try {
+          const { data: quizData, error: quizInvokeError } = await supabase.functions.invoke('generate-quiz', {
+            body: {
+              text: extractedData.text,
+              questionCount: 10,
+              difficulty: 'medium',
+              sourceType: 'uploaded_document',
+              quizTitle,
+              targetLanguage: quizLang,
+              questionTypes: genPrefs.quizQuestionTypes,
+            },
+          });
+          throwIfEdgeFunctionInvokeFailed(quizData, quizInvokeError);
+          ErrorLogger.info('Dashboard follow-up quiz generated', {
+            component: 'Dashboard',
+            action: 'handleProcessInput',
+            metadata: { quizSessionId: quizData.quizSessionId, questionCount: quizData.questionCount },
+          });
+        } catch (quizErr) {
+          ErrorLogger.warn('Dashboard quiz generation skipped or failed', {
+            component: 'Dashboard',
+            action: 'handleProcessInput',
+            error: quizErr instanceof Error ? quizErr.message : String(quizErr),
+          });
+        }
+      }
 
       ErrorLogger.info('Processing complete! Summary and flashcards are ready for display', { 
         component: 'Dashboard', 
@@ -988,8 +1090,15 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const handleProcessInputWrapper = (input: File | string, flashcardCount: number, fromSummary: boolean, medicalMode: boolean = false) => {
-    handleProcessInput(input, flashcardCount, fromSummary, medicalMode).catch(error => {
+  const handleProcessInputWrapper = (
+    input: File | string,
+    flashcardCount: number,
+    fromSummary: boolean,
+    medicalMode: boolean = false,
+    useOCR: boolean = false,
+    generationPrefs?: AcademicsGenerationPreferences
+  ) => {
+    handleProcessInput(input, flashcardCount, fromSummary, medicalMode, useOCR, generationPrefs).catch(error => {
       const err = error instanceof Error ? error : new Error(String(error));
       handleApiError(err, { component: 'Dashboard', action: 'handleProcessInputWrapper' });
       ErrorLogger.error(err, { component: 'Dashboard', action: 'handleProcessInputWrapper' });
@@ -1617,9 +1726,6 @@ export const Dashboard: React.FC = () => {
       
       {/* Global Chat Assistant - Available on all pages except EduPlay */}
       {currentView !== 'eduplay' && <GlobalChatAssistant />}
-
-      {/* Pomodoro Timer - Available on summary and content views */}
-      <PomodoroTimer />
 
       {/* Dashboard Tutorial */}
       {tutorialConfig && (

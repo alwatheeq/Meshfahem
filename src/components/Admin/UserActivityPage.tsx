@@ -26,6 +26,31 @@ interface ActivityStats {
   total_study_time: number;
 }
 
+interface UserActivityDetailSession {
+  id: string;
+  session_type?: string;
+  duration_minutes?: number;
+  completed_at: string;
+}
+
+interface UserActivityHistoryItem {
+  id: string;
+  action_type?: string | null;
+  created_at: string;
+}
+
+interface UserActivityLibraryItem {
+  id: string;
+  title?: string | null;
+  created_at: string;
+}
+
+interface UserActivityDetails {
+  sessions: UserActivityDetailSession[];
+  history: UserActivityHistoryItem[];
+  library: UserActivityLibraryItem[];
+}
+
 export const UserActivityPage: React.FC = React.memo(() => {
   const toast = useToast();
   const [activities, setActivities] = useState<UserActivity[]>([]);
@@ -40,7 +65,7 @@ export const UserActivityPage: React.FC = React.memo(() => {
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [selectedUser, setSelectedUser] = useState<UserActivity | null>(null);
-  const [userDetails, setUserDetails] = useState<any>(null);
+  const [userDetails, setUserDetails] = useState<UserActivityDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
   useEffect(() => {
@@ -265,9 +290,9 @@ export const UserActivityPage: React.FC = React.memo(() => {
       ]);
 
       setUserDetails({
-        sessions: sessionsResult.data || [],
-        history: historyResult.data || [],
-        library: libraryResult.data || [],
+        sessions: (sessionsResult.data || []) as UserActivityDetailSession[],
+        history: (historyResult.data || []) as UserActivityHistoryItem[],
+        library: (libraryResult.data || []) as UserActivityLibraryItem[],
       });
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
@@ -478,7 +503,7 @@ export const UserActivityPage: React.FC = React.memo(() => {
                     <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Recent History</h4>
                     <div className="space-y-2">
                       {userDetails.history.length > 0 ? (
-                        userDetails.history.map((item: any) => (
+                        userDetails.history.map((item) => (
                           <div key={item.id} className="bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-gray-700 rounded-lg p-3">
                             <div className="text-sm text-gray-900 dark:text-white">{item.action_type || 'Action'}</div>
                             <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -496,7 +521,7 @@ export const UserActivityPage: React.FC = React.memo(() => {
                     <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Recent Library Items</h4>
                     <div className="space-y-2">
                       {userDetails.library.length > 0 ? (
-                        userDetails.library.map((item: any) => (
+                        userDetails.library.map((item) => (
                           <div key={item.id} className="bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-gray-700 rounded-lg p-3">
                             <div className="text-sm font-medium text-gray-900 dark:text-white">{item.title || 'Untitled'}</div>
                             <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">

@@ -16,6 +16,8 @@ import { LoadingSkeleton } from '../Common/LoadingSkeleton';
 import { usePageTutorial } from '../../hooks/usePageTutorial';
 import { PageTutorial } from '../Onboarding/PageTutorial';
 import { GlobalExamDetailModal } from './GlobalExamDetailModal';
+import { ALL_QUIZ_QUESTION_TYPES } from '../../utils/academicsGenerationPreferences';
+import { throwIfEdgeFunctionInvokeFailed } from '../../utils/edgeFunctionInvoke';
 
 interface QuizSession {
   id: string;
@@ -732,16 +734,13 @@ export const QuizPage: React.FC = React.memo(() => {
           sourceId,
           quizTitle: quizTitle.trim(),
           targetLanguage,
+          questionTypes: [...ALL_QUIZ_QUESTION_TYPES],
         }
       });
       const quizGenDuration = Date.now() - quizGenStartTime;
       ErrorLogger.debug('Quiz generation completed', { component: 'QuizPage', action: 'handleGenerateQuiz', durationSeconds: (quizGenDuration / 1000).toFixed(2) });
 
-      if (invokeError) {
-        const error = new Error(invokeError.message || 'Failed to generate quiz');
-        ErrorLogger.error(error, { component: 'QuizPage', action: 'handleGenerateQuiz', metadata: { invokeError, questionCount, difficulty, sourceType: selectedSource } });
-        throw error;
-      }
+      throwIfEdgeFunctionInvokeFailed(quizData, invokeError);
 
       ErrorLogger.debug('Quiz generation response', { component: 'QuizPage', action: 'handleGenerateQuiz', success: quizData.success, questionCount: quizData.questionCount });
 

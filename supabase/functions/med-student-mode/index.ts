@@ -1,6 +1,6 @@
 /// <reference path="../_shared/deno.d.ts" />
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.54.0';
+import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2.54.0';
 
 // Standard CORS headers for allowing cross-origin requests
 const corsHeaders = {
@@ -349,7 +349,7 @@ function parseMedicalTopics(aiOutput: string): string[] {
     if (startParsing && trimmedLine) {
       // Clean up the topic
       const cleanTopic = trimmedLine
-        .replace(/^[\d\-\•\*\.\s]+/, '') // Remove numbers, bullets, etc.
+        .replace(/^[\d\-•*.\s]+/, '') // Remove numbers, bullets, etc.
         .trim();
       
       if (cleanTopic.length > 2 && cleanTopic.length < 50) {
@@ -441,13 +441,14 @@ async function callAnthropicForMedicalContent(prompt: string, maxTokens: number)
     }
 
     return { output, tokens: { input: inputTokens, output: outputTokens, total: totalTokens } };
-  } catch (error: any) {
+  } catch (error: unknown) {
     clearTimeout(timeoutId);
-    if (error?.name === 'AbortError') {
+    if (error instanceof Error && error.name === 'AbortError') {
       return { error: 'Medical AI request timed out - please try again' };
     }
-    console.error(`Request to Anthropic API failed: ${error?.message}`);
-    return { error: `Medical AI request failed: ${error?.message}` };
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error(`Request to Anthropic API failed: ${msg}`);
+    return { error: `Medical AI request failed: ${msg}` };
   }
 }
 
@@ -601,7 +602,7 @@ Extract the most clinically relevant medical topics now:`;
 }
 
 // Main handler for the Edge Function
-serve(async (req) => {
+Deno.serve(async (req) => {
   console.log(`🏥 Med Student Mode Edge Function called: ${req.method}`);
 
   if (req.method === 'OPTIONS') {
@@ -714,7 +715,7 @@ serve(async (req) => {
     }
 
     let totalTokensUsed = 0;
-    let responseData: Record<string, any> = {};
+    let responseData: Record<string, unknown> = {};
 
     if (action === 'summarize_medical_text') {
       console.log('📚 Generating medical summary...');
@@ -854,10 +855,11 @@ serve(async (req) => {
       ...responseData
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('💥 Med Student Mode Edge Function error:', error);
+    const msg = error instanceof Error ? error.message : String(error);
     return jsonResponse({
-      error: `Medical processing server error: ${error?.message || String(error)}`,
+      error: `Medical processing server error: ${msg}`,
       hint: 'Please try again with your medical content'
     }, 500);
   }

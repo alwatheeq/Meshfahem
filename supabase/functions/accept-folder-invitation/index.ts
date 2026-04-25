@@ -1,11 +1,11 @@
 /// <reference path="../_shared/deno.d.ts" />
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { handleCorsPreflight } from '../_shared/cors.ts';
-import { jsonResponse, errorResponse, successResponse } from '../_shared/response.ts';
+import { errorResponse, successResponse } from '../_shared/response.ts';
 import { authenticateUser, getSupabaseClient } from '../_shared/auth.ts';
 import { validateMethod, parseJsonBody, validateRequiredFields } from '../_shared/validation.ts';
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return handleCorsPreflight();
   }

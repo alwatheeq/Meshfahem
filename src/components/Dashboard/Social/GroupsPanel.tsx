@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, Hash, Users, Crown, Trash2, Copy, Check, MessageSquare } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useI18n } from '../../../contexts/I18nContext';
@@ -6,6 +6,7 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../hooks/useAuth';
 import { useToast } from '../../Toast/Toast';
 import { supabase } from '../../../lib/supabase';
+import { toErrorMessage } from '../../../utils/errorHandler';
 
 interface GroupMember {
   id: string;
@@ -55,60 +56,87 @@ export const GroupsPanel: React.FC<GroupsPanelProps> = ({ onOpenGroupChat }) => 
   const [members, setMembers] = useState<Record<string, GroupMember[]>>({});
   const [loadingMembers, setLoadingMembers] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const loadGenRef = useRef(0);
 
-  const loadGroups = useCallback(async () => {
-    if (!user) return;
-    try {
-      const { data: memberships, error: memErr } = await supabase
-        .from('study_group_members')
-        .select('group_id, role')
-        .eq('user_id', user.id);
-
-      if (memErr) throw memErr;
-      if (!memberships || memberships.length === 0) {
-        setGroups([]);
+  const loadGroups = useCallback(
+    async (gen: number) => {
+      if (!user) {
         setLoading(false);
         return;
       }
+      try {
+        const { data: memberships, error: memErr } = await supabase
+          .from('study_group_members')
+          .select('group_id, role')
+          .eq('user_id', user.id);
 
-      const groupIds = memberships.map((m) => m.group_id);
-      const roleMap = Object.fromEntries(memberships.map((m) => [m.group_id, m.role]));
+        if (gen !== loadGenRef.current) return;
 
-      const { data: groupData, error: grpErr } = await supabase
-        .from('study_groups')
-        .select('id, name, group_code, created_by, created_at')
-        .in('id', groupIds);
+        if (memErr) throw memErr;
+        if (!memberships || memberships.length === 0) {
+          setGroups([]);
+          return;
+        }
 
-      if (grpErr) throw grpErr;
+        const groupIds = memberships.map((m) => m.group_id);
+        const roleMap = Object.fromEntries(memberships.map((m) => [m.group_id, m.role]));
 
-      const { data: counts, error: cntErr } = await supabase
-        .from('study_group_members')
-        .select('group_id')
-        .in('group_id', groupIds);
+        const { data: groupData, error: grpErr } = await supabase
+          .from('study_groups')
+          .select('id, name, group_code, created_by, created_at')
+          .in('id', groupIds);
 
-      if (cntErr) throw cntErr;
+        if (gen !== loadGenRef.current) return;
 
-      const countMap: Record<string, number> = {};
-      (counts || []).forEach((c) => {
-        countMap[c.group_id] = (countMap[c.group_id] || 0) + 1;
-      });
+        if (grpErr) throw grpErr;
 
-      const mapped: StudyGroup[] = (groupData || []).map((g) => ({
-        ...g,
-        member_count: countMap[g.id] || 0,
-        my_role: roleMap[g.id] as 'admin' | 'member',
-      }));
+        const { data: counts, error: cntErr } = await supabase
+          .from('study_group_members')
+          .select('group_id')
+          .in('group_id', groupIds);
 
-      setGroups(mapped);
-    } catch (err) {
-      showError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [user, showError]);
+        if (gen !== loadGenRef.current) return;
+
+        if (cntErr) throw cntErr;
+
+        const countMap: Record<string, number> = {};
+        (counts || []).forEach((c) => {
+          countMap[c.group_id] = (countMap[c.group_id] || 0) + 1;
+        });
+
+        const mapped: StudyGroup[] = (groupData || []).map((g) => ({
+          ...g,
+          member_count: countMap[g.id] || 0,
+          my_role: roleMap[g.id] as 'admin' | 'member',
+        }));
+
+        if (gen !== loadGenRef.current) return;
+
+        setGroups(mapped);
+      } catch (err) {
+        if (gen === loadGenRef.current) {
+          showError(toErrorMessage(err));
+        }
+      } finally {
+        if (gen === loadGenRef.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [user, showError]
+  );
+
+  const reloadGroups = useCallback(async () => {
+    const gen = ++loadGenRef.current;
+    await loadGroups(gen);
+  }, [loadGroups]);
 
   useEffect(() => {
-    loadGroups();
+    const gen = ++loadGenRef.current;
+    void loadGroups(gen);
+    return () => {
+      loadGenRef.current += 1;
+    };
   }, [loadGroups]);
 
   const handleCreate = async () => {
@@ -133,10 +161,10 @@ export const GroupsPanel: React.FC<GroupsPanelProps> = ({ onOpenGroupChat }) => 
       if (memberErr) throw memberErr;
 
       setNewGroupName('');
-      await loadGroups();
+      await reloadGroups();
       showSuccess(t('social.create_group') + ' ✓');
     } catch (err) {
-      showError(err instanceof Error ? err.message : String(err));
+      showError(toErrorMessage(err));
     } finally {
       setCreating(false);
     }
@@ -167,10 +195,10 @@ export const GroupsPanel: React.FC<GroupsPanelProps> = ({ onOpenGroupChat }) => 
       if (joinErr) throw joinErr;
 
       setJoinCode('');
-      await loadGroups();
+      await reloadGroups();
       showSuccess(t('social.join_group') + ' ✓');
     } catch (err) {
-      showError(err instanceof Error ? err.message : String(err));
+      showError(toErrorMessage(err));
     } finally {
       setJoining(false);
     }
@@ -204,7 +232,7 @@ export const GroupsPanel: React.FC<GroupsPanelProps> = ({ onOpenGroupChat }) => 
 
       setMembers((prev) => ({ ...prev, [groupId]: enriched }));
     } catch (err) {
-      showError(err instanceof Error ? err.message : String(err));
+      showError(toErrorMessage(err));
     } finally {
       setLoadingMembers(null);
     }
@@ -228,9 +256,9 @@ export const GroupsPanel: React.FC<GroupsPanelProps> = ({ onOpenGroupChat }) => 
 
       if (error) throw error;
       await loadMembers(groupId);
-      await loadGroups();
+      await reloadGroups();
     } catch (err) {
-      showError(err instanceof Error ? err.message : String(err));
+      showError(toErrorMessage(err));
     }
   };
 
@@ -243,10 +271,10 @@ export const GroupsPanel: React.FC<GroupsPanelProps> = ({ onOpenGroupChat }) => 
 
       if (error) throw error;
       setExpandedGroupId(null);
-      await loadGroups();
+      await reloadGroups();
       showSuccess(t('social.delete_group') + ' ✓');
     } catch (err) {
-      showError(err instanceof Error ? err.message : String(err));
+      showError(toErrorMessage(err));
     }
   };
 

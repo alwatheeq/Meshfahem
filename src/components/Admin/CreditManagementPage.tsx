@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../Toast/Toast';
 import { ErrorLogger } from '../../utils/errorLogger';
@@ -44,12 +44,7 @@ export const CreditManagementPage: React.FC = React.memo(() => {
   const [_selectedUser, _setSelectedUser] = useState<UserCredit | null>(null);
   const [adjustingUserId, setAdjustingUserId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchUsers();
-    fetchStats();
-  }, []);
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -67,9 +62,9 @@ export const CreditManagementPage: React.FC = React.memo(() => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('user_profiles')
@@ -92,7 +87,12 @@ export const CreditManagementPage: React.FC = React.memo(() => {
       const err = error instanceof Error ? error : new Error(String(error));
       ErrorLogger.error(err, { component: 'CreditManagementPage', action: 'fetchStats' });
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    void fetchUsers();
+    void fetchStats();
+  }, [fetchUsers, fetchStats]);
 
   const handleAdjustCredits = async (userId: string, userEmail: string, currentCredits: number) => {
     if (!adminUser?.id) {

@@ -1,6 +1,7 @@
 /// <reference path="../_shared/deno.d.ts" />
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'npm:@supabase/supabase-js@2.54.0';
+import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.54.0';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -8,6 +9,9 @@ const DEFAULT_MODEL = 'claude-3-haiku-20240307';
 const MAX_TOKENS_HARD_LIMIT = 4096;
 const ANTHROPIC_TIMEOUT_MS = 45000;
 const MAX_RETRIES = 3;
+
+/** Aligns with app `CONFIG.CHARS_PER_CHUNK` — max cleaned chars sent to the model per summary request. */
+const SUMMARY_MAX_INPUT_CHARS = 14000;
 
 const SUPPORTED_LANGUAGES: Record<string, string> = {
   en: 'English',
@@ -176,16 +180,35 @@ interface AnthropicSuccess {
 
 interface AnthropicError {
   error: string;
+  /** When set (4xx from Anthropic), handlers may return this HTTP status instead of 500. */
+  statusCode?: number;
 }
 
 type AnthropicResult = AnthropicSuccess | AnthropicError;
 
+function getAnthropicApiKey(usageChannel: string | undefined): string | null {
+  const primary = Deno.env.get('ANTHROPIC_API_KEY')?.trim();
+  if (usageChannel === 'academics') {
+    const dedicated = Deno.env.get('ANTHROPIC_API_KEY_ACADEMICS')?.trim();
+    return dedicated || primary || null;
+  }
+  return primary || null;
+}
+
+function anthropicErrorHttpStatus(result: AnthropicResult): number {
+  if (!('error' in result)) return 500;
+  const sc = result.statusCode;
+  if (typeof sc === 'number' && sc >= 400 && sc < 500) return sc;
+  return 500;
+}
+
 async function callAnthropic(
   prompt: string,
   model: string,
-  maxTokens: number
+  maxTokens: number,
+  usageChannel?: string
 ): Promise<AnthropicResult> {
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+  const apiKey = getAnthropicApiKey(usageChannel);
   if (!apiKey) return { error: 'Missing ANTHROPIC_API_KEY environment variable' };
 
   const safeMaxTokens = Math.min(maxTokens, MAX_TOKENS_HARD_LIMIT);
@@ -225,6 +248,12 @@ async function callAnthropic(
 
       if (!response.ok) {
         const errorText = await response.text();
+        if (response.status >= 400 && response.status < 500) {
+          return {
+            error: `Anthropic API error ${response.status}: ${errorText}`,
+            statusCode: response.status,
+          };
+        }
         return { error: `Anthropic API error ${response.status}: ${errorText}` };
       }
 
@@ -234,16 +263,17 @@ async function callAnthropic(
       const outputTokens = data?.usage?.output_tokens || 0;
 
       return { output, tokens: { input: inputTokens, output: outputTokens, total: inputTokens + outputTokens } };
-    } catch (err: any) {
+    } catch (err: unknown) {
       clearTimeout(timeoutId);
-      if (err?.name === 'AbortError') return { error: 'Request timeout — Anthropic API took too long to respond' };
+      const msg = err instanceof Error ? err.message : String(err);
+      if (err instanceof Error && err.name === 'AbortError') return { error: 'Request timeout — Anthropic API took too long to respond' };
       if (attempt < MAX_RETRIES - 1) {
         const waitMs = 1000 * Math.pow(2, attempt);
-        console.warn(`Request error on attempt ${attempt + 1}, retrying in ${waitMs}ms: ${err?.message}`);
+        console.warn(`Request error on attempt ${attempt + 1}, retrying in ${waitMs}ms: ${msg}`);
         await new Promise((r) => setTimeout(r, waitMs));
         continue;
       }
-      return { error: `Request failed after ${MAX_RETRIES} attempts: ${err?.message}` };
+      return { error: `Request failed after ${MAX_RETRIES} attempts: ${msg}` };
     }
   }
 
@@ -253,7 +283,7 @@ async function callAnthropic(
 // ─── Credit helpers ───────────────────────────────────────────────────────────
 
 async function checkCredits(
-  supabase: any,
+  supabase: SupabaseClient,
   userId: string,
   estimatedCredits: number
 ): Promise<{ sufficient: boolean; message?: string }> {
@@ -277,7 +307,7 @@ async function checkCredits(
   return { sufficient: true };
 }
 
-async function deductCredits(supabase: any, userId: string, tokensUsed: number): Promise<void> {
+async function deductCredits(supabase: SupabaseClient, userId: string, tokensUsed: number): Promise<void> {
   try {
     const { data, error } = await supabase.rpc('deduct_credits_atomic', {
       p_user_id: userId,
@@ -312,7 +342,9 @@ function estimateCredits(textLength: number, expectedOutputTokens: number): numb
 
 // ─── Cache helpers ────────────────────────────────────────────────────────────
 
-async function readCache(supabase: any, hash: string): Promise<any | null> {
+type CachedContentRow = { summary?: string | null; flashcards?: unknown };
+
+async function readCache(supabase: SupabaseClient, hash: string): Promise<CachedContentRow | null> {
   const { data, error } = await supabase
     .from('cached_content')
     .select('summary, flashcards')
@@ -325,7 +357,7 @@ async function readCache(supabase: any, hash: string): Promise<any | null> {
 }
 
 async function writeCache(
-  supabase: any,
+  supabase: SupabaseClient,
   hash: string,
   payload: { summary?: string; flashcards?: unknown[] }
 ): Promise<void> {
@@ -349,12 +381,13 @@ async function handleSummary(
     chunkIndex?: number;
     totalChunks?: number;
     targetLanguage: string;
+    usageChannel?: string;
   },
   userId: string | null,
   isAdmin: boolean,
-  supabase: any
+  supabase: SupabaseClient
 ): Promise<Response> {
-  const { text, model, chunkIndex, totalChunks, targetLanguage } = params;
+  const { text, model, chunkIndex, totalChunks, targetLanguage, usageChannel } = params;
 
   // 1. Strip speaker notes — presenter cues, not academic content
   const withoutNotes = stripSpeakerNotes(text);
@@ -371,9 +404,17 @@ async function handleSummary(
   // 3. Standard unicode and HTML entity cleaning
   const cleanedText = cleanText(strippedText);
 
-  const quality = assessTextQuality(cleanedText);
+  let textForModel = cleanedText;
+  if (textForModel.length > SUMMARY_MAX_INPUT_CHARS) {
+    console.warn(
+      `[generate-summary-and-flashcards] summary input truncated from ${textForModel.length} to ${SUMMARY_MAX_INPUT_CHARS} chars`,
+    );
+    textForModel = textForModel.slice(0, SUMMARY_MAX_INPUT_CHARS);
+  }
 
-  const hash = await hashContent(cleanedText, 'summary', targetLanguage);
+  const quality = assessTextQuality(textForModel);
+
+  const hash = await hashContent(textForModel, 'summary', targetLanguage);
   const cached = await readCache(supabase, hash);
   if (cached?.summary) {
     console.log('Cache hit for summary');
@@ -381,13 +422,13 @@ async function handleSummary(
   }
 
   if (userId && !isAdmin) {
-    const credits = estimateCredits(cleanedText.length, 2800);
+    const credits = estimateCredits(textForModel.length, 2800);
     const check = await checkCredits(supabase, userId, credits);
     if (!check.sufficient) return jsonResponse({ error: 'insufficient_credits', message: check.message }, 429);
   }
 
   const langName = SUPPORTED_LANGUAGES[targetLanguage] || SUPPORTED_LANGUAGES.en;
-  const maxTokens = cleanedText.length < 8000 ? 2800 : 4096;
+  const maxTokens = textForModel.length < 8000 ? 2800 : 4096;
 
   const chunkNote =
     typeof chunkIndex === 'number' && typeof totalChunks === 'number' && totalChunks > 1
@@ -425,13 +466,13 @@ async function handleSummary(
 
 ${chunkNote}
 === TEXT ===
-${cleanedText}
+${textForModel}
 
 Start immediately with "- ".`;
 
-  const result = await callAnthropic(prompt, model, maxTokens);
+  const result = await callAnthropic(prompt, model, maxTokens, usageChannel);
 
-  if ('error' in result) return jsonResponse({ error: result.error }, 500);
+  if ('error' in result) return jsonResponse({ error: result.error }, anthropicErrorHttpStatus(result));
 
   let summaryText = result.output.trim();
 
@@ -464,12 +505,13 @@ async function handleFlashcards(
     count: number;
     model: string;
     targetLanguage: string;
+    usageChannel?: string;
   },
   userId: string | null,
   isAdmin: boolean,
-  supabase: any
+  supabase: SupabaseClient
 ): Promise<Response> {
-  const { text, summaryText, count, model, targetLanguage } = params;
+  const { text, summaryText, count, model, targetLanguage, usageChannel } = params;
   const cardCount = Math.max(1, Math.min(count, 50));
 
   // Prefer summary if provided — already distilled, fewer tokens, better cards.
@@ -516,9 +558,9 @@ ${sourceText}
 
 Flashcards:`;
 
-  const result = await callAnthropic(prompt, model, 1500);
+  const result = await callAnthropic(prompt, model, 1500, usageChannel);
 
-  if ('error' in result) return jsonResponse({ error: result.error }, 500);
+  if ('error' in result) return jsonResponse({ error: result.error }, anthropicErrorHttpStatus(result));
 
   // Strict single-line Q/A parser — no stray-line accumulation
   const cards: { front: string; back: string }[] = [];
@@ -570,12 +612,12 @@ Flashcards:`;
 // ─── Action: topics ───────────────────────────────────────────────────────────
 
 async function handleTopics(
-  params: { text: string; model: string; targetLanguage: string },
+  params: { text: string; model: string; targetLanguage: string; usageChannel?: string },
   userId: string | null,
   isAdmin: boolean,
-  supabase: any
+  supabase: SupabaseClient
 ): Promise<Response> {
-  const { text, model, targetLanguage } = params;
+  const { text, model, targetLanguage, usageChannel } = params;
 
   // Strip navigation slides before topic detection — detecting topics from a
   // TOC slide returns the TOC items verbatim, not the actual content topics.
@@ -607,15 +649,15 @@ ${cleanedText}
 
 Topics:`;
 
-  const result = await callAnthropic(prompt, model, 300);
+  const result = await callAnthropic(prompt, model, 300, usageChannel);
 
-  if ('error' in result) return jsonResponse({ error: result.error }, 500);
+  if ('error' in result) return jsonResponse({ error: result.error }, anthropicErrorHttpStatus(result));
 
   const topics: string[] = result.output
     .split('\n')
     .map((l) =>
       l.trim()
-        .replace(/^\d+[\.\)]\s*/, '')
+        .replace(/^\d+[.)]\s*/, '')
         .replace(/^[-•]\s*/, '')
     )
     .filter((l) => l && !l.toLowerCase().includes('topics:') && l.length <= 50)
@@ -628,6 +670,19 @@ Topics:`;
 
   return jsonResponse({ topics, cached: false });
 }
+
+type SummaryFlashcardsRequestBody = {
+  action?: string;
+  model?: string;
+  text?: string;
+  count?: number;
+  chunkIndex?: number;
+  totalChunks?: number;
+  summaryText?: string;
+  targetLanguage?: string;
+  /** When `academics`, uses `ANTHROPIC_API_KEY_ACADEMICS` if set, else primary key. */
+  usageChannel?: string;
+};
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
@@ -672,9 +727,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     // ── Parse body ─────────────────────────────────────────────────────────
-    let body: any;
+    let body: SummaryFlashcardsRequestBody;
     try {
-      body = await req.json();
+      body = (await req.json()) as SummaryFlashcardsRequestBody;
     } catch {
       return jsonResponse({ error: 'Invalid JSON body' }, 400);
     }
@@ -690,6 +745,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       targetLanguage = 'en',
     } = body;
 
+    const usageChannel = body.usageChannel === 'academics' ? 'academics' : undefined;
+
     if (action === 'ping') return jsonResponse({ ok: true });
 
     if (!text || typeof text !== 'string' || text.trim().length < 30) {
@@ -704,21 +761,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
     switch (action) {
       case 'summary':
         response = await handleSummary(
-          { text, model, chunkIndex, totalChunks, targetLanguage: lang },
+          { text, model, chunkIndex, totalChunks, targetLanguage: lang, usageChannel },
           userId, isAdmin, supabase
         );
         break;
 
       case 'flashcards':
         response = await handleFlashcards(
-          { text, summaryText, count: Number(count) || 10, model, targetLanguage: lang },
+          { text, summaryText, count: Number(count) || 10, model, targetLanguage: lang, usageChannel },
           userId, isAdmin, supabase
         );
         break;
 
       case 'topics':
         response = await handleTopics(
-          { text, model, targetLanguage: lang },
+          { text, model, targetLanguage: lang, usageChannel },
           userId, isAdmin, supabase
         );
         break;
@@ -734,8 +791,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     console.log(`[generate-summary-and-flashcards] action=${action} duration=${duration}ms userId=${userId ?? 'anonymous'}`);
 
     return response;
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[generate-summary-and-flashcards] Fatal error:', err);
-    return jsonResponse({ error: `Server error: ${err?.message || String(err)}` }, 500);
+    const msg = err instanceof Error ? err.message : String(err);
+    return jsonResponse({ error: `Server error: ${msg}` }, 500);
   }
 });

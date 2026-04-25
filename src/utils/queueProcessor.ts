@@ -2,7 +2,7 @@
 // Handles batched processing for large documents and flashcard sets
 // Provides progressive updates and manages processing workflows
 
-import { haikuClient, calculateBatches } from './haikuClient';
+import { haikuClient, calculateBatches, type HaikuEdgeInvokeExtras } from './haikuClient';
 import { CONFIG } from './config';
 import { deduplicateFlashcards } from './deduplication';
 import { ErrorLogger } from './errorLogger';
@@ -45,7 +45,8 @@ export interface TimeEstimate {
 export const processSummaryBatches = async (
   text: string,
   onProgress?: ProgressCallback,
-  onChunkComplete?: ChunkCompleteCallback
+  onChunkComplete?: ChunkCompleteCallback,
+  invokeExtras?: HaikuEdgeInvokeExtras
 ): Promise<SummaryResult> => {
   if (!text || text.trim().length === 0) {
     throw new Error('Text content is required');
@@ -70,7 +71,14 @@ export const processSummaryBatches = async (
 
       try {
         ErrorLogger.debug(`Generating summary for chunk ${i + 1}/${totalChunks}`, { component: 'queueProcessor', action: 'processSummaryBatches', chunkIndex: i + 1, totalChunks, chunkSize: chunk.length, medicalMode: false });
-        const result = await haikuClient.generateSummary(chunk, i, totalChunks, i === 0 ? estimatedPages : 0, false);
+        const result = await haikuClient.generateSummary(
+          chunk,
+          i,
+          totalChunks,
+          i === 0 ? estimatedPages : 0,
+          false,
+          invokeExtras
+        );
         const summaryText = result.summary || result;
 
         ErrorLogger.debug(`Chunk ${i + 1} summary generated`, { component: 'queueProcessor', action: 'processSummaryBatches', chunkIndex: i + 1, totalChunks, summaryLength: summaryText?.length || 0 });

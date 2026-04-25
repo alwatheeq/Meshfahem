@@ -48,7 +48,7 @@ const THEME_OPTIONS: ThemeOption[] = [
   {
     id: 'slate-mist',
     name: 'Slate Mist',
-    swatch: 'linear-gradient(135deg, #94a3b8, #334155)',
+    swatch: 'linear-gradient(135deg, #64748b, #14b8a6 45%, #0891b2)',
     desc: 'Cool & professional',
   },
   {

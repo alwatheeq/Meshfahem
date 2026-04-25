@@ -82,7 +82,7 @@ Deno.serve(async (req: Request) => {
       cycle_end: result.cycle_end,
       free_credits_claimed: result.free_credits_claimed,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Unexpected error in get-credit-balance:', err);
     return json({ error: 'Internal server error' }, 500);
   }

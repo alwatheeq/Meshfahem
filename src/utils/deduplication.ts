@@ -31,7 +31,7 @@ export const normalizeText = (text: string): string => {
     return '';
   }
 
-  let normalized = text
+  const normalized = text
     // Convert to lowercase
     .toLowerCase()
     // Remove common slide/page headers and footers

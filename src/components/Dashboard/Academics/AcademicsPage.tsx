@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, Target, TrendingUp, Plus, Sparkles, Upload, BarChart3 } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BookOpen, Target, TrendingUp, Plus, Sparkles, Upload, BarChart3, ChevronDown } from 'lucide-react';
 import { useI18n } from '../../../contexts/I18nContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../hooks/useAuth';
@@ -8,13 +8,26 @@ import { PageTutorial } from '../../Onboarding/PageTutorial';
 import { useToast } from '../../Toast/Toast';
 import { supabase } from '../../../lib/supabase';
 import { hasBasicProfanity } from '../../../utils/academicsProfanity';
+import { throwIfEdgeFunctionInvokeFailed } from '../../../utils/edgeFunctionInvoke';
 import { computeFlashcardTopicScores, computeTopicQuizScores, mergeTopicScores } from '../../../utils/academicsAnalytics';
 import { extractTextFromFile } from '../../../utils/fileProcessor';
-import { haikuClient } from '../../../utils/haikuClient';
+import { haikuClient, type HaikuEdgeInvokeExtras } from '../../../utils/haikuClient';
+import { processSummaryBatches } from '../../../utils/queueProcessor';
+import {
+  ALL_QUIZ_QUESTION_TYPES,
+  type AcademicsGenerationPreferences,
+  type QuizQuestionTypePreference,
+  DEFAULT_ACADEMICS_GENERATION_PREFERENCES,
+  hasAnyGenerationOutput,
+  mergeGenerationPreferences,
+} from '../../../utils/academicsGenerationPreferences';
 import { SRSReviewPanel } from './SRSReviewPanel';
 import { CourseAnalytics } from './CourseAnalytics';
 import { ExamScheduler } from './ExamScheduler';
 import { CourseTutor } from './CourseTutor';
+
+/** Routed to Edge `usageChannel`; optional `ANTHROPIC_API_KEY_ACADEMICS` for a dedicated key later. */
+const ACADEMICS_AI_EXTRAS: HaikuEdgeInvokeExtras = { usageChannel: 'academics' };
 
 type QuizQuestionJson = {
   index?: number;
@@ -50,6 +63,7 @@ type Course = {
   course_name: string;
   course_code: string | null;
   topic_id: string;
+  content_generation_options?: unknown;
   academics_topics?: { name: string } | null;
 };
 type CourseItem = {
@@ -62,6 +76,28 @@ type CourseQuiz = {
   quiz_session_id: string;
   quiz_sessions?: { id: string; quiz_title: string; questions_json: QuizQuestionJson[] } | null;
 };
+
+/** PostgREST / Postgres errors when academics tables are missing or cache is stale */
+const ACADEMICS_SCHEMA_ERROR_RE =
+  /relation|does not exist|schema cache|Could not find the table/i;
+
+function isAcademicsSchemaErrorMessage(msg: string): boolean {
+  return ACADEMICS_SCHEMA_ERROR_RE.test(msg);
+}
+
+/** Missing migration 20260421120000 only — academics_courses exists but column does not. */
+function isUnknownContentGenerationOptionsColumnError(msg: string): boolean {
+  const m = (msg || '').toLowerCase();
+  return (
+    m.includes('content_generation_options') &&
+    (m.includes('does not exist') || m.includes('could not find') || m.includes('unknown column'))
+  );
+}
+
+/** True “academics not installed / table missing” — not the single missing-prefs column case. */
+function isSevereAcademicsSchemaError(msg: string): boolean {
+  return isAcademicsSchemaErrorMessage(msg) && !isUnknownContentGenerationOptionsColumnError(msg);
+}
 
 /**
  * Academics: courses, uploads (summary / flashcards / quiz), and topic/course analytics.
@@ -106,12 +142,46 @@ export const AcademicsPage: React.FC = React.memo(() => {
   const [newTopicName, setNewTopicName] = useState('');
 
   const [uploading, setUploading] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [workingGenPrefs, setWorkingGenPrefs] = useState<AcademicsGenerationPreferences>(() => ({
+    ...DEFAULT_ACADEMICS_GENERATION_PREFERENCES,
+    quizQuestionTypes: [...DEFAULT_ACADEMICS_GENERATION_PREFERENCES.quizQuestionTypes],
+  }));
+  const [savingGenPrefs, setSavingGenPrefs] = useState(false);
+  /** False when DB lacks `content_generation_options` (course list loaded via fallback select). */
+  const [canPersistGenerationPrefsToDb, setCanPersistGenerationPrefsToDb] = useState(true);
+
+  /** Avoid duplicate migration toasts (e.g. React StrictMode double effects in dev). */
+  const migrationErrorToastShownRef = useRef(false);
 
   const selectedCourse = useMemo(
     () => courses.find((c) => c.id === selectedCourseId) || null,
     [courses, selectedCourseId]
   );
+
+  useEffect(() => {
+    if (!selectedCourseId) return;
+    const c = courses.find((x) => x.id === selectedCourseId);
+    if (!c) return;
+    setWorkingGenPrefs(mergeGenerationPreferences(c.content_generation_options));
+  }, [selectedCourseId, courses]);
+
+  useEffect(() => {
+    setSelectedFiles([]);
+    setUploadProgress(null);
+  }, [selectedCourseId]);
+
+  const toggleQuizType = (
+    setter: React.Dispatch<React.SetStateAction<AcademicsGenerationPreferences>>,
+    t: QuizQuestionTypePreference
+  ) => {
+    setter((prev) => {
+      const has = prev.quizQuestionTypes.includes(t);
+      const next = has ? prev.quizQuestionTypes.filter((x) => x !== t) : [...prev.quizQuestionTypes, t];
+      return { ...prev, quizQuestionTypes: next };
+    });
+  };
 
   const shellStats = useMemo(
     () => [
@@ -129,6 +199,17 @@ export const AcademicsPage: React.FC = React.memo(() => {
     [t]
   );
 
+  const generationSettingsLine = useMemo(() => {
+    const parts: string[] = [];
+    if (workingGenPrefs.includeSummary) parts.push(t('academics.include_summary'));
+    if (workingGenPrefs.includeFlashcards) parts.push(t('academics.include_flashcards'));
+    const n = workingGenPrefs.quizQuestionTypes.length;
+    if (n > 0) {
+      parts.push(t('academics.quiz_types_count', { count: n }));
+    }
+    return parts.length > 0 ? parts.join(' · ') : t('academics.generation_none_selected');
+  }, [workingGenPrefs, t]);
+
   const loadTopicsAndCourses = useCallback(async () => {
     if (!user) {
       setLoading(false);
@@ -136,24 +217,81 @@ export const AcademicsPage: React.FC = React.memo(() => {
     }
 
     try {
-      const [{ data: topicsData }, { data: coursesData }] = await Promise.all([
-        supabase.from('academics_topics').select('id,name').order('name', { ascending: true }),
-        supabase
+      const [{ data: topicsData, error: topicsError }, { data: coursesData, error: coursesError }] =
+        await Promise.all([
+          supabase.from('academics_topics').select('id,name').order('name', { ascending: true }),
+          supabase
+            .from('academics_courses')
+            .select('id,course_name,course_code,topic_id,content_generation_options,academics_topics(name)')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+        ]);
+
+      if (topicsError) {
+        const msg = topicsError.message || String(topicsError);
+        if (isSevereAcademicsSchemaError(msg)) {
+          if (!migrationErrorToastShownRef.current) {
+            migrationErrorToastShownRef.current = true;
+            showErrorToast(t('academics.db_not_migrated'));
+          }
+        } else {
+          showErrorToast(msg);
+        }
+        return;
+      }
+
+      let finalCourses: Course[] | null = (coursesData as Course[] | null) ?? null;
+      let finalCoursesError = coursesError;
+      let usedFallbackCourseSelectWithoutGenOptions = false;
+
+      if (
+        finalCoursesError &&
+        isUnknownContentGenerationOptionsColumnError(finalCoursesError.message || String(finalCoursesError))
+      ) {
+        usedFallbackCourseSelectWithoutGenOptions = true;
+        const retry = await supabase
           .from('academics_courses')
           .select('id,course_name,course_code,topic_id,academics_topics(name)')
           .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-      ]);
-
-      setTopics((topicsData || []) as Topic[]);
-      setCourses((coursesData || []) as Course[]);
-      if (!selectedCourseId && coursesData && coursesData.length > 0) {
-        setSelectedCourseId(coursesData[0].id);
+          .order('created_at', { ascending: false });
+        finalCourses = (retry.data as Course[] | null) ?? null;
+        finalCoursesError = retry.error;
       }
+
+      if (finalCoursesError) {
+        const msg = finalCoursesError.message || String(finalCoursesError);
+        if (isSevereAcademicsSchemaError(msg)) {
+          if (!migrationErrorToastShownRef.current) {
+            migrationErrorToastShownRef.current = true;
+            showErrorToast(t('academics.db_not_migrated'));
+          }
+        } else {
+          showErrorToast(msg);
+        }
+        return;
+      }
+
+      migrationErrorToastShownRef.current = false;
+      setCanPersistGenerationPrefsToDb(!usedFallbackCourseSelectWithoutGenOptions);
+      setTopics((topicsData || []) as Topic[]);
+      setCourses(finalCourses || []);
     } finally {
       setLoading(false);
     }
-  }, [user, selectedCourseId]);
+  }, [user, showErrorToast, t]);
+
+  /** Keep selected course valid after reload; auto-pick first when none selected */
+  useEffect(() => {
+    if (loading) return;
+    if (courses.length === 0) {
+      if (selectedCourseId) setSelectedCourseId(null);
+      return;
+    }
+    const valid = selectedCourseId && courses.some((c) => c.id === selectedCourseId);
+    if (!valid) {
+      setSelectedCourseId(courses[0].id);
+    }
+  }, [loading, courses, selectedCourseId]);
 
   const loadCourseContent = useCallback(async () => {
     if (!selectedCourseId) return;
@@ -311,7 +449,7 @@ export const AcademicsPage: React.FC = React.memo(() => {
         user_id: user.id,
         topic_id: topicId,
         course_name: courseName,
-        course_code: newCourseCode.trim() || null
+        course_code: newCourseCode.trim() || null,
       });
 
       if (error) throw error;
@@ -330,71 +468,168 @@ export const AcademicsPage: React.FC = React.memo(() => {
           : typeof error === 'object' && error !== null && 'message' in error
             ? String((error as { message: unknown }).message)
             : t('academics.toast_create_course_failed');
-      showErrorToast(msg);
+      if (isSevereAcademicsSchemaError(msg)) {
+        showErrorToast(t('academics.db_not_migrated'));
+      } else {
+        showErrorToast(msg);
+      }
     } finally {
       setCreatingCourse(false);
     }
   };
 
-  const handleGenerateContentForCourse = async () => {
-    if (!selectedCourse || !selectedFile || !user) return;
-    setUploading(true);
+  const saveWorkingGenPrefs = async () => {
+    if (!user) return;
+    if (!canPersistGenerationPrefsToDb) return;
+    if (!selectedCourse) {
+      showErrorToast(t('academics.select_course_first'));
+      return;
+    }
+    if (!hasAnyGenerationOutput(workingGenPrefs)) {
+      showErrorToast(t('academics.toast_generation_prefs_required'));
+      return;
+    }
+    setSavingGenPrefs(true);
     try {
-      const extracted = await extractTextFromFile(selectedFile, () => {});
-      const text = extracted?.text || '';
-      if (!text || text.length < 300) {
-        showErrorToast(t('academics.toast_insufficient_text'));
-        return;
-      }
-
-      const [summaryResult, flashcardsResult, detectedTopics] = await Promise.all([
-        haikuClient.generateSummary(text, 0, 1, extracted?.pageCount || 0, false),
-        haikuClient.generateFlashcards(text, 10, 'full_content', 0, extracted?.pageCount || 0, false),
-        haikuClient.detectTopics(text, false)
-      ]);
-
-      const titleBase = selectedFile.name.replace(/\.[^/.]+$/, '');
-      const { data: libraryItem, error: libraryError } = await supabase
-        .from('user_library_items')
-        .insert({
-          user_id: user.id,
-          title: `${titleBase} - ${new Date().toLocaleDateString()}`,
-          summary_text: summaryResult.summary || '',
-          flashcards_json: flashcardsResult.flashcards || [],
-          source_type: 'processed',
-          original_text_content: text,
-          topics: detectedTopics || [],
-          is_public: false
+      const { error } = await supabase
+        .from('academics_courses')
+        .update({
+          content_generation_options: workingGenPrefs as unknown as Record<string, unknown>,
         })
-        .select('id,title')
-        .single();
+        .eq('id', selectedCourse.id)
+        .eq('user_id', user.id);
+      if (error) throw error;
+      await loadTopicsAndCourses();
+      showSuccessToast(t('academics.toast_prefs_saved'));
+    } catch (error: unknown) {
+      const msg =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'object' && error !== null && 'message' in error
+            ? String((error as { message: unknown }).message)
+            : t('academics.toast_prefs_save_failed');
+      if (isUnknownContentGenerationOptionsColumnError(msg)) {
+        showErrorToast(t('academics.missing_generation_options_column'));
+      } else {
+        showErrorToast(msg);
+      }
+    } finally {
+      setSavingGenPrefs(false);
+    }
+  };
 
-      if (libraryError) throw libraryError;
+  const handleGenerateContentForCourse = async () => {
+    if (!selectedCourse || selectedFiles.length === 0 || !user) return;
+    if (!hasAnyGenerationOutput(workingGenPrefs)) {
+      showErrorToast(t('academics.toast_generation_prefs_required'));
+      return;
+    }
+    setUploading(true);
+    setUploadProgress(null);
+    try {
+      for (let fi = 0; fi < selectedFiles.length; fi++) {
+        const file = selectedFiles[fi];
+        setUploadProgress(
+          t('academics.upload_progress')
+            .replace('{current}', String(fi + 1))
+            .replace('{total}', String(selectedFiles.length))
+        );
 
-      const { error: mapItemError } = await supabase
-        .from('academics_course_items')
-        .insert({ course_id: selectedCourse.id, item_id: libraryItem.id });
-      if (mapItemError) throw mapItemError;
-
-      const { data: quizData, error: quizInvokeError } = await supabase.functions.invoke('generate-quiz', {
-        body: {
-          text,
-          questionCount: 10,
-          difficulty: 'medium',
-          sourceType: 'library_item',
-          sourceId: libraryItem.id,
-          quizTitle: `${selectedCourse.course_name} Quiz`,
-          targetLanguage: 'en'
+        const extracted = await extractTextFromFile(file, () => {});
+        const text = extracted?.text || '';
+        if (!text || text.length < 300) {
+          showErrorToast(`${file.name}: ${t('academics.toast_insufficient_text')}`);
+          continue;
         }
-      });
-      if (quizInvokeError) throw quizInvokeError;
-      if (quizData?.quizSessionId) {
-        await supabase
-          .from('academics_course_quizzes')
-          .insert({ course_id: selectedCourse.id, quiz_session_id: quizData.quizSessionId });
+
+        let summaryText = '';
+        if (workingGenPrefs.includeSummary) {
+          const summaryResult = await processSummaryBatches(
+            text,
+            (_pct, msg) => {
+              setUploadProgress(
+                t('academics.upload_progress_with_detail')
+                  .replace('{current}', String(fi + 1))
+                  .replace('{total}', String(selectedFiles.length))
+                  .replace('{detail}', msg)
+              );
+            },
+            undefined,
+            ACADEMICS_AI_EXTRAS
+          );
+          summaryText = summaryResult.summary || '';
+        }
+
+        let flashcards: Array<{ front: string; back: string }> = [];
+        if (workingGenPrefs.includeFlashcards) {
+          const useSummary =
+            workingGenPrefs.includeSummary && (summaryText || '').trim().length > 0;
+          const sourceText = useSummary ? summaryText : text;
+          const flashMode = useSummary ? 'summary' : 'full_content';
+          const flashcardsResult = await haikuClient.generateFlashcards(
+            sourceText,
+            10,
+            flashMode,
+            0,
+            extracted?.pageCount || 0,
+            false,
+            ACADEMICS_AI_EXTRAS
+          );
+          flashcards = flashcardsResult.flashcards || [];
+        }
+
+        const topicSource =
+          (summaryText || '').trim().length > 0 ? summaryText : text;
+        const detectedTopics = await haikuClient.detectTopics(topicSource, false, ACADEMICS_AI_EXTRAS);
+
+        const titleBase = file.name.replace(/\.[^/.]+$/, '');
+        const { data: libraryItem, error: libraryError } = await supabase
+          .from('user_library_items')
+          .insert({
+            user_id: user.id,
+            title: `${titleBase} - ${new Date().toLocaleDateString()}`,
+            summary_text: summaryText,
+            flashcards_json: flashcards,
+            source_type: 'processed',
+            original_text_content: text,
+            topics: detectedTopics || [],
+            is_public: false,
+          })
+          .select('id,title')
+          .single();
+
+        if (libraryError) throw libraryError;
+
+        const { error: mapItemError } = await supabase
+          .from('academics_course_items')
+          .insert({ course_id: selectedCourse.id, item_id: libraryItem.id });
+        if (mapItemError) throw mapItemError;
+
+        if (workingGenPrefs.quizQuestionTypes.length > 0) {
+          const { data: quizData, error: quizInvokeError } = await supabase.functions.invoke('generate-quiz', {
+            body: {
+              text,
+              questionCount: 10,
+              difficulty: 'medium',
+              sourceType: 'library_item',
+              sourceId: libraryItem.id,
+              quizTitle: `${selectedCourse.course_name} — ${titleBase}`,
+              targetLanguage: 'en',
+              questionTypes: workingGenPrefs.quizQuestionTypes,
+            },
+          });
+          throwIfEdgeFunctionInvokeFailed(quizData, quizInvokeError);
+          if (quizData?.quizSessionId) {
+            await supabase.from('academics_course_quizzes').insert({
+              course_id: selectedCourse.id,
+              quiz_session_id: quizData.quizSessionId,
+            });
+          }
+        }
       }
 
-      setSelectedFile(null);
+      setSelectedFiles([]);
+      setUploadProgress(null);
       await loadCourseContent();
       await loadAnalytics();
       showSuccessToast(t('academics.toast_content_generated'));
@@ -408,6 +643,7 @@ export const AcademicsPage: React.FC = React.memo(() => {
       showErrorToast(msg);
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   };
 
@@ -435,7 +671,10 @@ export const AcademicsPage: React.FC = React.memo(() => {
 
           <button
             type="button"
-            onClick={() => setShowCreateCourse(true)}
+            onClick={() => {
+              migrationErrorToastShownRef.current = false;
+              setShowCreateCourse(true);
+            }}
             className={`inline-flex items-center space-x-2 px-4 py-2 rounded-lg ${getThemeGradient('ui')} text-white`}
           >
             <Plus className="h-4 w-4" />
@@ -521,27 +760,115 @@ export const AcademicsPage: React.FC = React.memo(() => {
               <p className={`text-sm ${getThemeTextMuted()} mt-1`}>
                 {t('academics.upload_section_desc')}
               </p>
-              <div className="mt-3 flex items-center gap-3 flex-wrap">
+              {selectedCourse ? (
+                <details
+                  className={`group mt-3 rounded-lg border ${getThemeCardBorder()} ${getThemeSubtle('bg')} overflow-hidden`}
+                >
+                  <summary
+                    className={`flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 [&::-webkit-details-marker]:hidden ${getThemeTextPrimary()}`}
+                  >
+                    <span className={`text-sm font-medium`}>{t('academics.generation_for_upload_title')}</span>
+                    <span className={`flex min-w-0 flex-1 items-center justify-end gap-2 text-xs ${getThemeTextMuted()}`}>
+                      <span className="truncate text-right">{generationSettingsLine}</span>
+                      <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" aria-hidden />
+                    </span>
+                  </summary>
+                  <div className={`space-y-3 border-t px-3 py-3 ${getThemeCardBorder()}`}>
+                    <label className={`flex items-center gap-2 text-sm ${getThemeTextSecondary()}`}>
+                      <input
+                        type="checkbox"
+                        checked={workingGenPrefs.includeSummary}
+                        onChange={(e) => setWorkingGenPrefs((p) => ({ ...p, includeSummary: e.target.checked }))}
+                        disabled={uploading}
+                      />
+                      {t('academics.include_summary')}
+                    </label>
+                    <label className={`flex items-center gap-2 text-sm ${getThemeTextSecondary()}`}>
+                      <input
+                        type="checkbox"
+                        checked={workingGenPrefs.includeFlashcards}
+                        onChange={(e) => setWorkingGenPrefs((p) => ({ ...p, includeFlashcards: e.target.checked }))}
+                        disabled={uploading}
+                      />
+                      {t('academics.include_flashcards')}
+                    </label>
+                    <p className={`text-xs font-medium ${getThemeTextMuted()}`}>{t('academics.quiz_types_label')}</p>
+                    <div className="flex flex-wrap gap-3">
+                      {ALL_QUIZ_QUESTION_TYPES.map((qt) => (
+                        <label key={qt} className={`flex items-center gap-1.5 text-xs ${getThemeTextSecondary()}`}>
+                          <input
+                            type="checkbox"
+                            checked={workingGenPrefs.quizQuestionTypes.includes(qt)}
+                            onChange={() => toggleQuizType(setWorkingGenPrefs, qt)}
+                            disabled={uploading}
+                          />
+                          {t(`academics.quiz_type_${qt}`)}
+                        </label>
+                      ))}
+                    </div>
+                    {!canPersistGenerationPrefsToDb && (
+                      <p className={`text-xs leading-relaxed ${getThemeTextMuted()}`}>
+                        {t('academics.missing_generation_options_column')}
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void saveWorkingGenPrefs()}
+                      disabled={savingGenPrefs || uploading || !canPersistGenerationPrefsToDb}
+                      className={`text-sm px-3 py-1.5 rounded-lg border ${getThemeCardBorder()} ${getThemeTextSecondary()}`}
+                    >
+                      {savingGenPrefs ? t('academics.saving_prefs') : t('academics.save_generation_prefs')}
+                    </button>
+                  </div>
+                </details>
+              ) : (
+                <p className={`mt-3 text-sm ${getThemeTextMuted()}`}>{t('academics.select_course_first')}</p>
+              )}
+              <div className="mt-3 flex flex-col gap-2">
                 <input
                   type="file"
+                  multiple
                   accept=".pdf,.pptx,.docx,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                  onChange={(e) =>
+                    setSelectedFiles(e.target.files && e.target.files.length > 0 ? Array.from(e.target.files) : [])
+                  }
                   disabled={!selectedCourse || uploading}
                   className="text-sm"
                 />
-                <button
-                  type="button"
-                  disabled={!selectedCourse || !selectedFile || uploading}
-                  onClick={handleGenerateContentForCourse}
-                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg ${
-                    !selectedCourse || !selectedFile || uploading
-                      ? `${getThemeSubtle('bg')} ${getThemeTextMuted()} cursor-not-allowed`
-                      : `${getThemeGradient('ui')} text-white`
-                  }`}
-                >
-                  <Upload className="h-4 w-4" />
-                  <span>{uploading ? t('academics.processing') : t('academics.generate_from_upload')}</span>
-                </button>
+                {selectedFiles.length > 0 && (
+                  <ul className={`text-xs space-y-1 ${getThemeTextMuted()}`}>
+                    {selectedFiles.map((f, idx) => (
+                      <li key={`${f.name}-${idx}`} className="flex items-center justify-between gap-2">
+                        <span className="truncate">{f.name}</span>
+                        <button
+                          type="button"
+                          className={`shrink-0 ${getThemeTextSecondary()} underline`}
+                          onClick={() => setSelectedFiles((prev) => prev.filter((_, j) => j !== idx))}
+                        >
+                          {t('academics.remove_file')}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {uploadProgress && (
+                  <p className={`text-xs ${getThemeTextSecondary()}`}>{uploadProgress}</p>
+                )}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button
+                    type="button"
+                    disabled={!selectedCourse || selectedFiles.length === 0 || uploading}
+                    onClick={() => void handleGenerateContentForCourse()}
+                    className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg ${
+                      !selectedCourse || selectedFiles.length === 0 || uploading
+                        ? `${getThemeSubtle('bg')} ${getThemeTextMuted()} cursor-not-allowed`
+                        : `${getThemeGradient('ui')} text-white`
+                    }`}
+                  >
+                    <Upload className="h-4 w-4" />
+                    <span>{uploading ? t('academics.processing') : t('academics.generate_from_upload')}</span>
+                  </button>
+                </div>
               </div>
             </div>
 

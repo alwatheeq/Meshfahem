@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../Toast/Toast';
 import { Shield, Search, Download, Calendar, User, Activity, Eye } from 'lucide-react';
@@ -45,12 +45,7 @@ export const AuditLogPage: React.FC = React.memo(() => {
   const [dateRange, setDateRange] = useState<'today' | '7days' | '30days' | 'all'>('7days');
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
 
-  useEffect(() => {
-    fetchAuditLogs();
-    fetchAuditStats();
-  }, [filterActionType, filterTable, dateRange]);
-
-  const fetchAuditLogs = async () => {
+  const fetchAuditLogs = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -82,9 +77,9 @@ export const AuditLogPage: React.FC = React.memo(() => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterActionType, filterTable, dateRange, toast]);
 
-  const fetchAuditStats = async () => {
+  const fetchAuditStats = useCallback(async () => {
     try {
       let startDate = null;
       if (dateRange !== 'all') {
@@ -106,7 +101,12 @@ export const AuditLogPage: React.FC = React.memo(() => {
       const error = err instanceof Error ? err : new Error(String(err));
       ErrorLogger.error(error, { component: 'AuditLogPage', action: 'fetchStats' });
     }
-  };
+  }, [dateRange]);
+
+  useEffect(() => {
+    void fetchAuditLogs();
+    void fetchAuditStats();
+  }, [fetchAuditLogs, fetchAuditStats]);
 
   const exportToCSV = () => {
     try {

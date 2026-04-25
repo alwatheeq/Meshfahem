@@ -40,6 +40,18 @@ interface UserStats {
   feedbackCount: number;
 }
 
+interface UserTagRow {
+  id: string;
+  tag_name: string;
+}
+
+interface UserNoteRow {
+  id: string;
+  note: string;
+  admin_email: string;
+  created_at: string;
+}
+
 export const UsersPage: React.FC = React.memo(() => {
   const { user: adminUser } = useAuth();
   const toast = useToast();
@@ -59,8 +71,8 @@ export const UsersPage: React.FC = React.memo(() => {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [selectMultipleMode, setSelectMultipleMode] = useState(false);
   const [showNotesModal, setShowNotesModal] = useState(false);
-  const [userNotes, setUserNotes] = useState<any[]>([]);
-  const [userTags, setUserTags] = useState<any[]>([]);
+  const [userNotes, setUserNotes] = useState<UserNoteRow[]>([]);
+  const [userTags, setUserTags] = useState<UserTagRow[]>([]);
 
   useEffect(() => {
     fetchUsers();
@@ -145,8 +157,8 @@ export const UsersPage: React.FC = React.memo(() => {
         supabase.rpc('get_user_tags', { p_user_id: userId })
       ]);
 
-      if (notesResult.data) setUserNotes(notesResult.data);
-      if (tagsResult.data) setUserTags(tagsResult.data);
+      if (notesResult.data) setUserNotes(notesResult.data as UserNoteRow[]);
+      if (tagsResult.data) setUserTags(tagsResult.data as UserTagRow[]);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       ErrorLogger.error(err, { component: 'UsersPage', action: 'fetchUserNotesAndTags', userId });
@@ -1088,7 +1100,7 @@ export const UsersPage: React.FC = React.memo(() => {
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {userTags.map((tag: any) => (
+                  {userTags.map((tag) => (
                     <span
                       key={tag.id}
                       className="px-3 py-1 bg-blue-100 shadow-[0_2px_8px_rgba(0,0,0,0.08)] text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 rounded-full text-sm flex items-center space-x-2"
@@ -1167,7 +1179,7 @@ export const UsersPage: React.FC = React.memo(() => {
                   </button>
                 </div>
                 <div className="space-y-3">
-                  {userNotes.map((note: any) => (
+                  {userNotes.map((note) => (
                     <div
                       key={note.id}
                       className="bg-gray-50 shadow-[0_2px_8px_rgba(0,0,0,0.08)] dark:bg-gray-700 rounded-lg p-6 border border-gray-200 dark:border-gray-600"

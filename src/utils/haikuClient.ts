@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import { CONFIG } from './config';
 import { medStudentClient } from './medStudentClient';
 import { ErrorLogger } from './errorLogger';
+import { throwIfEdgeFunctionInvokeFailed } from './edgeFunctionInvoke';
 
 export interface TokenUsage {
   input: number;
@@ -24,11 +25,14 @@ export interface FlashcardsResult {
   tokens: TokenUsage;
 }
 
-interface DetailedError extends Error {
-  code?: string;
-  details?: string;
-  functionName?: string;
-}
+/**
+ * Optional fields merged into `generate-summary-and-flashcards` invoke body.
+ * When `usageChannel` is `academics`, the Edge Function may use `ANTHROPIC_API_KEY_ACADEMICS`
+ * (falls back to `ANTHROPIC_API_KEY` if unset) so a separate key can be wired later.
+ */
+export type HaikuEdgeInvokeExtras = {
+  usageChannel?: 'academics';
+};
 
 class HaikuClient {
   requestTimeout: number;
@@ -58,33 +62,17 @@ class HaikuClient {
 
       clearTimeout(timeoutId);
 
-      if (error) {
-        let errorMessage = 'Function call failed';
-
-        if (error.message) {
-          try {
-            const errorData = JSON.parse(error.message);
-            if (errorData.error) {
-              errorMessage = errorData.error;
-            } else {
-              errorMessage = error.message;
-            }
-          } catch {
-            errorMessage = error.message;
-          }
-        }
-
-        const detailedError: DetailedError = new Error(errorMessage);
-        detailedError.code = (error as any).code;
-        detailedError.details = (error as any).details;
-        detailedError.functionName = functionName;
-        ErrorLogger.error(detailedError, { 
-          component: 'haikuClient', 
-          action: 'callFunction', 
+      try {
+        throwIfEdgeFunctionInvokeFailed(data, error);
+      } catch (invokeFailure) {
+        const err = invokeFailure instanceof Error ? invokeFailure : new Error(String(invokeFailure));
+        ErrorLogger.error(err, {
+          component: 'haikuClient',
+          action: 'callFunction',
           functionName,
-          errorCode: (error as any).code 
+          errorCode: (error as { code?: string } | null)?.code
         });
-        throw detailedError;
+        throw err;
       }
 
       ErrorLogger.debug(`Function ${functionName} succeeded`, {
@@ -115,7 +103,14 @@ class HaikuClient {
     }
   }
 
-  async generateSummary(text: string, chunkIndex: number = 0, totalChunks: number = 1, pageCount: number = 0, medicalMode: boolean = false): Promise<SummaryResult> {
+  async generateSummary(
+    text: string,
+    chunkIndex: number = 0,
+    totalChunks: number = 1,
+    pageCount: number = 0,
+    medicalMode: boolean = false,
+    extras?: HaikuEdgeInvokeExtras
+  ): Promise<SummaryResult> {
     if (!text?.trim()) {
       throw new Error('Text content is required for summary generation');
     }
@@ -141,7 +136,8 @@ class HaikuClient {
       text,
       chunkIndex,
       totalChunks,
-      pageCount
+      pageCount,
+      ...(extras?.usageChannel ? { usageChannel: extras.usageChannel } : {})
     });
 
     ErrorLogger.info('Summary generated', { component: 'haikuClient', action: 'generateSummary', summaryLength: summary?.length || 0, tokensUsed: tokens?.total || 0 });
@@ -172,7 +168,8 @@ class HaikuClient {
       count,
       mode,
       batchIndex,
-      pageCount
+      pageCount,
+      ...(extras?.usageChannel ? { usageChannel: extras.usageChannel } : {})
     });
 
     if (!Array.isArray(flashcards) || flashcards.length === 0) {
@@ -181,7 +178,7 @@ class HaikuClient {
     return { flashcards: flashcards.slice(0, count), tokens: tokens || { input: 0, output: 0, total: 0 } };
   }
 
-  async detectTopics(text: string, medicalMode: boolean = false): Promise<string[]> {
+  async detectTopics(text: string, medicalMode: boolean = false, extras?: HaikuEdgeInvokeExtras): Promise<string[]> {
     if (!text?.trim()) {
       throw new Error('Text content is required for topic detection');
     }
@@ -201,7 +198,8 @@ class HaikuClient {
     ErrorLogger.debug('Using regular topic detection', { component: 'haikuClient', action: 'detectTopics', medicalMode: false });
     const { topics } = await this.callFunction('generate-summary-and-flashcards', {
       action: 'topics',
-      text
+      text,
+      ...(extras?.usageChannel ? { usageChannel: extras.usageChannel } : {})
     });
 
     if (!Array.isArray(topics) || topics.length === 0) {

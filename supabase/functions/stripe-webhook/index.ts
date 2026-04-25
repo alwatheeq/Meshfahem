@@ -2,7 +2,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Stripe from "npm:stripe@14.21.0";
 import { handleCorsPreflight } from '../_shared/cors.ts';
-import { jsonResponse, errorResponse, successResponse } from '../_shared/response.ts';
+import { errorResponse, successResponse } from '../_shared/response.ts';
 import { getSupabaseClient } from '../_shared/auth.ts';
 import { validateMethod } from '../_shared/validation.ts';
 
@@ -137,6 +137,27 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   const chatBlocks = Math.max(0, Math.min(100, parseInt(String(meta.chat_blocks ?? 0), 10) || 0));
   const tokenLimit = getTokenLimitForTier(planType, chatBlocks);
 
+  const { data: priorActiveRows } = await supabase
+    .from("subscriptions")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .gt("end_date", new Date().toISOString());
+
+  const hadActiveSubscription = (priorActiveRows?.length ?? 0) > 0;
+
+  if (hadActiveSubscription) {
+    await supabase
+      .from("subscriptions")
+      .update({
+        status: "canceled",
+        canceled_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId)
+      .eq("status", "active");
+  }
+
   const insertPayload: Record<string, unknown> = {
     user_id: userId,
     subscription_tier: planType,
@@ -157,29 +178,26 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     chat_blocks_per_cycle: chatBlocks,
   };
 
-  const { error } = await supabase.from("subscriptions").insert(insertPayload);
+  const { error } = await supabase.from("subscriptions").upsert(insertPayload, {
+    onConflict: "stripe_subscription_id",
+  });
 
   if (error) {
-    console.error("Error creating subscription:", error);
+    console.error("Error upserting subscription:", error);
     return;
   }
 
-  // Initialize credits for the user (double-layer protection with trigger)
-  console.log(`Initializing credits for user ${userId}...`);
+  // Idempotent repair: refill only when profile tool credits are still zero (safe on duplicate webhooks)
+  console.log(`Ensuring credits for user ${userId}...`);
   const { data: creditResult, error: creditError } = await supabase.rpc(
-    "initialize_subscription_credits",
-    {
-      p_user_id: userId,
-      p_subscription_tier: planType,
-      p_force_refill: true,
-    }
+    "ensure_subscription_credits",
+    { p_user_id: userId },
   );
 
   if (creditError) {
-    console.error("Error initializing credits:", creditError);
-    // Don't return - trigger should handle this, but log the error
+    console.error("Error ensuring subscription credits:", creditError);
   } else {
-    console.log("Credit initialization result:", creditResult);
+    console.log("ensure_subscription_credits result:", creditResult);
   }
 
   await supabase.from("notifications").insert({
@@ -270,23 +288,50 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
 }
 
 async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
-  const subscriptionId = invoice.subscription as string;
+  const invoiceId = invoice.id;
+  if (!invoiceId) {
+    console.warn("handlePaymentSucceeded: missing invoice id");
+    return;
+  }
 
-  const { data: subscriptionData } = await supabase
+  const { data: alreadyProcessed } = await supabase
+    .from("transactions")
+    .select("id")
+    .eq("stripe_invoice_id", invoiceId)
+    .maybeSingle();
+
+  if (alreadyProcessed) {
+    console.log(`Invoice ${invoiceId} already processed (idempotent skip)`);
+    return;
+  }
+
+  const subscriptionId = invoice.subscription as string | null;
+  if (!subscriptionId) {
+    console.log("handlePaymentSucceeded: no subscription on invoice (one-time or draft), skipping");
+    return;
+  }
+
+  const { data: subscriptionData, error: subErr } = await supabase
     .from("subscriptions")
     .select("*")
     .eq("stripe_subscription_id", subscriptionId)
     .single();
 
-  if (!subscriptionData) {
-    console.error("Subscription not found for invoice");
+  if (subErr || !subscriptionData) {
+    console.error("Subscription not found for invoice", subErr);
     return;
   }
 
-  await supabase.from("transactions").insert({
+  const paymentIntentId =
+    typeof invoice.payment_intent === "string"
+      ? invoice.payment_intent
+      : invoice.payment_intent?.id ?? null;
+
+  const { error: txError } = await supabase.from("transactions").insert({
     user_id: subscriptionData.user_id,
     subscription_id: subscriptionData.id,
-    stripe_payment_intent_id: invoice.payment_intent as string,
+    stripe_payment_intent_id: paymentIntentId,
+    stripe_invoice_id: invoiceId,
     amount: invoice.amount_paid / 100,
     currency: invoice.currency,
     status: "succeeded",
@@ -295,21 +340,28 @@ async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
     receipt_url: invoice.hosted_invoice_url,
   });
 
-  const nextBillingDate = new Date(invoice.period_end * 1000);
-  const updateData: any = {
+  if (txError) {
+    if (String(txError.message || txError).includes("duplicate") || String(txError.code) === "23505") {
+      console.log(`Invoice ${invoiceId} duplicate insert (race), skipping`);
+      return;
+    }
+    console.error("Failed to insert transaction for invoice", txError);
+    return;
+  }
+
+  const periodStart = new Date(invoice.period_start * 1000);
+  const periodEnd = new Date(invoice.period_end * 1000);
+  const nextBillingDate = periodEnd;
+
+  const updateData: Record<string, unknown> = {
     next_billing_date: nextBillingDate.toISOString(),
+    billing_cycle_start: periodStart.toISOString(),
+    billing_cycle_end: periodEnd.toISOString(),
     updated_at: new Date().toISOString(),
   };
 
   if (!subscriptionData.billing_cycle_start || !subscriptionData.billing_cycle_end || !subscriptionData.token_limit) {
-    console.warn(`Subscription ${subscriptionId} missing billing cycle fields, initializing...`);
-
-    const cycleStart = subscriptionData.start_date ? new Date(subscriptionData.start_date) : new Date();
-    const cycleEnd = new Date(cycleStart);
-    cycleEnd.setDate(cycleEnd.getDate() + 30);
-
-    updateData.billing_cycle_start = cycleStart.toISOString();
-    updateData.billing_cycle_end = cycleEnd.toISOString();
+    console.warn(`Subscription ${subscriptionId} missing billing cycle fields, backfilling token_limit...`);
     const chatBlocksCycle = subscriptionData.chat_blocks_per_cycle ?? 0;
     updateData.token_limit = getTokenLimitForTier(subscriptionData.subscription_tier, chatBlocksCycle);
     updateData.tokens_used_current_cycle = subscriptionData.tokens_used_current_cycle || 0;
@@ -322,26 +374,53 @@ async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
     });
   }
 
+  const billingReason = invoice.billing_reason;
+
+  const shouldRefillCredits =
+    billingReason === "subscription_cycle" ||
+    billingReason === "subscription_update" ||
+    billingReason === "subscription_create";
+
+  if (billingReason === "subscription_cycle" || billingReason === "subscription_update") {
+    updateData.tokens_used_current_cycle = 0;
+  }
+
   await supabase
     .from("subscriptions")
     .update(updateData)
     .eq("stripe_subscription_id", subscriptionId);
 
-  await supabase.from("notifications").insert({
-    user_id: subscriptionData.user_id,
-    notification_type: "subscription_renewed",
-    message: `Payment of $${(invoice.amount_paid / 100).toFixed(2)} successful. Your subscription has been renewed.`,
-    action_url: "/profile/billing",
-  });
+  if (shouldRefillCredits) {
+    const { error: creditError } = await supabase.rpc("initialize_subscription_credits", {
+      p_user_id: subscriptionData.user_id,
+      p_subscription_tier: subscriptionData.subscription_tier,
+      p_force_refill: true,
+      p_additive: false,
+    });
+    if (creditError) {
+      console.error("Error refilling credits on invoice payment:", creditError);
+    } else {
+      console.log(`Credits refilled for user ${subscriptionData.user_id} (${billingReason})`);
+    }
+  }
+
+  if (billingReason === "subscription_cycle" || billingReason === "subscription_update") {
+    await supabase.from("notifications").insert({
+      user_id: subscriptionData.user_id,
+      notification_type: "subscription_renewed",
+      message: `Payment of $${(invoice.amount_paid / 100).toFixed(2)} successful. Your subscription has been renewed.`,
+      action_url: "/profile/billing",
+    });
+  }
 
   await supabase.from("notifications").insert({
     user_id: "admin",
     notification_type: "admin_notification",
-    message: `Payment received: $${(invoice.amount_paid / 100).toFixed(2)} from user ${subscriptionData.user_id}`,
+    message: `Payment received: $${(invoice.amount_paid / 100).toFixed(2)} from user ${subscriptionData.user_id} (${billingReason ?? "unknown"})`,
     action_url: "/admin/dashboard",
   });
 
-  console.log(`Payment succeeded for subscription ${subscriptionId}`);
+  console.log(`Payment succeeded for subscription ${subscriptionId}, invoice ${invoiceId}`);
 }
 
 async function handlePaymentFailed(invoice: Stripe.Invoice) {

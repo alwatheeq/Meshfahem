@@ -1,7 +1,7 @@
 /// <reference path="../_shared/deno.d.ts" />
 import { handleCorsPreflight } from '../_shared/cors.ts';
 import { jsonResponse, errorResponse } from '../_shared/response.ts';
-import { validateMethod, parseJsonBody, validateRequiredFields, validateNonEmptyString } from '../_shared/validation.ts';
+import { validateMethod, parseJsonBody, validateNonEmptyString } from '../_shared/validation.ts';
 
 async function translateWithOpenAI(text: string, targetLanguage: string, openaiApiKey: string) {
   try {

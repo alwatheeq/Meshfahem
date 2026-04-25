@@ -34,6 +34,13 @@ export const Header: React.FC = () => {
   const zegoRemaining = creditBalance?.zego_credits_remaining ?? 0;
   const zegoTotal = creditBalance?.zego_credits_total ?? 0;
 
+  const chatTokRemRpc = creditBalance?.chat_tokens_remaining;
+  const chatTokLimRpc = creditBalance?.chat_token_limit;
+  const useRpcChatTokens =
+    typeof chatTokRemRpc === 'number' &&
+    typeof chatTokLimRpc === 'number' &&
+    chatTokLimRpc > 0;
+
   const hasAiAddon = !!subscription && (
     subscription.subscription_tier === 'standard' && ((subscription.chat_blocks_per_cycle ?? 0) > 0) ||
     (subscription.token_limit ?? 0) > 520000
@@ -46,7 +53,14 @@ export const Header: React.FC = () => {
   const aiChatCreditsUsed = hasAiAddon && subscription ? Math.round((subscription.tokens_used_current_cycle ?? 0) / 1000) : 0;
   const aiChatCreditsRemaining = Math.max(0, aiChatCreditsTotal - aiChatCreditsUsed);
 
-  const combinedRemaining = toolRemaining + (zegoTotal > 0 ? zegoRemaining : 0) + (hasAiAddon ? aiChatCreditsRemaining : 0);
+  const chatCombinedUnits = hasAiAddon
+    ? aiChatCreditsRemaining
+    : useRpcChatTokens
+      ? Math.round((chatTokRemRpc ?? 0) / 1000)
+      : 0;
+
+  const combinedRemaining =
+    toolRemaining + (zegoTotal > 0 ? zegoRemaining : 0) + chatCombinedUnits;
 
   const toolProgress =
     toolPlanCap > 0 ? Math.min(100, (toolRemaining / toolPlanCap) * 100) : 0;
@@ -167,8 +181,20 @@ export const Header: React.FC = () => {
                           <span className={`text-xs font-bold tracking-wide uppercase ${getThemeTextPrimary()}`}>
                             {t('header.credits_tools_services')}
                           </span>
-                          <span className={`text-xs font-semibold shrink-0 ${getThemeTextSecondary()}`}>
+                          <span
+                            className={`text-xs font-semibold shrink-0 ${getThemeTextSecondary()} text-right max-w-[58%]`}
+                            title={
+                              toolPlanCap > 0 && toolRemaining > toolPlanCap
+                                ? t('header.credits_tools_bonus_title')
+                                : undefined
+                            }
+                          >
                             {toolRemaining.toLocaleString()} / {toolPlanCap.toLocaleString()}
+                            {toolPlanCap > 0 && toolRemaining > toolPlanCap ? (
+                              <span className={`block text-[10px] font-normal mt-0.5 ${getThemeTextMuted()}`}>
+                                {t('header.credits_tools_includes_bonus')}
+                              </span>
+                            ) : null}
                           </span>
                         </div>
                         <div className={`relative w-full h-2 ${getThemeSubtle('ui')} rounded-full overflow-hidden`}>
@@ -214,7 +240,9 @@ export const Header: React.FC = () => {
                           <span className={`text-xs font-semibold shrink-0 ${getThemeTextSecondary()}`}>
                             {hasAiAddon && aiChatCreditsTotal > 0
                               ? `${aiChatCreditsRemaining.toLocaleString()} / ${aiChatCreditsTotal.toLocaleString()}`
-                              : '0'}
+                              : useRpcChatTokens
+                                ? `${Math.round((chatTokRemRpc ?? 0) / 1000).toLocaleString()} / ${Math.round((chatTokLimRpc ?? 0) / 1000).toLocaleString()}`
+                                : '0'}
                           </span>
                         </div>
                         {!hasAiAddon && (
@@ -222,7 +250,17 @@ export const Header: React.FC = () => {
                             {t('header.credits_ai_addon_hint')}
                           </p>
                         )}
-                        {hasAiAddon && aiChatCreditsTotal > 0 && (
+                        {useRpcChatTokens && (chatTokLimRpc ?? 0) > 0 && (
+                          <div className={`relative w-full h-2 ${getThemeSubtle('ui')} rounded-full overflow-hidden`}>
+                            <div
+                              className="absolute inset-y-0 left-0 rounded-full bg-violet-500 dark:bg-violet-600 transition-all duration-200 ease-out"
+                              style={{
+                                width: `${Math.min(100, ((chatTokRemRpc ?? 0) / (chatTokLimRpc ?? 1)) * 100)}%`
+                              }}
+                            />
+                          </div>
+                        )}
+                        {!useRpcChatTokens && hasAiAddon && aiChatCreditsTotal > 0 && (
                           <div className={`relative w-full h-2 ${getThemeSubtle('ui')} rounded-full overflow-hidden`}>
                             <div
                               className="absolute inset-y-0 left-0 rounded-full bg-violet-500 dark:bg-violet-600 transition-all duration-200 ease-out"

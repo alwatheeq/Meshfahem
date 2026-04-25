@@ -5,6 +5,7 @@ import { useI18n } from '../../../contexts/I18nContext';
 import { useAuth } from '../../../hooks/useAuth';
 import { useToast } from '../../Toast/Toast';
 import { supabase } from '../../../lib/supabase';
+import { toErrorMessage } from '../../../utils/errorHandler';
 
 interface UserProfile {
   id: string;
@@ -37,33 +38,114 @@ export const FriendsPanel: React.FC = () => {
   const [sendingRequest, setSendingRequest] = useState<string | null>(null);
   const [processingRequest, setProcessingRequest] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fetchGenRef = useRef(0);
 
-  const fetchFriendships = useCallback(async () => {
-    if (!user) return;
+  const fetchFriendships = useCallback(
+    async (gen: number) => {
+      if (!user) {
+        setLoadingFriends(false);
+        return;
+      }
 
-    setLoadingFriends(true);
+      setLoadingFriends(true);
 
-    const [incomingRes, friendsRes] = await Promise.all([
-      supabase
-        .from('user_friendships')
-        .select('id, requester_id, addressee_id, status, created_at, requester:user_profiles!user_friendships_requester_id_fkey(id, display_name, username)')
-        .eq('addressee_id', user.id)
-        .eq('status', 'pending'),
-      supabase
-        .from('user_friendships')
-        .select('id, requester_id, addressee_id, status, created_at, requester:user_profiles!user_friendships_requester_id_fkey(id, display_name, username), addressee:user_profiles!user_friendships_addressee_id_fkey(id, display_name, username)')
-        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
-        .eq('status', 'accepted'),
-    ]);
+      try {
+        const [incomingRes, friendsRes] = await Promise.all([
+          supabase
+            .from('user_friendships')
+            .select('id, requester_id, addressee_id, status, created_at')
+            .eq('addressee_id', user.id)
+            .eq('status', 'pending'),
+          supabase
+            .from('user_friendships')
+            .select('id, requester_id, addressee_id, status, created_at')
+            .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`)
+            .eq('status', 'accepted'),
+        ]);
 
-    if (incomingRes.data) setPendingIncoming(incomingRes.data as unknown as FriendshipRow[]);
-    if (friendsRes.data) setFriends(friendsRes.data as unknown as FriendshipRow[]);
+        if (gen !== fetchGenRef.current) return;
 
-    setLoadingFriends(false);
-  }, [user]);
+        if (incomingRes.error || friendsRes.error) {
+          showError(toErrorMessage(incomingRes.error ?? friendsRes.error));
+          return;
+        }
+
+        const inc = incomingRes.data ?? [];
+        const fr = friendsRes.data ?? [];
+
+        const ids = new Set<string>();
+        for (const r of inc) {
+          ids.add(r.requester_id);
+          ids.add(r.addressee_id);
+        }
+        for (const r of fr) {
+          ids.add(r.requester_id);
+          ids.add(r.addressee_id);
+        }
+        const idList = [...ids];
+
+        const profileMap: Record<string, UserProfile> = {};
+        if (idList.length > 0) {
+          const { data: profs, error: pErr } = await supabase
+            .from('user_profiles')
+            .select('id, display_name, username')
+            .in('id', idList);
+
+          if (gen !== fetchGenRef.current) return;
+
+          if (pErr) {
+            showError(toErrorMessage(pErr));
+            return;
+          }
+          for (const p of profs ?? []) {
+            profileMap[p.id] = p as UserProfile;
+          }
+        }
+
+        if (gen !== fetchGenRef.current) return;
+
+        const enrich = (
+          rows: Array<{
+            id: string;
+            requester_id: string;
+            addressee_id: string;
+            status: string;
+            created_at: string;
+          }>
+        ): FriendshipRow[] =>
+          rows.map((r) => ({
+            ...r,
+            requester:
+              profileMap[r.requester_id] ?? {
+                id: r.requester_id,
+                display_name: null,
+                username: null,
+              },
+            addressee:
+              profileMap[r.addressee_id] ?? {
+                id: r.addressee_id,
+                display_name: null,
+                username: null,
+              },
+          }));
+
+        setPendingIncoming(enrich(inc));
+        setFriends(enrich(fr));
+      } finally {
+        if (gen === fetchGenRef.current) {
+          setLoadingFriends(false);
+        }
+      }
+    },
+    [user, showError]
+  );
 
   useEffect(() => {
-    fetchFriendships();
+    const gen = ++fetchGenRef.current;
+    void fetchFriendships(gen);
+    return () => {
+      fetchGenRef.current += 1;
+    };
   }, [fetchFriendships]);
 
   const searchUsers = useCallback(
@@ -74,17 +156,14 @@ export const FriendsPanel: React.FC = () => {
       }
 
       setIsSearching(true);
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('id, display_name, username')
-        .ilike('username', `%${query.trim()}%`)
-        .neq('id', user.id)
-        .limit(10);
+      const { data, error } = await supabase.rpc('search_users_by_username', {
+        p_query: query.trim(),
+      });
 
       setIsSearching(false);
 
       if (error) {
-        showError(error.message);
+        showError(toErrorMessage(error));
         return;
       }
 
@@ -113,7 +192,7 @@ export const FriendsPanel: React.FC = () => {
     setSendingRequest(null);
 
     if (error) {
-      showError(error.message);
+      showError(toErrorMessage(error));
       return;
     }
 
@@ -131,11 +210,11 @@ export const FriendsPanel: React.FC = () => {
     setProcessingRequest(null);
 
     if (error) {
-      showError(error.message);
+      showError(toErrorMessage(error));
       return;
     }
 
-    fetchFriendships();
+    void fetchFriendships(++fetchGenRef.current);
   };
 
   const getFriendProfile = (row: FriendshipRow): UserProfile => {

@@ -62,12 +62,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // ✅ Validate RPC return shape
-    if (!data || typeof data !== 'object' || typeof (data as any).success !== 'boolean') {
+    const row = data as { success?: unknown; credits_added?: unknown; new_balance?: unknown; error?: unknown };
+    if (!data || typeof data !== 'object' || typeof row.success !== 'boolean') {
       console.error('Unexpected claim_free_credits response shape:', data);
       return json({ error: 'Failed to claim credits' }, 500);
     }
 
-    const result = data as any;
+    const result = row as { success: boolean; credits_added?: number; new_balance?: number; error?: string };
 
     if (!result.success) {
       return json({ error: result.error || 'Failed to claim credits' }, 400);
@@ -79,7 +80,7 @@ Deno.serve(async (req: Request) => {
       new_balance: result.new_balance
     }, 200);
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Unexpected error:', error);
     return json({ error: 'Internal server error' }, 500);
   }

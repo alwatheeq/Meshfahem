@@ -5,6 +5,7 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import { useAuth } from '../../../hooks/useAuth';
 import { useToast } from '../../Toast/Toast';
 import { supabase } from '../../../lib/supabase';
+import { toErrorMessage } from '../../../utils/errorHandler';
 
 interface ChatMessage {
   id: string;
@@ -103,7 +104,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, groupName, onBack
       setMessages(enriched);
       setHasMore((data || []).length === PAGE_SIZE);
     } catch (err) {
-      showError(err instanceof Error ? err.message : String(err));
+      showError(toErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -183,7 +184,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, groupName, onBack
         }
       });
     } catch (err) {
-      showError(err instanceof Error ? err.message : String(err));
+      showError(toErrorMessage(err));
     } finally {
       setLoadingMore(false);
     }
@@ -203,7 +204,7 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, groupName, onBack
 
       if (error) throw error;
     } catch (err) {
-      showError(err instanceof Error ? err.message : String(err));
+      showError(toErrorMessage(err));
       setInput(content);
     } finally {
       setSending(false);

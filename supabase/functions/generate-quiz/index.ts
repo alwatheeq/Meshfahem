@@ -1,9 +1,6 @@
 /// <reference path="../_shared/deno.d.ts" />
 import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
-
-const MODEL_TOKEN_LIMITS: { [key: string]: number } = {
-  'claude-3-haiku-20240307': 4096,
-};
+import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.39.3';
 
 const DEFAULT_MODEL = 'claude-3-haiku-20240307';
 const QUESTIONS_PER_CHUNK = 3;
@@ -23,6 +20,24 @@ interface QuizRequest {
   sourceId?: string;
   quizTitle: string;
   targetLanguage?: string;
+  /** Subset of question types to generate (saves credits). Omitted = all types. */
+  questionTypes?: string[];
+}
+
+type QuestionType = 'multiple_choice' | 'true_false' | 'fill_in_blank' | 'open_ended';
+
+const ALL_QUESTION_TYPES: QuestionType[] = ['multiple_choice', 'true_false', 'fill_in_blank', 'open_ended'];
+
+function parseQuestionTypes(raw: string[] | undefined): QuestionType[] {
+  if (!raw || !Array.isArray(raw) || raw.length === 0) return [...ALL_QUESTION_TYPES];
+  const allowed = new Set<string>(ALL_QUESTION_TYPES);
+  const out = raw.filter((x): x is QuestionType => typeof x === 'string' && allowed.has(x));
+  return out.length > 0 ? out : [...ALL_QUESTION_TYPES];
+}
+
+function sequenceTypesForChunk(allowed: QuestionType[], count: number): QuestionType[] {
+  if (allowed.length === 0) return Array.from({ length: count }, () => 'multiple_choice' as QuestionType);
+  return Array.from({ length: count }, (_, i) => allowed[i % allowed.length]);
 }
 
 interface Question {
@@ -32,7 +47,7 @@ interface Question {
   correct_answer: string;
   explanation: string;
   topic: string;
-  type: 'multiple_choice' | 'true_false';
+  type: QuestionType;
 }
 
 // ─── Text segment interface ───────────────────────────────────────────────────
@@ -154,7 +169,7 @@ function smartRepairJSON(text: string): string {
 function extractCompleteQuestions(text: string): string {
   const sanitized = advancedSanitizeJSON(text);
   let depth = 0, inString = false, escape = false;
-  let result = '', lastCompleteQuestionEnd = -1, questionCount = 0;
+  let result = '', lastCompleteQuestionEnd = -1;
 
   for (let i = 0; i < sanitized.length; i++) {
     const char = sanitized[i];
@@ -167,7 +182,7 @@ function extractCompleteQuestions(text: string): string {
       if (char === '[' || char === '{') { depth++; result += char; }
       else if (char === '}') {
         depth--; result += char;
-        if (depth === 1) { lastCompleteQuestionEnd = i; questionCount++; }
+        if (depth === 1) { lastCompleteQuestionEnd = i; }
       } else if (char === ']') {
         depth--; result += char;
         if (depth === 0) return result;
@@ -205,14 +220,16 @@ function advancedSanitizeJSON(text: string): string {
   }
 
   cleaned = cleaned.replace(/,(\s*[\]}])/g, '$1');
+  // Strip C0 control characters from model output (intentional ASCII control class)
+  // eslint-disable-next-line no-control-regex -- sanitize non-printable chars before JSON.parse
   cleaned = cleaned.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '');
   cleaned = cleaned.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
   return cleaned;
 }
 
-function tryParseJSON(text: string): any {
-  const strategies: Array<{ name: string; fn: () => any }> = [
+function tryParseJSON(text: string): unknown {
+  const strategies: Array<{ name: string; fn: () => unknown }> = [
     { name: 'Direct Parse', fn: () => JSON.parse(text) },
     { name: 'Sanitized Parse', fn: () => JSON.parse(advancedSanitizeJSON(text)) },
     {
@@ -267,7 +284,7 @@ function tryParseJSON(text: string): any {
 // ─── Answer matching ──────────────────────────────────────────────────────────
 
 function stripOptionPrefix(str: string): string {
-  return str.replace(/^[A-Da-d][\).\]:]\s*/, '').replace(/^[1-4][\).\]:]\s*/, '').trim();
+  return str.replace(/^[A-Da-d][).\]:]\s*/, '').replace(/^[1-4][).\]:]\s*/, '').trim();
 }
 
 function removePunctuation(str: string): string {
@@ -341,14 +358,44 @@ function findBestMatch(correctAnswer: string, options: string[]): string | null 
 
 // ─── Question validation ──────────────────────────────────────────────────────
 
-function validateAndNormalizeQuestion(q: any, index: number): Question | null {
-  try {
-    if (!q.question || typeof q.question !== 'string') return null;
-    if (!Array.isArray(q.options) || q.options.length < 2) return null;
-    if (!q.correct_answer || typeof q.correct_answer !== 'string') return null;
+function coerceQuestionType(raw: unknown): QuestionType {
+  if (raw === 'true_false') return 'true_false';
+  if (raw === 'fill_in_blank') return 'fill_in_blank';
+  if (raw === 'open_ended') return 'open_ended';
+  return 'multiple_choice';
+}
 
-    const normalizedOptions = q.options.map((opt: any) => normalizeString(String(opt)));
-    let normalizedCorrectAnswer = normalizeString(q.correct_answer);
+function validateAndNormalizeQuestion(q: unknown, index: number): Question | null {
+  try {
+    if (typeof q !== 'object' || q === null) return null;
+    const o = q as Record<string, unknown>;
+    if (!o.question || typeof o.question !== 'string') return null;
+    if (!o.correct_answer || typeof o.correct_answer !== 'string') return null;
+
+    const declared = coerceQuestionType(o.type);
+    const topic = o.topic != null ? String(o.topic).trim() : '';
+    const explanation = o.explanation != null ? String(o.explanation).trim() : '';
+
+    if (declared === 'fill_in_blank' || declared === 'open_ended') {
+      const optsRaw = Array.isArray(o.options) ? o.options.map((opt) => normalizeString(String(opt))) : [];
+      const question = o.question.trim();
+      const correct = normalizeString(o.correct_answer);
+      if (!question || !correct) return null;
+      return {
+        index,
+        question,
+        options: optsRaw,
+        correct_answer: correct,
+        explanation,
+        topic,
+        type: declared,
+      };
+    }
+
+    if (!Array.isArray(o.options) || o.options.length < 2) return null;
+
+    const normalizedOptions = o.options.map((opt) => normalizeString(String(opt)));
+    let normalizedCorrectAnswer = normalizeString(o.correct_answer);
 
     if (!normalizedOptions.includes(normalizedCorrectAnswer)) {
       const bestMatch = findBestMatch(normalizedCorrectAnswer, normalizedOptions);
@@ -356,14 +403,16 @@ function validateAndNormalizeQuestion(q: any, index: number): Question | null {
       else return null;
     }
 
+    const type: QuestionType = declared === 'true_false' ? 'true_false' : 'multiple_choice';
+
     return {
       index,
-      question: q.question.trim(),
+      question: o.question.trim(),
       options: normalizedOptions,
       correct_answer: normalizedCorrectAnswer,
-      explanation: q.explanation ? String(q.explanation).trim() : '',
-      topic: q.topic ? String(q.topic).trim() : '',
-      type: q.type === 'true_false' ? 'true_false' : 'multiple_choice',
+      explanation,
+      topic,
+      type,
     };
   } catch {
     return null;
@@ -459,7 +508,8 @@ function buildChunkedPrompt(
   difficulty: 'easy' | 'medium' | 'hard',
   targetLanguage: string,
   previousQuestions: Question[],   // Full question objects so we can show exact text
-  topicFocus: string               // From topic segment extraction, may be empty
+  topicFocus: string,               // From topic segment extraction, may be empty
+  typesSequence: QuestionType[]
 ): string {
   const difficultyInstructions = {
     easy: 'Create straightforward questions testing basic recall and understanding. Use simple language.',
@@ -486,7 +536,22 @@ function buildChunkedPrompt(
     ? `\nFOCUS AREA FOR THIS SECTION:\n${topicFocus}\nBase your questions primarily on this focus area and the content below.\n`
     : `\nThis is section ${segment.segmentIndex + 1} of ${segment.totalSegments}. Focus on content unique to this section.\n`;
 
-  return `You are an expert quiz creator. Generate EXACTLY ${questionsInChunk} multiple-choice questions.
+  const typePlan = typesSequence
+    .map((t, i) => `  Question ${i + 1}: type MUST be "${t}"`)
+    .join('\n');
+
+  const typeRules = `
+=== QUESTION TYPES (STRICT ORDER) ===
+${typePlan}
+
+Per-type rules:
+- "multiple_choice": exactly 4 options in "options", "correct_answer" must exactly equal one option string.
+- "true_false": exactly 2 options (e.g. "True" and "False"), "correct_answer" must equal one of them.
+- "fill_in_blank": "question" must contain ____ as the blank; "correct_answer" is the short text that fills the blank; "options" may be [].
+- "open_ended": "options" must be []; "correct_answer" is a concise ideal / rubric answer (1-3 sentences) for grading; "question" asks for a short written response.
+`;
+
+  return `You are an expert quiz creator. Generate EXACTLY ${questionsInChunk} questions following the type plan below.
 
 LANGUAGE: ${langInstruction}
 DIFFICULTY: ${difficulty} — ${difficultyInstructions[difficulty]}
@@ -496,19 +561,13 @@ ${segment.text}
 
 QUESTIONS ALREADY GENERATED (DO NOT repeat or closely rephrase any of these):
 ${alreadyAsked}
+${typeRules}
 
 === STRICT DIVERSITY RULES ===
 - Your questions MUST test different facts, concepts, or ideas than the ones already generated above
 - Do NOT ask about anything already covered by the questions listed above
 - If the content overlap is unavoidable, choose the least-tested angle or specific detail
 - Each of your ${questionsInChunk} questions must also test a different thing from each other
-
-=== REQUIREMENTS ===
-1. Generate EXACTLY ${questionsInChunk} questions
-2. Each question: clear text, exactly 4 options, one correct answer, brief explanation (1-2 sentences), topic identifier
-3. All options must be plausible — not obviously wrong
-4. The correct answer must be clearly the best choice
-5. Questions must be answerable from the provided content
 
 === JSON FORMAT (CRITICAL) ===
 - Start with [ and end with ]
@@ -517,10 +576,10 @@ ${alreadyAsked}
 - Use double quotes only
 - Escape internal quotes with \\"
 - NO trailing comma after last item
-- Options: plain text, NO prefixes like "A)" or "1."
-- "correct_answer" must EXACTLY match one option (case-sensitive)
+- For MCQ/TF: options plain text, NO prefixes like "A)" or "1."
+- For MCQ/TF: "correct_answer" must EXACTLY match one option (case-sensitive)
 
-=== EXAMPLE ===
+=== EXAMPLE (shape only; your types must follow the plan above) ===
 [
   {
     "index": 0,
@@ -535,8 +594,8 @@ ${alreadyAsked}
 
 === VALIDATION CHECKLIST ===
 ✓ Exactly ${questionsInChunk} questions
+✓ Each item's "type" matches the type plan order for that index
 ✓ None repeat or closely rephrase the already-generated questions listed above
-✓ Each correct_answer exactly matches an option
 ✓ Response starts with [ and ends with ]
 ✓ No markdown formatting
 ✓ All content in ${langName}
@@ -555,11 +614,21 @@ async function generateChunk(
   targetLanguage: string,
   claudeApiKey: string,
   previousQuestions: Question[],
-  topicFocus: string
+  topicFocus: string,
+  allowedQuestionTypes: QuestionType[]
 ): Promise<{ questions: Question[]; tokens: { input: number; output: number; total: number } }> {
   console.log(`Chunk ${chunkNumber}/${totalChunks}: generating ${questionsInChunk} questions (${segment.text.length} chars of content)`);
 
-  const prompt = buildChunkedPrompt(segment, questionsInChunk, difficulty, targetLanguage, previousQuestions, topicFocus);
+  const typesSequence = sequenceTypesForChunk(allowedQuestionTypes, questionsInChunk);
+  const prompt = buildChunkedPrompt(
+    segment,
+    questionsInChunk,
+    difficulty,
+    targetLanguage,
+    previousQuestions,
+    topicFocus,
+    typesSequence
+  );
 
   const languageMultipliers: Record<string, number> = { en: 1.0, ar: 2.0, fr: 1.5, tr: 1.5 };
   const langMultiplier = languageMultipliers[targetLanguage] || 1.0;
@@ -626,7 +695,8 @@ async function generateQuizInChunks(
   claudeApiKey: string,
   userId: string,
   sourceType: string,
-  supabase: any
+  supabase: SupabaseClient,
+  allowedQuestionTypes: QuestionType[]
 ): Promise<{ questions: Question[]; tokensUsed: number }> {
   console.log(`Starting quiz generation: ${totalQuestions} questions, difficulty=${difficulty}, lang=${targetLanguage}`);
 
@@ -665,7 +735,8 @@ async function generateQuizInChunks(
           targetLanguage,
           claudeApiKey,
           allQuestions,      // Pass full question list for duplicate checking
-          topicFocus
+          topicFocus,
+          allowedQuestionTypes
         );
 
         tokensUsedTotal += tokens.total;
@@ -755,7 +826,17 @@ Deno.serve(async (req: Request) => {
     const isAdmin = profile?.role === 'admin';
 
     const requestData: QuizRequest = await req.json();
-    const { text, questionCount, difficulty, sourceType, sourceId, quizTitle, targetLanguage = 'en' } = requestData;
+    const {
+      text,
+      questionCount,
+      difficulty,
+      sourceType,
+      sourceId,
+      quizTitle,
+      targetLanguage = 'en',
+      questionTypes: questionTypesRaw,
+    } = requestData;
+    const allowedQuestionTypes = parseQuestionTypes(questionTypesRaw);
 
     if (!text || text.length < 300) throw new Error('Text content must be at least 300 characters');
     if (questionCount < 5 || questionCount > 50) throw new Error('Question count must be between 5 and 50');
@@ -791,7 +872,8 @@ Deno.serve(async (req: Request) => {
       claudeApiKey,
       user.id,
       sourceType,
-      supabase
+      supabase,
+      allowedQuestionTypes
     );
 
     const { data: quizSession, error: insertError } = await supabase
@@ -846,7 +928,7 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({ success: true, quizSessionId: quizSession.id, questionCount: questions.length, questions }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Fatal error in generate-quiz:', error);
     return new Response(
       JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Failed to generate quiz' }),

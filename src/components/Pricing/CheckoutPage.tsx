@@ -11,6 +11,7 @@ import {
   normalizeStandardBillingMonths,
 } from '../../utils/subscriptionHelpers';
 import { ErrorLogger } from '../../utils/errorLogger';
+import { verifySubscriptionCreditsAfterCheckout } from '../../utils/postSubscribeCredits';
 
 export const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
@@ -74,6 +75,14 @@ export const CheckoutPage: React.FC = () => {
       const totalZegoHours = INCLUDED_ZEGO_HOURS + zegoHours;
       const totalChatBlocks = INCLUDED_CHAT_BLOCKS + chatBlocks;
 
+      const { data: activePriorSubs } = await supabase
+        .from('subscriptions')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .gt('end_date', new Date().toISOString());
+      const hadActiveSubscription = (activePriorSubs?.length ?? 0) > 0;
+
       if (mode === 'free') {
         const endDate = new Date();
         endDate.setMonth(endDate.getMonth() + billingMonths);
@@ -93,6 +102,7 @@ export const CheckoutPage: React.FC = () => {
           p_trial_end_date: null,
           p_zego_hours: totalZegoHours,
           p_chat_blocks: totalChatBlocks,
+          p_additive: hadActiveSubscription,
         };
         const { data: functionData, error: functionError } = await supabase.rpc(
           'safe_create_subscription',
@@ -217,6 +227,7 @@ export const CheckoutPage: React.FC = () => {
             p_user_id: user.id,
             p_subscription_tier: 'standard',
             p_force_refill: true,
+            p_additive: hadActiveSubscription,
           });
           if (initError) {
             const err = initError instanceof Error ? initError : new Error(String(initError));
@@ -234,6 +245,11 @@ export const CheckoutPage: React.FC = () => {
           }
         }
 
+        const creditVerify = await verifySubscriptionCreditsAfterCheckout(user.id);
+        if (!creditVerify.ok) {
+          throw new Error(creditVerify.userMessage ?? 'Could not confirm credits after subscription.');
+        }
+        window.dispatchEvent(new CustomEvent('creditUpdated'));
         navigate('/payment/success?free=true');
       } else {
         // STRIPE MODE - Redirect to Stripe checkout
@@ -298,6 +314,7 @@ export const CheckoutPage: React.FC = () => {
             p_trial_end_date: null,
             p_zego_hours: totalZegoHours,
             p_chat_blocks: totalChatBlocks,
+            p_additive: hadActiveSubscription,
           };
           const { error: rpcError } = await supabase.rpc('safe_create_subscription', rpcParams);
           if (rpcError) {
@@ -336,7 +353,13 @@ export const CheckoutPage: React.FC = () => {
             p_user_id: user.id,
             p_subscription_tier: 'standard',
             p_force_refill: true,
+            p_additive: hadActiveSubscription,
           });
+          const stripeFbVerify = await verifySubscriptionCreditsAfterCheckout(user.id);
+          if (!stripeFbVerify.ok) {
+            throw new Error(stripeFbVerify.userMessage ?? 'Could not confirm credits after subscription.');
+          }
+          window.dispatchEvent(new CustomEvent('creditUpdated'));
           navigate('/payment/success?free=true');
           return;
         }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Search, Filter, Download, DollarSign, TrendingUp, CreditCard, Calendar, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -42,11 +42,7 @@ export const TransactionsPage: React.FC = React.memo(() => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateRange, setDateRange] = useState<string>('30');
 
-  useEffect(() => {
-    fetchTransactions();
-  }, [dateRange]);
-
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -94,7 +90,11 @@ export const TransactionsPage: React.FC = React.memo(() => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [dateRange]);
+
+  useEffect(() => {
+    void fetchTransactions();
+  }, [fetchTransactions]);
 
   const filteredTransactions = useMemo(() =>
     transactions.filter(trans => {

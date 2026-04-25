@@ -7,9 +7,22 @@ import { useFeatureAccess } from '../../hooks/useFeatureAccess';
 import { useSubscription } from '../../hooks/useSubscription';
 import { ErrorLogger } from '../../utils/errorLogger';
 import { extractTextFromFile } from '../../utils/fileProcessor';
+import type { AcademicsGenerationPreferences, QuizQuestionTypePreference } from '../../utils/academicsGenerationPreferences';
+import {
+  ALL_QUIZ_QUESTION_TYPES,
+  DEFAULT_ACADEMICS_GENERATION_PREFERENCES,
+  dashboardHasRunnableOutput,
+} from '../../utils/academicsGenerationPreferences';
 
 interface InputFormProps {
-  onProcessInput: (input: File | string, flashcardCount: number, fromSummary: boolean, medicalMode?: boolean, useOCR?: boolean) => void;
+  onProcessInput: (
+    input: File | string,
+    flashcardCount: number,
+    fromSummary: boolean,
+    medicalMode?: boolean,
+    useOCR?: boolean,
+    generationPrefs?: AcademicsGenerationPreferences
+  ) => void;
 }
 
 // Internal component that uses hooks
@@ -20,6 +33,11 @@ const InputFormContent: React.FC<InputFormProps> = ({ onProcessInput }) => {
   const [medicalMode, setMedicalMode] = useState(false);
   const [medicalValidation, setMedicalValidation] = useState<{ isValid: boolean; score: number; feedback: string } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [generationPrefs, setGenerationPrefs] = useState<AcademicsGenerationPreferences>(() => ({
+    includeSummary: DEFAULT_ACADEMICS_GENERATION_PREFERENCES.includeSummary,
+    includeFlashcards: DEFAULT_ACADEMICS_GENERATION_PREFERENCES.includeFlashcards,
+    quizQuestionTypes: [...DEFAULT_ACADEMICS_GENERATION_PREFERENCES.quizQuestionTypes],
+  }));
   const [inputMode, setInputMode] = useState<'file' | 'text' | 'ocr'>('file');
   const ocrFileInputRef = useRef<HTMLInputElement>(null);
   const { t } = useI18n();
@@ -68,6 +86,29 @@ const InputFormContent: React.FC<InputFormProps> = ({ onProcessInput }) => {
     const timeoutId = setTimeout(validateContent, 500); // Debounce validation
     return () => clearTimeout(timeoutId);
   }, [textInput, medicalMode]);
+
+  React.useEffect(() => {
+    if (!generationPrefs.includeSummary && fromSummary) {
+      setFromSummary(false);
+    }
+  }, [generationPrefs.includeSummary, fromSummary]);
+
+  const toggleDashboardQuizType = (qt: QuizQuestionTypePreference) => {
+    setGenerationPrefs((prev) => {
+      const has = prev.quizQuestionTypes.includes(qt);
+      const next = has ? prev.quizQuestionTypes.filter((x) => x !== qt) : [...prev.quizQuestionTypes, qt];
+      return { ...prev, quizQuestionTypes: next };
+    });
+  };
+
+  const assertRunnablePrefs = (): boolean => {
+    if (!dashboardHasRunnableOutput(generationPrefs)) {
+      showNotification(t('dashboard.error_generation_prefs_required'));
+      return false;
+    }
+    return true;
+  };
+
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -121,6 +162,7 @@ const InputFormContent: React.FC<InputFormProps> = ({ onProcessInput }) => {
 
   const handleFiles = async (files: File[]) => {
     if (files.length === 0) return;
+    if (!assertRunnablePrefs()) return;
 
     if (!hasActiveSubscription()) {
       showNotification('Please subscribe to process files');
@@ -197,7 +239,7 @@ const InputFormContent: React.FC<InputFormProps> = ({ onProcessInput }) => {
       const combinedText = extractedTexts.join('\n\n');
       
       // Pass combined text as string to onProcessInput
-      onProcessInput(combinedText, flashcardCount, fromSummary, medicalMode, false);
+      onProcessInput(combinedText, flashcardCount, fromSummary, medicalMode, false, generationPrefs);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       ErrorLogger.error(err, { component: 'InputForm', action: 'handleFiles', fileCount: files.length });
@@ -208,7 +250,9 @@ const InputFormContent: React.FC<InputFormProps> = ({ onProcessInput }) => {
   const handleFile = async (file: File) => {
     try {
       ErrorLogger.debug('Processing single file', { component: 'InputForm', action: 'handleFile', fileName: file.name, fileType: file.type, fileSize: file.size });
-      
+
+      if (!assertRunnablePrefs()) return;
+
       if (!hasActiveSubscription()) {
         showNotification('Please subscribe to process files');
         return;
@@ -237,7 +281,7 @@ const InputFormContent: React.FC<InputFormProps> = ({ onProcessInput }) => {
 
       await trackFeatureUsage('summary_generation');
       ErrorLogger.debug('Calling onProcessInput with file', { component: 'InputForm', action: 'handleFile', fileName: file.name });
-      onProcessInput(file, flashcardCount, fromSummary, medicalMode, false);
+      onProcessInput(file, flashcardCount, fromSummary, medicalMode, false, generationPrefs);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       ErrorLogger.error(err, { component: 'InputForm', action: 'handleFile', fileName: file.name });
@@ -246,6 +290,8 @@ const InputFormContent: React.FC<InputFormProps> = ({ onProcessInput }) => {
   };
 
   const handleOCRFile = async (file: File) => {
+    if (!assertRunnablePrefs()) return;
+
     if (!hasActiveSubscription()) {
       showNotification('Please subscribe to process images with OCR');
       return;
@@ -276,7 +322,7 @@ const InputFormContent: React.FC<InputFormProps> = ({ onProcessInput }) => {
     }
 
     await trackFeatureUsage('summary_generation');
-    onProcessInput(file, flashcardCount, fromSummary, medicalMode, true);
+    onProcessInput(file, flashcardCount, fromSummary, medicalMode, true, generationPrefs);
   };
 
   const handleOCRChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -297,6 +343,8 @@ const InputFormContent: React.FC<InputFormProps> = ({ onProcessInput }) => {
   };
 
   const handleTextSubmit = async () => {
+    if (!assertRunnablePrefs()) return;
+
     if (!hasActiveSubscription()) {
       showNotification('Please subscribe to process text');
       return;
@@ -329,7 +377,7 @@ const InputFormContent: React.FC<InputFormProps> = ({ onProcessInput }) => {
     }
 
     await trackFeatureUsage('summary_generation');
-    onProcessInput(textInput, flashcardCount, fromSummary, medicalMode, false);
+    onProcessInput(textInput, flashcardCount, fromSummary, medicalMode, false, generationPrefs);
   };
 
   return (
@@ -617,16 +665,61 @@ const InputFormContent: React.FC<InputFormProps> = ({ onProcessInput }) => {
                     />
                     <span className={`ml-2 text-sm ${getThemeTextSecondary()}`}>{t('dashboard.full_content')}</span>
                   </label>
-                  <label className="flex items-center">
+                  <label className={`flex items-center ${!generationPrefs.includeSummary ? 'opacity-50 cursor-not-allowed' : ''}`}>
                     <input
                       type="radio"
                       checked={fromSummary}
-                      onChange={() => setFromSummary(true)}
+                      onChange={() => generationPrefs.includeSummary && setFromSummary(true)}
+                      disabled={!generationPrefs.includeSummary}
                       className={`h-4 w-4 text-cyan-600 focus:ring-cyan-500 ${getThemeCardBorder()}`}
                     />
                     <span className={`ml-2 text-sm ${getThemeTextSecondary()}`}>{t('dashboard.summary')}</span>
                   </label>
                 </div>
+                {!generationPrefs.includeSummary && (
+                  <p className={`text-xs mt-1 ${getThemeTextMuted()}`}>{t('dashboard.summary_disabled_hint')}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className={`text-sm font-medium ${getThemeTextSecondary()}`}>{t('dashboard.generation_outputs_title')}</p>
+              <label className={`flex items-center gap-2 text-sm ${getThemeTextSecondary()}`}>
+                <input
+                  type="checkbox"
+                  checked={generationPrefs.includeSummary}
+                  onChange={(e) =>
+                    setGenerationPrefs((p) => ({ ...p, includeSummary: e.target.checked }))
+                  }
+                  className={`h-4 w-4 rounded border-gray-300 text-cyan-600 focus:ring-cyan-500 ${getThemeCardBorder()}`}
+                />
+                {t('dashboard.include_summary')}
+              </label>
+              <label className={`flex items-center gap-2 text-sm ${getThemeTextSecondary()}`}>
+                <input
+                  type="checkbox"
+                  checked={generationPrefs.includeFlashcards}
+                  onChange={(e) =>
+                    setGenerationPrefs((p) => ({ ...p, includeFlashcards: e.target.checked }))
+                  }
+                  className={`h-4 w-4 rounded border-gray-300 text-cyan-600 focus:ring-cyan-500 ${getThemeCardBorder()}`}
+                />
+                {t('dashboard.include_flashcards')}
+              </label>
+              <p className={`text-xs font-medium ${getThemeTextMuted()}`}>{t('dashboard.quiz_types_label')}</p>
+              <p className={`text-xs ${getThemeTextMuted()}`}>{t('dashboard.quiz_types_dashboard_hint')}</p>
+              <div className="flex flex-wrap gap-3">
+                {ALL_QUIZ_QUESTION_TYPES.map((qt) => (
+                  <label key={qt} className={`flex items-center gap-1.5 text-xs ${getThemeTextSecondary()}`}>
+                    <input
+                      type="checkbox"
+                      checked={generationPrefs.quizQuestionTypes.includes(qt)}
+                      onChange={() => toggleDashboardQuizType(qt)}
+                      className={`h-3.5 w-3.5 rounded border-gray-300 text-cyan-600 focus:ring-cyan-500 ${getThemeCardBorder()}`}
+                    />
+                    {t(`dashboard.quiz_type_${qt}`)}
+                  </label>
+                ))}
               </div>
             </div>
 

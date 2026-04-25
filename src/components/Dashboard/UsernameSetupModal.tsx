@@ -62,15 +62,18 @@ export const UsernameSetupModal: React.FC<UsernameSetupModalProps> = ({
     checkCooldown();
   }, [isOpen, user]);
 
+  const wasOpenRef = useRef(false);
+
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-    return () => {
+    if (wasOpenRef.current && !isOpen) {
       setUsername('');
       setIsAvailable(null);
       setCooldownDays(null);
-    };
+    }
+    wasOpenRef.current = isOpen;
   }, [isOpen]);
 
   const checkAvailability = useCallback(
@@ -115,9 +118,24 @@ export const UsernameSetupModal: React.FC<UsernameSetupModalProps> = ({
   const isValid = USERNAME_REGEX.test(username);
 
   const handleSubmit = async () => {
-    if (!isValid || !isAvailable || !user || cooldownDays) return;
+    if (!isValid || !user || cooldownDays) return;
+    if (isAvailable === false || isChecking) return;
 
     setIsSubmitting(true);
+    const { data: available, error: rpcError } = await supabase.rpc('check_username_available', {
+      p_username: username,
+    });
+    if (rpcError) {
+      setIsSubmitting(false);
+      showError(rpcError.message);
+      return;
+    }
+    if (available !== true) {
+      setIsSubmitting(false);
+      setIsAvailable(false);
+      return;
+    }
+
     const { error } = await supabase
       .from('user_profiles')
       .update({ username, username_changed_at: new Date().toISOString() })
@@ -235,9 +253,9 @@ export const UsernameSetupModal: React.FC<UsernameSetupModalProps> = ({
           <div className={`p-5 border-t ${getThemeCardBorder()}`}>
             <button
               onClick={handleSubmit}
-              disabled={!isValid || !isAvailable || isSubmitting}
+              disabled={!isValid || isSubmitting || isAvailable === false || isChecking}
               className={`w-full py-2.5 rounded-lg font-medium text-white transition-all ${
-                isValid && isAvailable && !isSubmitting
+                isValid && isAvailable !== false && !isSubmitting && !isChecking
                   ? `bg-gradient-to-r ${getThemeGradient()} hover:opacity-90`
                   : 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed opacity-60'
               } flex items-center justify-center gap-2`}

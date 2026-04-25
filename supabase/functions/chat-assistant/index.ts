@@ -195,11 +195,11 @@ Deno.serve(async (req) => {
         if (userId) {
           const { data: profile } = await supabase
             .from('user_profiles')
-            .select('role')
+            .select('user_role')
             .eq('id', userId)
             .single();
 
-          isAdmin = profile?.role === 'admin';
+          isAdmin = profile?.user_role === 'admin';
         }
       } catch (error) {
         console.warn('Failed to extract user from token:', error);
@@ -228,25 +228,36 @@ Deno.serve(async (req) => {
 
     if (!isAdmin) {
       try {
-        const { data: creditCheck, error: creditError } = await supabase
-          .rpc('check_sufficient_credits', {
+        const estimatedChatTokens = Math.min(8192, Math.max(256, (typeof maxTokens === 'number' ? maxTokens : 2000) * 2));
+        const { data: tokenCheck, error: tokenCheckError } = await supabase.rpc(
+          'check_sufficient_subscription_tokens',
+          {
             p_user_id: userId,
-            p_estimated_credits: 3,
-          });
+            p_estimated_tokens: estimatedChatTokens,
+          }
+        );
 
-        if (creditError) {
-          console.error('Failed to check credits:', creditError);
-          return errorResponse('Failed to check credit balance', 500);
-        } else if (creditCheck && !creditCheck.sufficient) {
-          const cycleEnd = creditCheck.cycle_end;
+        if (tokenCheckError) {
+          console.error('Failed to check subscription tokens:', tokenCheckError);
+          return errorResponse('Failed to check chat token balance', 500);
+        }
+        if (tokenCheck && tokenCheck.sufficient === false) {
+          if (tokenCheck.reason === 'no_active_subscription') {
+            return errorResponse('An active subscription is required to use the AI assistant chat.', 403);
+          }
+          const cycleEnd = tokenCheck.billing_cycle_end;
+          const rem = tokenCheck.tokens_remaining ?? 0;
+          const suffix = cycleEnd
+            ? ` Your chat token allowance resets on ${new Date(cycleEnd).toLocaleDateString()}.`
+            : '';
           return errorResponse(
-            `You don't have enough credits to complete this action. Your credits will refresh on ${new Date(cycleEnd).toLocaleDateString()}.`,
+            `Not enough AI chat tokens remaining (${rem} left).${suffix}`,
             429
           );
         }
       } catch (limitCheckError) {
-        console.error('Credit check error:', limitCheckError);
-        return errorResponse('Failed to check credit balance', 500);
+        console.error('Token check error:', limitCheckError);
+        return errorResponse('Failed to check chat token balance', 500);
       }
     }
 
@@ -270,17 +281,19 @@ Deno.serve(async (req) => {
       }
 
       if (!isAdmin && result.tokens) {
-        try {
-          const { error: deductError } = await supabase.rpc('deduct_credits_atomic', {
-            p_user_id: userId,
-            p_tokens_used: result.tokens.total,
-            p_operation_type: 'chat_assistant',
-          });
-          if (deductError) {
-            console.error('Failed to deduct credits (one_shot):', deductError);
-          }
-        } catch (usageError) {
-          console.error('Failed to deduct credits (one_shot):', usageError);
+        const { data: usageResult, error: usageError } = await supabase.rpc('update_token_usage', {
+          p_user_id: userId,
+          p_tokens_used: result.tokens.total,
+        });
+        if (usageError) {
+          console.error('Failed to record chat token usage (one_shot):', usageError);
+        } else if (usageResult && usageResult.success === false) {
+          return errorResponse(
+            usageResult.error === 'Token budget exceeded'
+              ? 'AI chat token limit reached for this billing cycle.'
+              : 'Could not record chat token usage.',
+            429
+          );
         }
       }
 
@@ -327,7 +340,14 @@ Deno.serve(async (req) => {
           .single();
 
         if (convError) {
-          console.error('Failed to create conversation:', convError);
+          const ce = convError as { message?: string; code?: string; details?: string; hint?: string };
+          console.error('Failed to create conversation:', {
+            message: ce.message,
+            code: ce.code,
+            details: ce.details,
+            hint: ce.hint,
+            raw: convError,
+          });
           return errorResponse('Failed to create conversation', 500);
         }
 
@@ -409,27 +429,21 @@ Deno.serve(async (req) => {
     }
 
     if (!isAdmin && result.tokens) {
-      try {
-        const { data: deductResult, error: deductError } = await supabase
-          .rpc('deduct_credits_atomic', {
-            p_user_id: userId,
-            p_tokens_used: result.tokens.total,
-            p_operation_type: 'chat_assistant',
-          });
-
-        if (deductError) {
-          console.error('Failed to deduct credits:', deductError);
-        } else if (deductResult) {
-          console.log(`✅ Credits deducted: ${deductResult.credits_deducted}, remaining: ${deductResult.credits_remaining}`);
-
-          if (deductResult.notify_at_1000 || deductResult.notify_at_500 || deductResult.notify_at_250) {
-            const total = deductResult.credits_total ?? 2500;
-            const percentage = total > 0 ? Math.round((deductResult.credits_remaining / total) * 100) : 0;
-            console.log(`⚠️ Low credits warning: ${deductResult.credits_remaining} credits remaining (${percentage}% left)`);
-          }
-        }
-      } catch (usageError) {
-        console.error('⚠️ Failed to deduct credits:', usageError);
+      const { data: usageResult, error: usageError } = await supabase.rpc('update_token_usage', {
+        p_user_id: userId,
+        p_tokens_used: result.tokens.total,
+      });
+      if (usageError) {
+        console.error('Failed to record chat token usage:', usageError);
+      } else if (usageResult && usageResult.success === false) {
+        return errorResponse(
+          usageResult.error === 'Token budget exceeded'
+            ? 'AI chat token limit reached for this billing cycle.'
+            : 'Could not record chat token usage.',
+          429
+        );
+      } else if (usageResult?.tokens_remaining !== undefined) {
+        console.log(`✅ Chat tokens used: ${result.tokens.total}, remaining: ${usageResult.tokens_remaining}`);
       }
     }
 

@@ -70,6 +70,7 @@ export const SummaryDisplay: React.FC<SummaryDisplayProps> = ({
   onReset,
   isSharedView = false,
   hideNewDocumentButton = false,
+  highlightLibraryItemId,
   onActionBarData
 }) => {
   const { user } = useAuth();

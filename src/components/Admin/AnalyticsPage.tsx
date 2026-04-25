@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { ErrorLogger } from '../../utils/errorLogger';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -44,11 +44,7 @@ export const AnalyticsPage: React.FC = React.memo(() => {
   const [activeSubscriptions, setActiveSubscriptions] = useState(0);
   const [totalTokenUsage, setTotalTokenUsage] = useState(0);
 
-  useEffect(() => {
-    fetchAnalytics();
-  }, [dateRange]);
-
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -162,7 +158,11 @@ export const AnalyticsPage: React.FC = React.memo(() => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [dateRange]);
+
+  useEffect(() => {
+    void fetchAnalytics();
+  }, [fetchAnalytics]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {

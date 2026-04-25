@@ -49,9 +49,10 @@ async function detectLanguageWithOpenAI(text: string, openaiApiKey: string) {
     }
 
     return { language: detectedLanguage };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
     return {
-      error: `Language detection failed: ${error.message}`
+      error: `Language detection failed: ${msg}`
     };
   }
 }

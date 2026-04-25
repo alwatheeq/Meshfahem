@@ -176,6 +176,13 @@ export const ZegoVideoRoom: React.FC<ZegoVideoRoomProps> = ({
                 description: meta.description,
                 max_participants: meta.max_participants,
               });
+            } else {
+              useFloatingVideoStore.getState().joinRoom({
+                id: roomId,
+                room_code: roomId,
+                name: roomName,
+                max_participants: 50,
+              });
             }
           },
           onLeaveRoom: () => {

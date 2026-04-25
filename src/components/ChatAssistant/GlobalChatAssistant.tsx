@@ -135,14 +135,25 @@ const GlobalChatAssistantContent: React.FC = () => {
         action: 'loadExistingConversation'
       });
     }
-  }, [user, chatContext]);
+  }, [user, chatContext.contextType, chatContext.contextId]);
 
-  // Load existing conversation when context changes or chat opens
+  // New context → do not reuse a conversation from a different document / mode
   useEffect(() => {
-    if (isOpen && user && chatContext.contextType !== 'general' && chatContext.contextId && !conversationId) {
-      loadExistingConversation();
+    setConversationId(null);
+    setMessages([]);
+  }, [chatContext.contextType, chatContext.contextId]);
+
+  // Load existing conversation when chat opens or context changes (do not gate on conversationId — it can be stale until reset flushes)
+  useEffect(() => {
+    if (!isOpen || !user) return;
+    if (chatContext.contextType === 'general') {
+      void loadExistingConversation();
+      return;
     }
-  }, [isOpen, user, chatContext.contextType, chatContext.contextId, conversationId, loadExistingConversation]);
+    if (chatContext.contextId) {
+      void loadExistingConversation();
+    }
+  }, [isOpen, user, chatContext.contextType, chatContext.contextId, loadExistingConversation]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -225,7 +236,7 @@ const GlobalChatAssistantContent: React.FC = () => {
     }
   };
 
-  const handleMouseMove = (e: MouseEvent) => {
+  const handleMouseMove = useCallback((e: MouseEvent) => {
     if (isResizing && resizeDirection) {
       const deltaX = e.clientX - resizeStart.x;
       const deltaY = e.clientY - resizeStart.y;
@@ -292,9 +303,9 @@ const GlobalChatAssistantContent: React.FC = () => {
       x: Math.max(buttonSize / 2, Math.min(newX, maxX)),
       y: Math.max(buttonSize / 2, Math.min(newY, maxY))
     });
-  };
+  }, [isResizing, resizeDirection, resizeStart, position, size, isDragging, dragOffset, isOpen, isMinimized, wasDragging]);
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     setIsDragging(false);
     setIsResizing(false);
     setResizeDirection('');
@@ -304,7 +315,7 @@ const GlobalChatAssistantContent: React.FC = () => {
       setWasDragging(false);
       wasDraggingRef.current = false;
     }, 100);
-  };
+  }, []);
 
   const handleResizeStart = (e: React.MouseEvent, direction: string) => {
     e.preventDefault();
@@ -332,7 +343,7 @@ const GlobalChatAssistantContent: React.FC = () => {
         document.body.style.cursor = '';
       };
     }
-  }, [isDragging, isResizing, resizeDirection, dragOffset, position, size, resizeStart]);
+  }, [isDragging, isResizing, resizeDirection, handleMouseMove, handleMouseUp]);
 
   const sendMessage = async () => {
     if (!inputValue.trim() || loading || !user) return;

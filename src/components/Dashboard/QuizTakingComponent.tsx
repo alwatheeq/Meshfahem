@@ -8,12 +8,67 @@ import { handleApiError, handleSupabaseError } from '../../utils/errorHandler';
 import { ErrorLogger } from '../../utils/errorLogger';
 import { ReadAloudButton } from './ReadAloud/ReadAloudButton';
 
+type QuestionKind = 'multiple_choice' | 'true_false' | 'fill_in_blank' | 'open_ended';
+
 interface Question {
   index: number;
   question: string;
   options: string[];
   correct_answer: string;
   explanation?: string;
+  type?: QuestionKind;
+}
+
+function getQuestionKind(q: Question): QuestionKind {
+  const x = q.type;
+  if (x === 'true_false' || x === 'fill_in_blank' || x === 'open_ended' || x === 'multiple_choice') return x;
+  return 'multiple_choice';
+}
+
+function validateQuestionShape(q: Question, i: number): string | null {
+  if (!q.question?.trim()) return `Question ${i + 1} is missing text.`;
+  const kind = getQuestionKind(q);
+  if (!q.correct_answer?.trim()) return `Question ${i + 1} is missing an expected answer.`;
+  if (kind === 'open_ended' || kind === 'fill_in_blank') {
+    if (!Array.isArray(q.options)) return `Question ${i + 1} has invalid options.`;
+    return null;
+  }
+  if (!Array.isArray(q.options) || q.options.length < 2) {
+    return `Question ${i + 1} needs at least two answer choices.`;
+  }
+  return null;
+}
+
+function normalizeAnswerStatic(answer: string): string {
+  return answer
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/[.,!?;:'"()-]/g, '')
+    .replace(/\u00A0/g, ' ')
+    .trim();
+}
+
+function openEndedLooseMatch(userRaw: string, rubricRaw: string): boolean {
+  const u = normalizeAnswerStatic(userRaw);
+  const r = normalizeAnswerStatic(rubricRaw);
+  if (!u || u.length < 2) return false;
+  if (u === r) return true;
+  if (r.includes(u) || u.includes(r)) return true;
+  const words = r.split(/\s+/).filter((w) => w.length > 3);
+  if (words.length === 0) return u.length >= 8;
+  const hits = words.filter((w) => u.includes(w)).length;
+  return hits >= Math.min(2, Math.max(1, Math.ceil(words.length * 0.35)));
+}
+
+function isUserAnswerCorrect(q: Question, userAnswer: string | undefined): boolean {
+  if (!userAnswer?.trim()) return false;
+  const kind = getQuestionKind(q);
+  const u = normalizeAnswerStatic(userAnswer);
+  const c = normalizeAnswerStatic(q.correct_answer);
+  if (kind === 'open_ended') return openEndedLooseMatch(userAnswer, q.correct_answer);
+  if (kind === 'fill_in_blank') return u === c || u.includes(c) || c.includes(u);
+  return u === c;
 }
 
 interface QuizTakingProps {
@@ -106,9 +161,9 @@ export const QuizTakingComponent: React.FC<QuizTakingProps> = ({ quizId, onCompl
       ErrorLogger.debug('Questions loaded', { component: 'QuizTakingComponent', action: 'fetchQuizData', metadata: { questionCount: questions.length } });
 
       for (let i = 0; i < questions.length; i++) {
-        const q = questions[i];
-        if (!q.question || !q.options || !Array.isArray(q.options) || q.options.length < 2) {
-          const error = new Error(`Question ${i + 1} is invalid or incomplete.`);
+        const errMsg = validateQuestionShape(questions[i], i);
+        if (errMsg) {
+          const error = new Error(errMsg);
           ErrorLogger.error(error, { component: 'QuizTakingComponent', action: 'loadQuiz', metadata: { quizId, questionIndex: i } });
           throw error;
         }
@@ -359,7 +414,7 @@ export const QuizTakingComponent: React.FC<QuizTakingProps> = ({ quizId, onCompl
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('quiz.review_answers')}</h3>
               {questions.map((question, index) => {
                 const userAnswer = answers[index];
-                const isCorrect = userAnswer ? normalizeAnswer(userAnswer) === normalizeAnswer(question.correct_answer) : false;
+                const isCorrect = userAnswer ? isUserAnswerCorrect(question, userAnswer) : false;
                 const wasAnswered = !!userAnswer;
 
                 return (
@@ -479,27 +534,44 @@ export const QuizTakingComponent: React.FC<QuizTakingProps> = ({ quizId, onCompl
           </div>
 
           <div className="space-y-3 mb-8">
-            {currentQuestion.options.map((option, index) => (
-              <div
-                key={index}
-                role="button"
-                tabIndex={0}
-                onClick={() => handleAnswerSelect(option)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAnswerSelect(option)}
-                className={`w-full p-4 text-left rounded-lg border-2 transition-all cursor-pointer ${
-                  answers[currentQuestionIndex] === option
-                    ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-500'
-                    : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-900 dark:text-gray-100 flex-1">{option}</span>
-                  <span onClick={(e) => e.stopPropagation()}>
-                    <ReadAloudButton text={option} className="ml-2 flex-shrink-0" />
-                  </span>
-                </div>
+            {getQuestionKind(currentQuestion) === 'open_ended' || getQuestionKind(currentQuestion) === 'fill_in_blank' ? (
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-600 dark:text-gray-400">
+                  {getQuestionKind(currentQuestion) === 'fill_in_blank'
+                    ? t('quiz.your_answer_fill_blank')
+                    : t('quiz.your_answer_open')}
+                </label>
+                <textarea
+                  value={answers[currentQuestionIndex] || ''}
+                  onChange={(e) => handleAnswerSelect(e.target.value)}
+                  rows={getQuestionKind(currentQuestion) === 'open_ended' ? 5 : 2}
+                  className="w-full px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:border-blue-600 focus:ring-1 focus:ring-blue-500"
+                  placeholder={t('quiz.type_your_answer')}
+                />
               </div>
-            ))}
+            ) : (
+              currentQuestion.options.map((option, index) => (
+                <div
+                  key={index}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleAnswerSelect(option)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAnswerSelect(option)}
+                  className={`w-full p-4 text-left rounded-lg border-2 transition-all cursor-pointer ${
+                    answers[currentQuestionIndex] === option
+                      ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-500'
+                      : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-900 dark:text-gray-100 flex-1">{option}</span>
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <ReadAloudButton text={option} className="ml-2 flex-shrink-0" />
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
           <div className="flex items-center justify-between">

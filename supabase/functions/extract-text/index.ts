@@ -15,6 +15,10 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+function getUnknownErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 // NEW: lightweight scan/low-text detection helper for PDFs
 function detectLowTextPdf(extracted: string) {
   const text = (extracted || '').trim();
@@ -34,7 +38,7 @@ function detectLowTextPdf(extracted: string) {
 async function extractTextFromPDF(fileBuffer: ArrayBuffer) {
   try {
     console.log('📄 Starting PDF text extraction...');
-    // @ts-ignore - Deno npm spec
+    // @ts-expect-error Deno npm: pdf-parse has no bundled types in this project
     const pdfParse = await import('npm:pdf-parse@1.1.1');
     console.log('📚 pdf-parse library loaded');
     const result = await pdfParse.default(fileBuffer);
@@ -63,13 +67,18 @@ async function extractTextFromPDF(fileBuffer: ArrayBuffer) {
     }
 
     return extracted;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('💥 PDF parsing error:', error);
-    console.error('PDF error details:', error.name, error.message);
+    const msg = getUnknownErrorMessage(error);
+    console.error(
+      'PDF error details:',
+      error instanceof Error ? error.name : '',
+      msg
+    );
 
     // Preserve the helpful scanned-PDF message if we threw it
-    if (typeof error?.message === 'string' && error.message.includes('scanned')) {
-      throw error;
+    if (msg.includes('scanned')) {
+      throw error instanceof Error ? error : new Error(msg);
     }
 
     throw new Error('Failed to extract text from PDF');
@@ -82,7 +91,7 @@ async function extractTextFromDOCX(fileBuffer: ArrayBuffer) {
 
   try {
     console.log('📚 [DOCX] Importing mammoth library...');
-    // @ts-ignore - Deno npm spec
+    // @ts-expect-error Deno npm: mammoth has no bundled types in this project
     const mammoth = await import('npm:mammoth@1.6.0');
     console.log('✅ [DOCX] mammoth library loaded successfully');
 
@@ -121,7 +130,7 @@ async function extractTextFromDOCX(fileBuffer: ArrayBuffer) {
 
     if (result.messages && result.messages.length > 0) {
       console.log('📋 [DOCX] mammoth messages:', result.messages.length);
-      result.messages.forEach((msg: any, idx: number) => {
+      result.messages.forEach((msg: { type?: string; message?: string }, idx: number) => {
         console.log(`  ${idx + 1}. ${msg.type}: ${msg.message}`);
       });
     }
@@ -160,29 +169,34 @@ async function extractTextFromDOCX(fileBuffer: ArrayBuffer) {
       '✅ [DOCX] DOCX extraction complete and validated (non-fatal quality checks)'
     );
     return extractedText;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('💥 [DOCX] DOCX extraction failed');
-    console.error('❌ [DOCX] Error name:', error.name);
-    console.error('❌ [DOCX] Error message:', error.message);
-    console.error('❌ [DOCX] Error stack:', error.stack);
+    console.error(
+      '❌ [DOCX] Error name:',
+      error instanceof Error ? error.name : ''
+    );
+    console.error('❌ [DOCX] Error message:', getUnknownErrorMessage(error));
+    console.error(
+      '❌ [DOCX] Error stack:',
+      error instanceof Error ? error.stack : ''
+    );
 
-    if (error.message?.includes('password')) {
+    const m = getUnknownErrorMessage(error);
+    if (m.includes('password')) {
       throw new Error(
         'DOCX file is password protected. Please remove password protection and try again.'
       );
-    } else if (error.message?.includes('corrupt')) {
+    } else if (m.includes('corrupt')) {
       throw new Error(
         'DOCX file appears to be corrupted. Please try opening and re-saving the file.'
       );
-    } else if (error.message?.includes('format')) {
+    } else if (m.includes('format')) {
       throw new Error(
         'DOCX file format is not supported. Please ensure it is a valid .docx file (not .doc).'
       );
     }
 
-    throw new Error(
-      `Failed to extract text from DOCX: ${error.message || 'Unknown error'}`
-    );
+    throw new Error(`Failed to extract text from DOCX: ${m || 'Unknown error'}`);
   }
 }
 
@@ -296,7 +310,7 @@ async function extractTextFromPPTX(fileBuffer: ArrayBuffer) {
 
   try {
     console.log('📚 [PPTX] Importing JSZip library...');
-    // @ts-ignore - Deno npm spec
+    // @ts-expect-error Deno npm: jszip has no bundled types in this project
     const JSZip = await import('npm:jszip@3.10.1');
     console.log('✅ [PPTX] JSZip library loaded successfully');
 
@@ -389,7 +403,7 @@ async function extractTextFromPPTX(fileBuffer: ArrayBuffer) {
                 text = text.replace(/&quot;/g, '"').replace(/&apos;/g, "'");
                 text = text.replace(
                   /&#(\d+);/g,
-                  (_m, dec) => String.fromCharCode(dec as any)
+                  (_m, dec) => String.fromCharCode(Number(dec))
                 );
                 text = text.replace(
                   /&#x([0-9a-fA-F]+);/g,
@@ -421,13 +435,16 @@ async function extractTextFromPPTX(fileBuffer: ArrayBuffer) {
           );
           emptySlides++;
         }
-      } catch (slideError: any) {
+      } catch (slideError: unknown) {
         errorSlides++;
         console.error(
           `💥 [PPTX] Error processing slide ${slideFile}:`,
-          slideError.message
+          getUnknownErrorMessage(slideError)
         );
-        console.error(`❌ [PPTX] Slide error stack:`, slideError.stack);
+        console.error(
+          `❌ [PPTX] Slide error stack:`,
+          slideError instanceof Error ? slideError.stack : ''
+        );
       }
     }
 
@@ -521,32 +538,34 @@ async function extractTextFromPPTX(fileBuffer: ArrayBuffer) {
     );
 
     return finalText;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('💥 [PPTX] PPTX extraction failed');
-    console.error('❌ [PPTX] Error name:', error.name);
-    console.error('❌ [PPTX] Error message:', error.message);
-    console.error('❌ [PPTX] Error stack:', error.stack);
+    console.error(
+      '❌ [PPTX] Error name:',
+      error instanceof Error ? error.name : ''
+    );
+    console.error('❌ [PPTX] Error message:', getUnknownErrorMessage(error));
+    console.error(
+      '❌ [PPTX] Error stack:',
+      error instanceof Error ? error.stack : ''
+    );
 
-    if (error.message?.includes('password')) {
+    const m = getUnknownErrorMessage(error);
+    if (m.includes('password')) {
       throw new Error(
         'PPTX file is password protected. Please remove password protection and try again.'
       );
-    } else if (
-      error.message?.includes('corrupt') ||
-      error.message?.includes('invalid zip')
-    ) {
+    } else if (m.includes('corrupt') || m.includes('invalid zip')) {
       throw new Error(
         'PPTX file appears to be corrupted. Please try opening and re-saving the file.'
       );
-    } else if (error.message?.includes('format')) {
+    } else if (m.includes('format')) {
       throw new Error(
         'PPTX file format is not supported. Please ensure it is a valid .pptx file (not .ppt).'
       );
     }
 
-    throw new Error(
-      `Failed to extract text from PPTX: ${error.message || 'Unknown error'}`
-    );
+    throw new Error(`Failed to extract text from PPTX: ${m || 'Unknown error'}`);
   }
 }
 
@@ -761,11 +780,17 @@ Deno.serve(async (req) => {
       fileSize: file.size,
       extractionMethod: getExtractionMethod(typeForMethod)
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('💥 Edge Function error:', error);
-    console.error('Error name:', error.name);
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
+    console.error(
+      'Error name:',
+      error instanceof Error ? error.name : ''
+    );
+    console.error('Error message:', getUnknownErrorMessage(error));
+    console.error(
+      'Error stack:',
+      error instanceof Error ? error.stack : ''
+    );
     console.error('Text extraction error:', error);
 
     return jsonResponse(

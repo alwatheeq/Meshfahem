@@ -52,7 +52,9 @@ export const CreditProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           cycle_end: data.cycle_end,
           free_credits_claimed: data.free_credits_claimed,
           zego_credits_remaining: data.zego_credits_remaining ?? 0,
-          zego_credits_total: data.zego_credits_total ?? 0
+          zego_credits_total: data.zego_credits_total ?? 0,
+          chat_tokens_remaining: data.chat_tokens_remaining ?? 0,
+          chat_token_limit: data.chat_token_limit ?? 0
         });
       }
     } catch (err) {

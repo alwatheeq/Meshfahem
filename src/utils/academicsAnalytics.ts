@@ -2,7 +2,36 @@ type QuizQuestion = {
   index?: number;
   topic?: string;
   correct_answer?: string;
+  type?: string;
+  options?: string[];
 };
+
+function normalizeTopicAnswer(answer: string): string {
+  return answer
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/[.,!?;:'"()-]/g, '')
+    .replace(/\u00A0/g, ' ')
+    .trim();
+}
+
+function topicQuizAnswerMatches(q: QuizQuestion, userAnswer: string): boolean {
+  const u = normalizeTopicAnswer(userAnswer);
+  const c = normalizeTopicAnswer(q.correct_answer || '');
+  const kind = q.type;
+
+  if (kind === 'open_ended') {
+    if (!u || !c) return false;
+    if (u.length >= 4 && c.toLowerCase().includes(u)) return true;
+    const words = c.split(/\s+/).filter((w) => w.length > 3);
+    return words.some((w) => u.includes(w.toLowerCase()));
+  }
+  if (kind === 'fill_in_blank') {
+    return (u === c && c.length > 0) || (c.length > 0 && u.includes(c)) || (u.length > 0 && c.includes(u));
+  }
+  return u === c && c.length > 0;
+}
 
 type QuizSession = {
   id: string;
@@ -41,8 +70,7 @@ export const computeTopicQuizScores = (
       const key = getTopicKey(q.topic);
       const idx = q.index ?? i;
       const answer = (attempt.answers_json || {})[String(idx)] || '';
-      const correctAnswer = (q.correct_answer || '').trim().toLowerCase();
-      const isCorrect = answer.trim().toLowerCase() === correctAnswer && correctAnswer.length > 0;
+      const isCorrect = topicQuizAnswerMatches(q, answer);
 
       const prev = aggregate.get(key) || { correct: 0, total: 0 };
       aggregate.set(key, {

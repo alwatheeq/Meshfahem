@@ -51,7 +51,7 @@ export async function parseJsonBody<T = unknown>(
   try {
     const body = await req.json() as T;
     return { data: body, error: null };
-  } catch (error) {
+  } catch (_error) {
     return {
       data: null,
       error: errorResponse(

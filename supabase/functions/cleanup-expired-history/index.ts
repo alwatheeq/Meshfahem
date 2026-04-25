@@ -1,6 +1,6 @@
 /// <reference path="../_shared/deno.d.ts" />
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.54.0';
+import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2.54.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,7 +18,7 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -101,11 +101,12 @@ serve(async (req) => {
       }
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('💥 Cleanup function error:', error);
+    const details = error instanceof Error ? error.message : String(error);
     return jsonResponse({
       error: 'Server error during cleanup',
-      details: error?.message || String(error)
+      details
     }, 500);
   }
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import {
   Search, Download, Plus,
@@ -11,6 +11,8 @@ import { useToast } from '../Toast/Toast';
 import { ErrorLogger } from '../../utils/errorLogger';
 import { useConfirm } from '../../hooks/useConfirm';
 import { usePrompt } from '../../hooks/usePrompt';
+import { useDebounce } from '../../hooks/useDebounce';
+import { PerformanceMonitor } from '../../utils/performanceMonitor';
 
 interface Subscription {
   id: string;
@@ -58,12 +60,7 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [selectedSubscription, setSelectedSubscription] = useState<Subscription | null>(null);
 
-  useEffect(() => {
-    fetchSubscriptions();
-    fetchStats();
-  }, []);
-
-  const fetchSubscriptions = async () => {
+  const fetchSubscriptions = useCallback(async () => {
     return PerformanceMonitor.measureAsync('SubscriptionsManagementPage.fetchSubscriptions', async () => {
       try {
         setLoading(true);
@@ -87,9 +84,9 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
         setLoading(false);
       }
     });
-  };
+  }, [toast]);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const { data: allSubs, error: subsError } = await supabase
         .from('subscriptions')
@@ -121,7 +118,12 @@ export const SubscriptionsManagementPage: React.FC = React.memo(() => {
       const error = err instanceof Error ? err : new Error('Unknown error');
       ErrorLogger.error(error, { component: 'SubscriptionsManagementPage', action: 'fetchStats' });
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    void fetchSubscriptions();
+    void fetchStats();
+  }, [fetchSubscriptions, fetchStats]);
 
   const filteredSubscriptions = useMemo(() =>
     subscriptions.filter(sub => {

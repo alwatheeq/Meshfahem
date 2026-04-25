@@ -1,7 +1,6 @@
 /// <reference path="../_shared/deno.d.ts" />
-import { createClient } from 'npm:@supabase/supabase-js@2.39.3';
 import { handleCorsPreflight } from '../_shared/cors.ts';
-import { jsonResponse, errorResponse, successResponse } from '../_shared/response.ts';
+import { errorResponse, successResponse } from '../_shared/response.ts';
 import { authenticateUser, getSupabaseClient } from '../_shared/auth.ts';
 import { validateMethod, parseJsonBody, validateRequiredFields } from '../_shared/validation.ts';
 

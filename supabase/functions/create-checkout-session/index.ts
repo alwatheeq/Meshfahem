@@ -2,7 +2,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Stripe from "npm:stripe@14.21.0";
 import { handleCorsPreflight } from '../_shared/cors.ts';
-import { jsonResponse, errorResponse, successResponse } from '../_shared/response.ts';
+import { errorResponse, successResponse } from '../_shared/response.ts';
 import { validateMethod, parseJsonBody, validateRequiredFields } from '../_shared/validation.ts';
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {

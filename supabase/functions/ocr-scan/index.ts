@@ -55,13 +55,13 @@ async function callAzureOCR(imageBuffer: ArrayBuffer): Promise<OCRResult> {
         for (const line of region.lines) {
           if (line.words && Array.isArray(line.words)) {
             const lineText = line.words
-              .map((word: any) => word.text)
+              .map((word: { text?: string }) => word.text ?? '')
               .join(' ');
             extractedText += lineText + '\n';
             
             // Calculate average confidence
             const wordConfidences = line.words
-              .map((w: any) => parseFloat(w.confidence || '0'))
+              .map((w: { confidence?: string }) => parseFloat(w.confidence || '0'))
               .filter((c: number) => !isNaN(c));
             if (wordConfidences.length > 0) {
               const avgConfidence = wordConfidences.reduce((a, b) => a + b, 0) / wordConfidences.length;

@@ -13,6 +13,43 @@ export interface ApiError extends Error {
 }
 
 /**
+ * Turn any thrown/caught value into a safe user-visible string (toasts, alerts).
+ * Handles Error, PostgREST-style plain objects, and avoids "[object Object]".
+ */
+export function toErrorMessage(error: unknown, fallback = 'Something went wrong. Please try again.'): string {
+  if (error === null || error === undefined) return fallback;
+  if (typeof error === 'string') return error || fallback;
+
+  if (error instanceof Error) {
+    const m = error.message?.trim();
+    return m || fallback;
+  }
+
+  if (typeof error === 'object') {
+    const o = error as Record<string, unknown>;
+    const msg = o.message;
+    if (typeof msg === 'string' && msg.trim()) return msg.trim();
+
+    const parts: string[] = [];
+    if (typeof o.code === 'string' && o.code) parts.push(o.code);
+    if (typeof o.details === 'string' && o.details) parts.push(o.details);
+    if (typeof o.hint === 'string' && o.hint) parts.push(o.hint);
+    if (parts.length) return parts.join(' — ');
+
+    try {
+      const s = JSON.stringify(error);
+      if (s && s !== '{}') return s.length > 200 ? `${s.slice(0, 200)}…` : s;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const coerced = String(error);
+  if (coerced === '[object Object]') return fallback;
+  return coerced || fallback;
+}
+
+/**
  * Handle API errors with standardized logging and user-friendly messages
  */
 export const handleApiError = (
